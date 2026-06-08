@@ -1,0 +1,30 @@
+# Example Instance CR for the provider-cloudnative-pg provider.
+# Apply this to your cluster to create a database instance.
+#
+# Prerequisites:
+#   1. OpenEverest CRDs installed
+#   2. Provider CR applied (provider.yaml)
+#   3. Operator running
+#   4. Provider controller running
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: example-instance
+spec:
+  provider: provider-cloudnative-pg
+  components:
+    engine:
+      type: postgresql
+      replicas: 3
+      resources:
+        requests:
+          cpu: "1"
+          memory: 2Gi
+        limits:
+          cpu: "1"
+          memory: 2Gi
+      storage:
+        size: 10Gi
+        storageClass: standard
+      customSpec:
+        resizeInUseVolumes: true

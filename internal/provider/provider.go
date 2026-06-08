@@ -1,0 +1,277 @@
+package provider
+
+import (
+	"fmt"
+	"net/url"
+
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"sigs.k8s.io/controller-runtime/pkg/log"
+
+	corev1alpha1 "github.com/openeverest/openeverest/v2/api/core/v1alpha1"
+	"github.com/openeverest/openeverest/v2/provider-runtime/controller"
+	prv "github.com/openeverest/openeverest/v2/provider-runtime/controller"
+
+	cnpgv1 "github.com/cloudnative-pg/cloudnative-pg/api/v1"
+
+	"github.com/adityapimpalkar/provider-cloudnative-pg/definition/components"
+	"github.com/adityapimpalkar/provider-cloudnative-pg/internal/common"
+)
+
+// Compile-time check that Provider implements the required interface.
+var _ prv.ProviderInterface = (*Provider)(nil)
+
+// Provider implements controller.ProviderInterface for the provider-cloudnative-pg provider.
+type Provider struct {
+	controller.BaseProvider
+}
+
+// New creates a new Provider instance.
+func New() *Provider {
+	return &Provider{
+		BaseProvider: controller.BaseProvider{
+			ProviderName: common.ProviderName,
+			SchemeFuncs: []func(*runtime.Scheme) error{
+				cnpgv1.SchemeBuilder.AddToScheme,
+			},
+			WatchConfigs: []controller.WatchConfig{
+				controller.WatchOwned(&cnpgv1.Cluster{}),
+			},
+		},
+	}
+}
+
+// Validate checks if the Instance spec is valid.
+//
+// Add your provider-specific validation logic here.
+// Return an error if the spec is invalid.
+//
+// +kubebuilder:rbac:groups=<operator-api-group>,resources=<operator-resources>,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=<operator-api-group>,resources=<operator-resources>/status,verbs=get
+func (p *Provider) Validate(c *controller.Context) error {
+	l := log.FromContext(c.Context())
+	l.Info("Validating instance", "name", c.Name())
+
+	if _, ok := c.Instance().Spec.Components[common.ComponentEngine]; !ok {
+		return fmt.Errorf("engine component is required.")
+	}
+
+	engine := c.Instance().Spec.Components[common.ComponentEngine]
+
+	var custom components.PostgresqlCustomSpec
+	isSetCustomSpec := c.TryDecodeComponentCustomSpec(engine, &custom)
+	if isSetCustomSpec {
+		if err := c.DecodeComponentCustomSpec(engine, &custom); err != nil {
+			return fmt.Errorf("failed to decode component custom spec: %w", err)
+		}
+	}
+
+	if engine.Replicas == nil {
+		return fmt.Errorf("replicas is required.")
+	}
+	if int(*engine.Replicas) < 1 {
+		return fmt.Errorf("replicas must be at least 1.")
+	}
+	if engine.Storage == nil || engine.Storage.Size.String() == "" {
+		return fmt.Errorf("storage size is required.")
+	}
+	if engine.Resources == nil {
+		return fmt.Errorf("resources are required.")
+	}
+	if engine.Resources.Requests.Cpu().IsZero() || engine.Resources.Requests.Memory().IsZero() {
+		return fmt.Errorf("both CPU and memory requests are required.")
+	}
+	if engine.Resources.Limits.Cpu().IsZero() || engine.Resources.Limits.Memory().IsZero() {
+		return fmt.Errorf("both CPU and memory limits are required.")
+	}
+	if engine.Resources.Requests.Cpu().Cmp(*engine.Resources.Limits.Cpu()) != 0 {
+		return fmt.Errorf("CPU requests and limits must be equal.")
+	}
+	if engine.Resources.Requests.Memory().Cmp(*engine.Resources.Limits.Memory()) != 0 {
+		return fmt.Errorf("memory requests and limits must be equal.")
+	}
+
+	return nil
+}
+
+// Sync ensures all required resources exist and are configured correctly.
+//
+// This is the main reconciliation logic. Create or update your operator
+// operator's custom resource(s) based on the Instance spec.
+func (p *Provider) Sync(c *controller.Context) error {
+	l := log.FromContext(c.Context())
+	l.Info("Syncing instance", "name", c.Name())
+
+	engine := c.Instance().Spec.Components[common.ComponentEngine]
+
+	var custom components.PostgresqlCustomSpec
+	isSetCustomSpec := c.TryDecodeComponentCustomSpec(engine, &custom)
+	if isSetCustomSpec {
+		if err := c.DecodeComponentCustomSpec(engine, &custom); err != nil {
+			return fmt.Errorf("failed to decode component custom spec: %w", err)
+		}
+	}
+
+	pg := &cnpgv1.Cluster{
+		ObjectMeta: c.ObjectMeta(c.Name()),
+		Spec:       buildClusterSpec(engine, custom),
+	}
+
+	if engine.Image != "" {
+		// User explicitly specified an image override.
+		pg.Spec.ImageName = engine.Image
+	} else {
+		spec, err := c.ProviderSpec()
+		if err != nil {
+			return err
+		}
+		if engine.Version != "" {
+			pg.Spec.ImageName = controller.GetImageForVersion(spec, common.ComponentEngine, engine.Version)
+		}
+		if pg.Spec.ImageName == "" {
+			pg.Spec.ImageName = controller.GetDefaultImageForComponent(spec, common.ComponentEngine)
+		}
+	}
+
+	if pg.Spec.ImagePullPolicy == "" {
+		pg.Spec.ImagePullPolicy = corev1.PullIfNotPresent
+	}
+
+	if err := c.Apply(pg); err != nil {
+		return err
+	}
+	return nil
+}
+
+func buildClusterSpec(engine corev1alpha1.ComponentSpec, custom components.PostgresqlCustomSpec) cnpgv1.ClusterSpec {
+	resizeInUseVolumes := true
+	if custom.ResizeInUseVolumes != nil {
+		resizeInUseVolumes = *custom.ResizeInUseVolumes
+	}
+
+	enablePodAntiAffinity := true
+	storage := cnpgv1.StorageConfiguration{
+		Size:               engine.Storage.Size.String(),
+		ResizeInUseVolumes: &resizeInUseVolumes,
+	}
+	if engine.Storage.StorageClass != nil && *engine.Storage.StorageClass != "" {
+		storage.StorageClass = engine.Storage.StorageClass
+	}
+
+	spec := cnpgv1.ClusterSpec{
+		Instances:            int(*engine.Replicas),
+		StorageConfiguration: storage,
+		Resources: corev1.ResourceRequirements{
+			Requests: corev1.ResourceList{
+				corev1.ResourceCPU:    *engine.Resources.Requests.Cpu(),
+				corev1.ResourceMemory: *engine.Resources.Requests.Memory(),
+			},
+			Limits: corev1.ResourceList{
+				corev1.ResourceCPU:    *engine.Resources.Limits.Cpu(),
+				corev1.ResourceMemory: *engine.Resources.Limits.Memory(),
+			},
+		},
+		Affinity: cnpgv1.AffinityConfiguration{
+			EnablePodAntiAffinity: &enablePodAntiAffinity,
+		},
+	}
+
+	return spec
+}
+
+// Status computes the current status of the database instance.
+//
+// Query the operator's resource(s) and translate their status
+// into the provider-runtime's Status type.
+func (p *Provider) Status(c *controller.Context) (controller.Status, error) {
+	l := log.FromContext(c.Context())
+	l.Info("Computing status", "name", c.Name())
+
+	pg := &cnpgv1.Cluster{}
+	if err := c.Get(pg, c.Name()); err != nil {
+		return controller.Provisioning("Waiting to get CloudNativePG cluster resource"), nil
+	}
+
+	readyCondition := meta.FindStatusCondition(pg.Status.Conditions, string(cnpgv1.ConditionClusterReady))
+	if readyCondition != nil && readyCondition.Status == metav1.ConditionTrue && pg.Status.Instances > 0 && pg.Status.ReadyInstances == pg.Status.Instances {
+		host := fmt.Sprintf("%s.%s.svc", pg.GetServiceReadWriteName(), c.Namespace())
+
+		var (
+			secretName string
+			username   string
+			password   string
+		)
+		for _, candidateSecretName := range []string{pg.GetApplicationSecretName(), pg.GetSuperuserSecretName()} {
+			secret := &corev1.Secret{}
+			if err := c.Get(secret, candidateSecretName); err != nil {
+				continue
+			}
+			u := string(secret.Data["username"])
+			p := string(secret.Data["password"])
+			if u != "" && p != "" {
+				secretName = candidateSecretName
+				username = u
+				password = p
+				break
+			}
+		}
+
+		if username == "" || password == "" {
+			return controller.Provisioning("waiting to get CloudNativePG credentials secret"), nil
+		}
+
+		database := pg.GetApplicationDatabaseName()
+		if database == "" {
+			database = "postgres"
+		}
+		uri := fmt.Sprintf(
+			"postgresql://%s:%s@%s:%s/%s",
+			url.QueryEscape(username),
+			url.QueryEscape(password),
+			host,
+			"5432",
+			url.PathEscape(database),
+		)
+
+		return controller.ReadyWithConnectionDetails(controller.ConnectionDetails{
+			Type:     "postgresql",
+			Provider: common.ProviderName,
+			Host:     host,
+			Port:     "5432",
+			Username: username,
+			Password: password,
+			URI:      uri,
+			AdditionalProperties: map[string]string{
+				"database":   database,
+				"secretName": secretName,
+			},
+		}), nil
+	}
+
+	if pg.Status.Instances > 0 {
+		return controller.Provisioning(fmt.Sprintf(
+			"waiting to get CloudNativePG cluster to be ready (%d/%d instances ready)",
+			pg.Status.ReadyInstances,
+			pg.Status.Instances,
+		)), nil
+	}
+
+	return controller.Provisioning("waiting to get CloudNativePG cluster to initialize"), nil
+}
+
+// Cleanup handles deletion of provider-managed resources.
+//
+// Called when the Instance has a deletion timestamp set.
+// Delete any resources that are not automatically cleaned up
+// via owner references.
+func (p *Provider) Cleanup(c *controller.Context) error {
+	l := log.FromContext(c.Context())
+	l.Info("Cleaning up instance", "name", c.Name())
+
+	// TODO: Implement cleanup logic if needed.
+	// Resources with owner references set via c.Apply() are automatically
+	// garbage collected. Only implement this if you need custom cleanup.
+	return nil
+}

@@ -1,0 +1,44 @@
+# Component type version catalog.
+# Images follow CloudNativePG recommended practice:
+#   - ghcr.io/cloudnative-pg/postgresql (official CNPG operands)
+#   - "standard" image type on Debian "trixie" (MM.mm-standard-trixie tags)
+#   - See: https://github.com/cloudnative-pg/postgres-containers#image-tags
+#   - Catalog reference: https://github.com/cloudnative-pg/artifacts/tree/main/image-catalogs
+#
+# PostgreSQL 13 is omitted (EOL). Align patch versions with catalog-standard-trixie
+# when bumping releases.
+
+componentTypes:
+  postgresql:
+    versions:
+      - version: "14.23"
+        image: ghcr.io/cloudnative-pg/postgresql:14.23-standard-trixie
+      - version: "15.18"
+        image: ghcr.io/cloudnative-pg/postgresql:15.18-standard-trixie
+      - version: "16.14"
+        image: ghcr.io/cloudnative-pg/postgresql:16.14-standard-trixie
+      - version: "17.10"
+        image: ghcr.io/cloudnative-pg/postgresql:17.10-standard-trixie
+        default: true
+      - version: "18.4"
+        image: ghcr.io/cloudnative-pg/postgresql:18.4-standard-trixie
+
+# Version bundles — curated engine versions exposed as spec.version on an Instance.
+# The bundle with default: true is used when spec.version is omitted.
+versions:
+  - name: "17.10"
+    default: true
+    components:
+      engine: "17.10"
+  - name: "18.4"
+    components:
+      engine: "18.4"
+  - name: "16.14"
+    components:
+      engine: "16.14"
+  - name: "15.18"
+    components:
+      engine: "15.18"
+  - name: "14.23"
+    components:
+      engine: "14.23"

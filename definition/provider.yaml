@@ -1,0 +1,9 @@
+# Provider identity and component definitions.
+# Edit this file to add or remove components.
+# Run `make generate` after making changes.
+
+components:
+    engine:
+        type: postgresql
+        customSpecSchema: PostgresqlCustomSpec
+name: provider-cloudnative-pg

@@ -1,0 +1,20 @@
+apiVersion: v2
+name: provider-cloudnative-pg
+description: A Helm chart for deploying the OpenEverest provider-cloudnative-pg provider
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - openeverest
+  - provider
+  - database
+home: https://github.com/openeverest/provider-cloudnative-pg
+sources:
+  - https://github.com/openeverest/provider-cloudnative-pg
+maintainers:
+  - name: OpenEverest Contributors
+# TODO: If your provider depends on an operator Helm chart, add it here.
+# dependencies:
+#   - name: my-operator
+#     version: "1.0.0"
+#     repository: https://example.com/helm-charts/

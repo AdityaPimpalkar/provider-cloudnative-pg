@@ -1,0 +1,69 @@
+# ReplicaSet topology definition.
+# This file defines both the structural topology and its UI rendering.
+#
+# config.components: Which components are used and their defaults.
+# config.configSchema: Reference a Go type for custom topology config fields.
+# ui: Rendering hints for the frontend form.
+#
+# See github.com/openeverest/provider-sdk/blob/main/PROVIDER_DEVELOPMENT.md
+# for detailed guidance.
+
+config:
+  components:
+    engine:
+      defaults:
+        replicas: 3
+ui:
+  sections:
+    basicInfo:
+      components:
+        version:
+          fieldParams:
+            label: Database Version
+          path: spec.components.engine.version
+          uiType: select
+      description: Provide the basic information for your new database.
+      label: Basic Information
+    resources:
+      components:
+        numberOfNodes:
+          fieldParams:
+            label: Number of nodes
+          path: spec.components.engine.replicas
+          uiType: number
+          validation:
+            max: 7
+            min: 1
+        resources:
+          components:
+            cpu:
+              fieldParams:
+                label: CPU
+              path: spec.components.engine.resources.requests.cpu
+              uiType: number
+              validation:
+                max: 10
+                min: 1
+            disk:
+              fieldParams:
+                label: Disk
+              path: spec.components.engine.storage.size
+              uiType: number
+              validation:
+                max: 100
+                min: 10
+            memory:
+              fieldParams:
+                label: Memory
+              path: spec.components.engine.resources.requests.memory
+              uiType: number
+              validation:
+                max: 10
+                min: 1
+          groupType: line
+          uiType: group
+      description: Configure the resources your database will have access to.
+      label: Resources
+  sectionsOrder:
+    - basicInfo
+    - resources
