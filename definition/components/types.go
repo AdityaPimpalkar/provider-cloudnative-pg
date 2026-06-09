@@ -16,16 +16,9 @@ type PostgresqlCustomSpec struct {
 	// Defaults to true when unset.
 	ResizeInUseVolumes *bool `json:"resizeInUseVolumes,omitempty"`
 
-	MaxConnections          *int32  `json:"maxConnections,omitempty"`
-	SharedBuffers           *string `json:"sharedBuffers,omitempty"`
-	EffectiveCacheSize      *string `json:"effectiveCacheSize,omitempty"`
-	WorkMem                 *string `json:"workMem,omitempty"`
-	MinWalSize              *string `json:"minWalSize,omitempty"`
-	MaxWalSize              *string `json:"maxWalSize,omitempty"`
-	LogStatement            *string `json:"logStatement,omitempty"`
-	LogMinDurationStatement *int32  `json:"logMinDurationStatement,omitempty"`
-	LogMinMessages          *int32  `json:"logMinMessages,omitempty"`
-	LogConnections          *int32  `json:"logConnections,omitempty"`
-	LogDisconnections       *int32  `json:"logDisconnections,omitempty"`
-	LogRetentionTime        *int32  `json:"logRetentionTime,omitempty"`
+	PostgreSQLParameters *PostgreSQLParameters `json:"postgresql,omitempty"`
+}
+
+type PostgreSQLParameters struct {
+	Parameters map[string]string `json:"parameters,omitempty"`
 }

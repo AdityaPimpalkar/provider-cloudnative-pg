@@ -15,14 +15,18 @@ package provider
 // =============================================================================
 // PROVIDER-SPECIFIC RBAC — Add markers for your operator's resources.
 // =============================================================================
-// Examples:
-//
-//   - Watch/manage operator CRs:
-// 		+kubebuilder:rbac:groups=postgresql.cnpg.io,resources=clusters,verbs=get;list;watch;create;update;patch;delete
-// 		+kubebuilder:rbac:groups=postgresql.cnpg.io,resources=clusters/status,verbs=get
+
+// CloudNativePG Cluster CRs:
+// +kubebuilder:rbac:groups=postgresql.cnpg.io,resources=clusters,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=postgresql.cnpg.io,resources=clusters/status,verbs=get
+
+// Secrets (CNPG credentials in Status(), connection secret in provider-runtime):
+// +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create;update;patch
+
+// Examples for other resources:
 //
 //   - Access Kubernetes core resources:
-//   // +kubebuilder:rbac:groups="",resources=secrets;configmaps,verbs=get;list;watch
+//   // +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch
 //   // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
 //
 //   - Access PVCs (if managing storage):

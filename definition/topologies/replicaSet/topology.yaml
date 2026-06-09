@@ -13,57 +13,143 @@ config:
     engine:
       defaults:
         replicas: 3
+    backupAgent:
+      optional: true
+    monitoring:
+      optional: true
 ui:
   sections:
-    basicInfo:
+    databaseVersion:
+      label: "Database version"
+      description: "Provide the information about the database version you want to use."
       components:
         version:
-          fieldParams:
-            label: Database Version
-          path: spec.components.engine.version
           uiType: select
-      description: Provide the basic information for your new database.
-      label: Basic Information
-    resources:
-      components:
-        numberOfNodes:
+          path: spec.version
           fieldParams:
-            label: Number of nodes
-          path: spec.components.engine.replicas
-          uiType: number
+            label: "Database version"
+            optionsPath: spec.versions
+            optionsPathConfig:
+              labelPath: "name"
+              valuePath: "name"
+            modes:
+              edit:
+                disabled: true
+              restore:
+                disabled: true
           validation:
-            max: 7
-            min: 1
-        resources:
-          components:
-            cpu:
-              fieldParams:
-                label: CPU
-              path: spec.components.engine.resources.requests.cpu
-              uiType: number
-              validation:
-                max: 10
-                min: 1
-            disk:
-              fieldParams:
-                label: Disk
-              path: spec.components.engine.storage.size
-              uiType: number
-              validation:
-                max: 100
-                min: 10
-            memory:
-              fieldParams:
-                label: Memory
-              path: spec.components.engine.resources.requests.memory
-              uiType: number
-              validation:
-                max: 10
-                min: 1
-          groupType: line
+            required: true
+    resources:
+      label: "Resources details"
+      description: "Configure the resources your new database will have access to."
+      components:
+        nodes:
           uiType: group
-      description: Configure the resources your database will have access to.
-      label: Resources
+          components:
+            numberOfnodes:
+              path: "spec.components.engine.replicas"
+              uiType: number
+              fieldParams:
+                label: "Number of nodes"
+                defaultValue: 3
+              validation:
+                required: true
+                min: 1
+                int: true
+                celExpressions:
+                  - celExpr: "spec.components.engine.replicas % 2 == 1"
+                    message: "The number of nodes must be odd"
+                modes:
+                  edit:
+                    celExpressions:
+                      - celExpr: "!(spec.components.engine.replicas == 1 && original.spec.components.engine.replicas > 1)"
+                        message: "Cannot scale down to a single node"
+
+            resources-limits:
+              uiType: group
+              groupType: line
+              components:
+                cpu-limits:
+                  path:
+                    - "spec.components.engine.resources.limits.cpu"
+                    - "spec.components.engine.resources.requests.cpu"
+                  uiType: number
+                  fieldParams:
+                    label: "CPU"
+                    defaultValue: 1
+                    step: 1
+                  validation:
+                    min: 0.6
+                    required: true
+                memory-limits:
+                  path:
+                    - "spec.components.engine.resources.limits.memory"
+                    - "spec.components.engine.resources.requests.memory"
+                  uiType: number
+                  fieldParams:
+                    label: "Memory"
+                    defaultValue: 4
+                    step: 0.1
+                    badge: "Gi"
+                    badgeToApi: true
+                  validation:
+                    min: 0.512
+                    required: true
+                disk:
+                  path: "spec.components.engine.storage.size"
+                  uiType: number
+                  fieldParams:
+                    label: "Disk"
+                    defaultValue: 25
+                    badge: "Gi"
+                    badgeToApi: true
+                  validation:
+                    min: 1
+                    int: true
+                    required: true
+                    modes:
+                      edit:
+                        celExpressions:
+                          - celExpr: "spec.components.engine.storage.size >= original.spec.components.engine.storage.size"
+                            message: "Disk size cannot be decreased"
+          componentsOrder:
+            - numberOfnodes
+            - resources-limits
+            - disk
+    advanced:
+      label: "Advanced configuration"
+      description: "Configure advanced settings for your database"
+      components:
+        storageClass:
+          uiType: select
+          path: spec.components.engine.storage.storageClass
+          fieldParams:
+            label: "Storage class"
+            modes:
+              edit:
+                disabled: true
+              restore:
+                disabled: true
+          validation:
+            required: true
+          dataSource:
+            provider: storageClasses
+        configuration:
+          uiType: text
+          path: spec.components.engine.customSpec.postgresql.parameters
+          fieldParams:
+            label: "Engine configuration"
+            placeholder: |2
+              operationProfiling:
+                mode: slowOps
+                slowOpThresholdMs: 200
+            multiline: true
+            minRows: 3
+            maxRows: 8
+      componentsOrder:
+        - storageClass
+        - configuration
   sectionsOrder:
-    - basicInfo
+    - databaseVersion
     - resources
+    - advanced

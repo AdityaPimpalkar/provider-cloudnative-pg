@@ -19,99 +19,161 @@ spec:
     engine:
       customSpecSchema:
         properties:
-          effectiveCacheSize:
-            type: string
-          logConnections:
-            format: int32
-            type: integer
-          logDisconnections:
-            format: int32
-            type: integer
-          logMinDurationStatement:
-            format: int32
-            type: integer
-          logMinMessages:
-            format: int32
-            type: integer
-          logRetentionTime:
-            format: int32
-            type: integer
-          logStatement:
-            type: string
-          maxConnections:
-            format: int32
-            type: integer
-          maxWalSize:
-            type: string
-          minWalSize:
-            type: string
+          postgresql:
+            properties:
+              parameters:
+                additionalProperties:
+                  type: string
+                type: object
+            type: object
           resizeInUseVolumes:
             type: boolean
-          sharedBuffers:
-            type: string
-          workMem:
-            type: string
         type: object
       type: postgresql
   topologies:
     replicaSet:
       components:
+        backupAgent:
+          optional: true
         engine: {}
+        monitoring:
+          optional: true
   uiSchema:
     replicaSet:
       sections:
-        basicInfo:
+        advanced:
+          components:
+            configuration:
+              fieldParams:
+                label: Engine configuration
+                maxRows: 8
+                minRows: 3
+                multiline: true
+                placeholder: |
+                  operationProfiling:
+                    mode: slowOps
+                    slowOpThresholdMs: 200
+              path: spec.components.engine.customSpec.postgresql.parameters
+              uiType: text
+            storageClass:
+              dataSource:
+                provider: storageClasses
+              fieldParams:
+                label: Storage class
+                modes:
+                  edit:
+                    disabled: true
+                  restore:
+                    disabled: true
+              path: spec.components.engine.storage.storageClass
+              uiType: select
+              validation:
+                required: true
+          componentsOrder:
+            - storageClass
+            - configuration
+          description: Configure advanced settings for your database
+          label: Advanced configuration
+        databaseVersion:
           components:
             version:
               fieldParams:
-                label: Database Version
-              path: spec.components.engine.version
+                label: Database version
+                modes:
+                  edit:
+                    disabled: true
+                  restore:
+                    disabled: true
+                optionsPath: spec.versions
+                optionsPathConfig:
+                  labelPath: name
+                  valuePath: name
+              path: spec.version
               uiType: select
-          description: Provide the basic information for your new database.
-          label: Basic Information
+              validation:
+                required: true
+          description: Provide the information about the database version you want to use.
+          label: Database version
         resources:
           components:
-            numberOfNodes:
-              fieldParams:
-                label: Number of nodes
-              path: spec.components.engine.replicas
-              uiType: number
-              validation:
-                max: 7
-                min: 1
-            resources:
+            nodes:
               components:
-                cpu:
+                numberOfnodes:
                   fieldParams:
-                    label: CPU
-                  path: spec.components.engine.resources.requests.cpu
+                    defaultValue: 3
+                    label: Number of nodes
+                  path: spec.components.engine.replicas
                   uiType: number
                   validation:
-                    max: 10
+                    celExpressions:
+                      - celExpr: spec.components.engine.replicas % 2 == 1
+                        message: The number of nodes must be odd
+                    int: true
                     min: 1
-                disk:
-                  fieldParams:
-                    label: Disk
-                  path: spec.components.engine.storage.size
-                  uiType: number
-                  validation:
-                    max: 100
-                    min: 10
-                memory:
-                  fieldParams:
-                    label: Memory
-                  path: spec.components.engine.resources.requests.memory
-                  uiType: number
-                  validation:
-                    max: 10
-                    min: 1
-              groupType: line
+                    modes:
+                      edit:
+                        celExpressions:
+                          - celExpr: '!(spec.components.engine.replicas == 1 && original.spec.components.engine.replicas > 1)'
+                            message: Cannot scale down to a single node
+                    required: true
+                resources-limits:
+                  components:
+                    cpu-limits:
+                      fieldParams:
+                        defaultValue: 1
+                        label: CPU
+                        step: 1
+                      path:
+                        - spec.components.engine.resources.limits.cpu
+                        - spec.components.engine.resources.requests.cpu
+                      uiType: number
+                      validation:
+                        min: 0.6
+                        required: true
+                    disk:
+                      fieldParams:
+                        badge: Gi
+                        badgeToApi: true
+                        defaultValue: 25
+                        label: Disk
+                      path: spec.components.engine.storage.size
+                      uiType: number
+                      validation:
+                        int: true
+                        min: 1
+                        modes:
+                          edit:
+                            celExpressions:
+                              - celExpr: spec.components.engine.storage.size >= original.spec.components.engine.storage.size
+                                message: Disk size cannot be decreased
+                        required: true
+                    memory-limits:
+                      fieldParams:
+                        badge: Gi
+                        badgeToApi: true
+                        defaultValue: 4
+                        label: Memory
+                        step: 0.1
+                      path:
+                        - spec.components.engine.resources.limits.memory
+                        - spec.components.engine.resources.requests.memory
+                      uiType: number
+                      validation:
+                        min: 0.512
+                        required: true
+                  groupType: line
+                  uiType: group
+              componentsOrder:
+                - numberOfnodes
+                - resources-limits
+                - disk
               uiType: group
-          description: Configure the resources your database will have access to.
-          label: Resources
+          description: Configure the resources your new database will have access to.
+          label: Resources details
       sectionsOrder:
-        - basicInfo
+        - databaseVersion
         - resources
+        - advanced
   versions:
     - components:
         engine: "17.10"

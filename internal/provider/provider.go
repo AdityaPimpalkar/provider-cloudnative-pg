@@ -160,6 +160,13 @@ func buildClusterSpec(engine corev1alpha1.ComponentSpec, custom components.Postg
 		storage.StorageClass = engine.Storage.StorageClass
 	}
 
+	var postgresqlConfiguration cnpgv1.PostgresConfiguration
+	if custom.PostgreSQLParameters != nil {
+		postgresqlConfiguration = cnpgv1.PostgresConfiguration{
+			Parameters: custom.PostgreSQLParameters.Parameters,
+		}
+	}
+
 	spec := cnpgv1.ClusterSpec{
 		Instances:            int(*engine.Replicas),
 		StorageConfiguration: storage,
@@ -176,6 +183,7 @@ func buildClusterSpec(engine corev1alpha1.ComponentSpec, custom components.Postg
 		Affinity: cnpgv1.AffinityConfiguration{
 			EnablePodAntiAffinity: &enablePodAntiAffinity,
 		},
+		PostgresConfiguration: postgresqlConfiguration,
 	}
 
 	return spec

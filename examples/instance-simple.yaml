@@ -18,3 +18,8 @@ spec:
           memory: 1Gi
       storage:
         size: 5Gi
+      customSpec:
+        postgresql:
+          parameters:
+            max_connections: "100"
+            shared_buffers: "128MB"
