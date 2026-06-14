@@ -8,17 +8,22 @@
 // +k8s:openapi-gen=true
 package components
 
+import (
+	cnpgv1 "github.com/cloudnative-pg/cloudnative-pg/api/v1"
+	corev1 "k8s.io/api/core/v1"
+)
+
 // PostgresqlCustomSpec defines custom configuration for postgresql components.
 // Add fields here when the postgresql component type needs custom configuration
 // beyond what the base Instance spec provides.
 type PostgresqlCustomSpec struct {
-	// ResizeInUseVolumes controls whether existing PVCs are resized when storage grows.
-	// Defaults to true when unset.
 	ResizeInUseVolumes *bool `json:"resizeInUseVolumes,omitempty"`
 
-	PostgreSQLParameters *PostgreSQLParameters `json:"postgresql,omitempty"`
-}
+	PersistentVolumeClaimTemplate *corev1.PersistentVolumeClaimSpec `json:"pvcTemplate,omitempty"`
 
-type PostgreSQLParameters struct {
-	Parameters map[string]string `json:"parameters,omitempty"`
+	Affinity *cnpgv1.AffinityConfiguration `json:"affinity,omitempty"`
+
+	PostgresConfiguration *cnpgv1.PostgresConfiguration `json:"postgresql,omitempty"`
+
+	Managed *cnpgv1.ManagedConfiguration `json:"managed,omitempty"`
 }

@@ -17,6 +17,7 @@ import (
 	cnpgv1 "github.com/cloudnative-pg/cloudnative-pg/api/v1"
 
 	"github.com/adityapimpalkar/provider-cloudnative-pg/definition/components"
+	"github.com/adityapimpalkar/provider-cloudnative-pg/internal/cnpg"
 	"github.com/adityapimpalkar/provider-cloudnative-pg/internal/common"
 )
 
@@ -146,25 +147,20 @@ func (p *Provider) Sync(c *controller.Context) error {
 }
 
 func buildClusterSpec(engine corev1alpha1.ComponentSpec, custom components.PostgresqlCustomSpec) cnpgv1.ClusterSpec {
-	resizeInUseVolumes := true
-	if custom.ResizeInUseVolumes != nil {
-		resizeInUseVolumes = *custom.ResizeInUseVolumes
+	storage := cnpgv1.StorageConfiguration{
+		Size: engine.Storage.Size.String(),
 	}
 
-	enablePodAntiAffinity := true
-	storage := cnpgv1.StorageConfiguration{
-		Size:               engine.Storage.Size.String(),
-		ResizeInUseVolumes: &resizeInUseVolumes,
-	}
 	if engine.Storage.StorageClass != nil && *engine.Storage.StorageClass != "" {
 		storage.StorageClass = engine.Storage.StorageClass
 	}
 
-	var postgresqlConfiguration cnpgv1.PostgresConfiguration
-	if custom.PostgreSQLParameters != nil {
-		postgresqlConfiguration = cnpgv1.PostgresConfiguration{
-			Parameters: custom.PostgreSQLParameters.Parameters,
-		}
+	if custom.PersistentVolumeClaimTemplate != nil {
+		storage.PersistentVolumeClaimTemplate = custom.PersistentVolumeClaimTemplate
+	}
+
+	if custom.ResizeInUseVolumes != nil {
+		storage.ResizeInUseVolumes = custom.ResizeInUseVolumes
 	}
 
 	spec := cnpgv1.ClusterSpec{
@@ -180,10 +176,18 @@ func buildClusterSpec(engine corev1alpha1.ComponentSpec, custom components.Postg
 				corev1.ResourceMemory: *engine.Resources.Limits.Memory(),
 			},
 		},
-		Affinity: cnpgv1.AffinityConfiguration{
-			EnablePodAntiAffinity: &enablePodAntiAffinity,
-		},
-		PostgresConfiguration: postgresqlConfiguration,
+	}
+
+	if custom.PostgresConfiguration != nil {
+		spec.PostgresConfiguration = *custom.PostgresConfiguration
+	}
+
+	if custom.Managed != nil {
+		spec.Managed = custom.Managed
+	}
+
+	if custom.Affinity != nil {
+		spec.Affinity = *custom.Affinity
 	}
 
 	return spec
@@ -199,11 +203,15 @@ func (p *Provider) Status(c *controller.Context) (controller.Status, error) {
 
 	pg := &cnpgv1.Cluster{}
 	if err := c.Get(pg, c.Name()); err != nil {
-		return controller.Provisioning("Waiting to get CloudNativePG cluster resource"), nil
+		return controller.Pending("Waiting to get CloudNativePG cluster resource"), nil
 	}
 
 	readyCondition := meta.FindStatusCondition(pg.Status.Conditions, string(cnpgv1.ConditionClusterReady))
 	if readyCondition != nil && readyCondition.Status == metav1.ConditionTrue && pg.Status.Instances > 0 && pg.Status.ReadyInstances == pg.Status.Instances {
+		if roleStatus, blocked := cnpg.ManagedRolesStatus(pg); blocked {
+			return roleStatus, nil
+		}
+
 		host := fmt.Sprintf("%s.%s.svc", pg.GetServiceReadWriteName(), c.Namespace())
 
 		var (
@@ -260,13 +268,13 @@ func (p *Provider) Status(c *controller.Context) (controller.Status, error) {
 
 	if pg.Status.Instances > 0 {
 		return controller.Provisioning(fmt.Sprintf(
-			"waiting to get CloudNativePG cluster to be ready (%d/%d instances ready)",
+			"waiting for CloudNativePG cluster to be ready (%d/%d instances ready)",
 			pg.Status.ReadyInstances,
 			pg.Status.Instances,
 		)), nil
+	} else {
+		return controller.Initializing("waiting for CloudNativePG cluster to initialize"), nil
 	}
-
-	return controller.Provisioning("waiting to get CloudNativePG cluster to initialize"), nil
 }
 
 // Cleanup handles deletion of provider-managed resources.
