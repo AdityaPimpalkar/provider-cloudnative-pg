@@ -56,9 +56,6 @@ ui:
                 required: true
                 min: 1
                 int: true
-                celExpressions:
-                  - celExpr: "spec.components.engine.replicas % 2 == 1"
-                    message: "The number of nodes must be odd"
                 modes:
                   edit:
                     celExpressions:
@@ -69,31 +66,49 @@ ui:
               uiType: group
               groupType: line
               components:
-                cpu-limits:
-                  path:
-                    - "spec.components.engine.resources.limits.cpu"
-                    - "spec.components.engine.resources.requests.cpu"
+                cpu-requests:
+                  path: "spec.components.engine.resources.requests.cpu"
                   uiType: number
                   fieldParams:
-                    label: "CPU"
+                    label: "CPU requests"
                     defaultValue: 1
                     step: 1
                   validation:
-                    min: 0.6
+                    min: 0.1
                     required: true
-                memory-limits:
-                  path:
-                    - "spec.components.engine.resources.limits.memory"
-                    - "spec.components.engine.resources.requests.memory"
+                cpu-limits:
+                  path: "spec.components.engine.resources.limits.cpu"
                   uiType: number
                   fieldParams:
-                    label: "Memory"
+                    label: "CPU limits"
+                    defaultValue: 1
+                    step: 1
+                  validation:
+                    min: 0.1
+                    required: true
+                memory-requests:
+                  path: "spec.components.engine.resources.requests.memory"
+                  uiType: number
+                  fieldParams:
+                    label: "Memory requests"
                     defaultValue: 4
                     step: 0.1
                     badge: "Gi"
                     badgeToApi: true
                   validation:
-                    min: 0.512
+                    min: 0.1
+                    required: true
+                memory-limits:
+                  path: "spec.components.engine.resources.limits.memory"
+                  uiType: number
+                  fieldParams:
+                    label: "Memory limits"
+                    defaultValue: 4
+                    step: 0.1
+                    badge: "Gi"
+                    badgeToApi: true
+                  validation:
+                    min: 0.1
                     required: true
                 disk:
                   path: "spec.components.engine.storage.size"
@@ -112,10 +127,15 @@ ui:
                         celExpressions:
                           - celExpr: "spec.components.engine.storage.size >= original.spec.components.engine.storage.size"
                             message: "Disk size cannot be decreased"
+              componentsOrder:
+                - cpu-requests
+                - cpu-limits
+                - memory-requests
+                - memory-limits
+                - disk
           componentsOrder:
             - numberOfnodes
             - resources-limits
-            - disk
     advanced:
       label: "Advanced configuration"
       description: "Configure advanced settings for your database"

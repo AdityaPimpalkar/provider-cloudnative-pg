@@ -830,9 +830,6 @@ spec:
                   path: spec.components.engine.replicas
                   uiType: number
                   validation:
-                    celExpressions:
-                      - celExpr: spec.components.engine.replicas % 2 == 1
-                        message: The number of nodes must be odd
                     int: true
                     min: 1
                     modes:
@@ -846,14 +843,22 @@ spec:
                     cpu-limits:
                       fieldParams:
                         defaultValue: 1
-                        label: CPU
+                        label: CPU limits
                         step: 1
-                      path:
-                        - spec.components.engine.resources.limits.cpu
-                        - spec.components.engine.resources.requests.cpu
+                      path: spec.components.engine.resources.limits.cpu
                       uiType: number
                       validation:
-                        min: 0.6
+                        min: 0.1
+                        required: true
+                    cpu-requests:
+                      fieldParams:
+                        defaultValue: 1
+                        label: CPU requests
+                        step: 1
+                      path: spec.components.engine.resources.requests.cpu
+                      uiType: number
+                      validation:
+                        min: 0.1
                         required: true
                     disk:
                       fieldParams:
@@ -877,21 +882,36 @@ spec:
                         badge: Gi
                         badgeToApi: true
                         defaultValue: 4
-                        label: Memory
+                        label: Memory limits
                         step: 0.1
-                      path:
-                        - spec.components.engine.resources.limits.memory
-                        - spec.components.engine.resources.requests.memory
+                      path: spec.components.engine.resources.limits.memory
                       uiType: number
                       validation:
-                        min: 0.512
+                        min: 0.1
                         required: true
+                    memory-requests:
+                      fieldParams:
+                        badge: Gi
+                        badgeToApi: true
+                        defaultValue: 4
+                        label: Memory requests
+                        step: 0.1
+                      path: spec.components.engine.resources.requests.memory
+                      uiType: number
+                      validation:
+                        min: 0.1
+                        required: true
+                  componentsOrder:
+                    - cpu-requests
+                    - cpu-limits
+                    - memory-requests
+                    - memory-limits
+                    - disk
                   groupType: line
                   uiType: group
               componentsOrder:
                 - numberOfnodes
                 - resources-limits
-                - disk
               uiType: group
           description: Configure the resources your new database will have access to.
           label: Resources details
