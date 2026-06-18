@@ -39,6 +39,63 @@ ui:
                 disabled: true
           validation:
             required: true
+    bootstrap:
+      label: "Bootstrap initial database"
+      description: "Configure the application database created when the cluster is first provisioned. Leave empty to use CloudNativePG defaults (database and owner: app)."
+      components:
+        initdb:
+          uiType: group
+          components:
+            database:
+              path: spec.components.engine.customSpec.bootstrap.initdb.database
+              uiType: text
+              fieldParams:
+                label: "Database name"
+                placeholder: "app"
+                modes:
+                  edit:
+                    disabled: true
+                  restore:
+                    disabled: true
+              validation:
+                regex:
+                  pattern: "^[a-zA-Z_][a-zA-Z0-9_]*$"
+                  message: "Must be a valid PostgreSQL identifier (letters, numbers, underscores; cannot start with a number)"
+                modes:
+                  edit:
+                    celExpressions:
+                      - celExpr: "spec.components.engine.customSpec.bootstrap.initdb.database == original.spec.components.engine.customSpec.bootstrap.initdb.database"
+                        message: "Database name cannot be changed after creation"
+            owner:
+              path: spec.components.engine.customSpec.bootstrap.initdb.owner
+              uiType: text
+              fieldParams:
+                label: "Database owner"
+                placeholder: "app"
+                modes:
+                  edit:
+                    disabled: true
+                  restore:
+                    disabled: true
+              validation:
+                regex:
+                  pattern: "^[a-zA-Z_][a-zA-Z0-9_]*$"
+                  message: "Must be a valid PostgreSQL identifier (letters, numbers, underscores; cannot start with a number)"
+            credentialsSecret:
+              path: spec.components.engine.customSpec.bootstrap.initdb.secret.name
+              uiType: text
+              fieldParams:
+                label: "Credentials secret"
+                description: "Optional. Name of a Secret containing username and password keys. If empty, CloudNativePG creates one automatically."
+                modes:
+                  edit:
+                    disabled: true
+                  restore:
+                    disabled: true
+          componentsOrder:
+            - database
+            - owner
+            - credentialsSecret
     resources:
       label: "Resources details"
       description: "Configure the resources your new database will have access to."
@@ -171,5 +228,6 @@ ui:
         - configuration
   sectionsOrder:
     - databaseVersion
+    - bootstrap
     - resources
     - advanced

@@ -376,6 +376,183 @@ spec:
               topologyKey:
                 type: string
             type: object
+          bootstrap:
+            properties:
+              initdb:
+                properties:
+                  builtinLocale:
+                    type: string
+                  dataChecksums:
+                    type: boolean
+                  database:
+                    type: string
+                  encoding:
+                    type: string
+                  icuLocale:
+                    type: string
+                  icuRules:
+                    type: string
+                  import:
+                    properties:
+                      databases:
+                        items:
+                          type: string
+                        type: array
+                      pgDumpExtraOptions:
+                        items:
+                          type: string
+                        type: array
+                      pgRestoreDataOptions:
+                        items:
+                          type: string
+                        type: array
+                      pgRestoreExtraOptions:
+                        items:
+                          type: string
+                        type: array
+                      pgRestorePostdataOptions:
+                        items:
+                          type: string
+                        type: array
+                      pgRestorePredataOptions:
+                        items:
+                          type: string
+                        type: array
+                      postImportApplicationSQL:
+                        items:
+                          type: string
+                        type: array
+                      roles:
+                        items:
+                          type: string
+                        type: array
+                      schemaOnly:
+                        type: boolean
+                      source:
+                        properties:
+                          externalCluster:
+                            type: string
+                        type: object
+                      type:
+                        type: string
+                    type: object
+                  locale:
+                    type: string
+                  localeCType:
+                    type: string
+                  localeCollate:
+                    type: string
+                  localeProvider:
+                    type: string
+                  options:
+                    items:
+                      type: string
+                    type: array
+                  owner:
+                    type: string
+                  postInitApplicationSQL:
+                    items:
+                      type: string
+                    type: array
+                  postInitApplicationSQLRefs:
+                    properties:
+                      configMapRefs:
+                        items:
+                          properties:
+                            key:
+                              type: string
+                            localObjectReference:
+                              properties:
+                                name:
+                                  type: string
+                              type: object
+                          type: object
+                        type: array
+                      secretRefs:
+                        items:
+                          properties:
+                            key:
+                              type: string
+                            localObjectReference:
+                              properties:
+                                name:
+                                  type: string
+                              type: object
+                          type: object
+                        type: array
+                    type: object
+                  postInitSQL:
+                    items:
+                      type: string
+                    type: array
+                  postInitSQLRefs:
+                    properties:
+                      configMapRefs:
+                        items:
+                          properties:
+                            key:
+                              type: string
+                            localObjectReference:
+                              properties:
+                                name:
+                                  type: string
+                              type: object
+                          type: object
+                        type: array
+                      secretRefs:
+                        items:
+                          properties:
+                            key:
+                              type: string
+                            localObjectReference:
+                              properties:
+                                name:
+                                  type: string
+                              type: object
+                          type: object
+                        type: array
+                    type: object
+                  postInitTemplateSQL:
+                    items:
+                      type: string
+                    type: array
+                  postInitTemplateSQLRefs:
+                    properties:
+                      configMapRefs:
+                        items:
+                          properties:
+                            key:
+                              type: string
+                            localObjectReference:
+                              properties:
+                                name:
+                                  type: string
+                              type: object
+                          type: object
+                        type: array
+                      secretRefs:
+                        items:
+                          properties:
+                            key:
+                              type: string
+                            localObjectReference:
+                              properties:
+                                name:
+                                  type: string
+                              type: object
+                          type: object
+                        type: array
+                    type: object
+                  secret:
+                    properties:
+                      name:
+                        type: string
+                    type: object
+                  walSegmentSize:
+                    format: int64
+                    type: integer
+                type: object
+            type: object
           managed:
             properties:
               roles:
@@ -799,6 +976,63 @@ spec:
             - configuration
           description: Configure advanced settings for your database
           label: Advanced configuration
+        bootstrap:
+          components:
+            initdb:
+              components:
+                credentialsSecret:
+                  fieldParams:
+                    description: Optional. Name of a Secret containing username and password keys. If empty, CloudNativePG creates one automatically.
+                    label: Credentials secret
+                    modes:
+                      edit:
+                        disabled: true
+                      restore:
+                        disabled: true
+                  path: spec.components.engine.customSpec.bootstrap.initdb.secret.name
+                  uiType: text
+                database:
+                  fieldParams:
+                    label: Database name
+                    modes:
+                      edit:
+                        disabled: true
+                      restore:
+                        disabled: true
+                    placeholder: app
+                  path: spec.components.engine.customSpec.bootstrap.initdb.database
+                  uiType: text
+                  validation:
+                    modes:
+                      edit:
+                        celExpressions:
+                          - celExpr: spec.components.engine.customSpec.bootstrap.initdb.database == original.spec.components.engine.customSpec.bootstrap.initdb.database
+                            message: Database name cannot be changed after creation
+                    regex:
+                      message: Must be a valid PostgreSQL identifier (letters, numbers, underscores; cannot start with a number)
+                      pattern: ^[a-zA-Z_][a-zA-Z0-9_]*$
+                owner:
+                  fieldParams:
+                    label: Database owner
+                    modes:
+                      edit:
+                        disabled: true
+                      restore:
+                        disabled: true
+                    placeholder: app
+                  path: spec.components.engine.customSpec.bootstrap.initdb.owner
+                  uiType: text
+                  validation:
+                    regex:
+                      message: Must be a valid PostgreSQL identifier (letters, numbers, underscores; cannot start with a number)
+                      pattern: ^[a-zA-Z_][a-zA-Z0-9_]*$
+              componentsOrder:
+                - database
+                - owner
+                - credentialsSecret
+              uiType: group
+          description: 'Configure the application database created when the cluster is first provisioned. Leave empty to use CloudNativePG defaults (database and owner: app).'
+          label: Bootstrap initial database
         databaseVersion:
           components:
             version:
@@ -917,6 +1151,7 @@ spec:
           label: Resources details
       sectionsOrder:
         - databaseVersion
+        - bootstrap
         - resources
         - advanced
   versions:
