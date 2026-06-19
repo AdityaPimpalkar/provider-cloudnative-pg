@@ -88,6 +88,42 @@ func (p *Provider) Validate(c *controller.Context) error {
 		return fmt.Errorf("both CPU and memory limits are required.")
 	}
 
+	if custom.Bootstrap != nil {
+		if err := validateBootstrap(custom.Bootstrap); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func validateBootstrap(bootstrap *components.BootstrapConfiguration) error {
+	methods := 0
+	if bootstrap.InitDB != nil {
+		methods++
+	}
+	// if bootstrap.Recovery != nil {
+	// 	methods++
+	// }
+	// if bootstrap.PgBaseBackup != nil {
+	// 	methods++
+	// }
+	if methods > 1 {
+		return fmt.Errorf("only one bootstrap method can be specified at a time.")
+	}
+
+	if bootstrap.InitDB == nil {
+		return nil
+	}
+
+	initDB := bootstrap.InitDB
+	if (initDB.Database != "" && initDB.Owner == "") || (initDB.Database == "" && initDB.Owner != "") {
+		return fmt.Errorf("bootstrap initdb database and owner must both be specified or both left empty.")
+	}
+	if initDB.Secret != nil && initDB.Secret.Name == "" {
+		return fmt.Errorf("bootstrap initdb secret name cannot be empty.")
+	}
+
 	return nil
 }
 
@@ -112,6 +148,24 @@ func (p *Provider) Sync(c *controller.Context) error {
 	pg := &cnpgv1.Cluster{
 		ObjectMeta: c.ObjectMeta(c.Name()),
 		Spec:       buildClusterSpec(engine, custom),
+	}
+
+	if custom.PostgresConfiguration != nil {
+		pg.Spec.PostgresConfiguration = *custom.PostgresConfiguration
+	}
+
+	if custom.Managed != nil {
+		pg.Spec.Managed = custom.Managed
+	}
+
+	if custom.Affinity != nil {
+		pg.Spec.Affinity = *custom.Affinity
+	}
+
+	if custom.Bootstrap != nil {
+		pg.Spec.Bootstrap = &cnpgv1.BootstrapConfiguration{
+			InitDB: custom.Bootstrap.InitDB,
+		}
 	}
 
 	if engine.Image != "" {
@@ -170,18 +224,6 @@ func buildClusterSpec(engine corev1alpha1.ComponentSpec, custom components.Postg
 				corev1.ResourceMemory: *engine.Resources.Limits.Memory(),
 			},
 		},
-	}
-
-	if custom.PostgresConfiguration != nil {
-		spec.PostgresConfiguration = *custom.PostgresConfiguration
-	}
-
-	if custom.Managed != nil {
-		spec.Managed = custom.Managed
-	}
-
-	if custom.Affinity != nil {
-		spec.Affinity = *custom.Affinity
 	}
 
 	return spec
