@@ -41,6 +41,21 @@ run: generate ## Run the provider locally.
 lint: golangci-lint ## Run golangci-lint.
 	$(GOLANGCI_LINT) run
 
+.PHONY: vet
+vet: ## Run go vet.
+	go vet ./...
+
+.PHONY: mod-tidy
+mod-tidy: ## Verify go.mod and go.sum are tidy.
+	@go mod tidy
+	@if git diff --quiet -- go.mod go.sum; then \
+		echo "go.mod and go.sum are tidy."; \
+	else \
+		echo "ERROR: go.mod or go.sum need updating. Run 'go mod tidy' and commit."; \
+		git diff -- go.mod go.sum; \
+		exit 1; \
+	fi
+
 .PHONY: test
 test: ## Run unit tests.
 	go test ./... -coverprofile cover.out
@@ -89,12 +104,16 @@ docker-push: ## Push docker image.
 
 ##@ Helm
 
+.PHONY: helm-deps
+helm-deps: ## Download Helm chart dependencies.
+	helm dependency build $(CHART_DIR)
+
 .PHONY: helm-install
-helm-install: ## Install the provider using Helm.
+helm-install: helm-deps ## Install the provider using Helm.
 	helm install provider-cloudnative-pg $(CHART_DIR) --create-namespace
 
 .PHONY: helm-upgrade
-helm-upgrade: ## Upgrade the provider using Helm.
+helm-upgrade: helm-deps ## Upgrade the provider using Helm.
 	helm upgrade provider-cloudnative-pg $(CHART_DIR)
 
 .PHONY: helm-uninstall
@@ -102,8 +121,12 @@ helm-uninstall: ## Uninstall the provider using Helm.
 	helm uninstall provider-cloudnative-pg
 
 .PHONY: helm-template
-helm-template: ## Render Helm chart templates locally (dry-run).
+helm-template: helm-deps ## Render Helm chart templates locally (dry-run).
 	helm template provider-cloudnative-pg $(CHART_DIR)
+
+.PHONY: helm-lint
+helm-lint: helm-deps ## Lint the Helm chart.
+	helm lint $(CHART_DIR)
 
 ##@ Testing
 

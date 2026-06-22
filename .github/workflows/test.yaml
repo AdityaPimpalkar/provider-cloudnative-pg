@@ -1,11 +1,8 @@
 name: Integration Tests
 
+# Disabled until integration test assets and CNPG operator install are ready.
 on:
-  pull_request:
-    types: [opened, synchronize, reopened]
-  push:
-    branches:
-      - main
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -22,6 +19,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+          cache: true
 
       - name: Install k3d
         run: |

@@ -28,9 +28,9 @@ type PostgresqlCustomSpec struct {
 	Managed *cnpgv1.ManagedConfiguration `json:"managed,omitempty"`
 
 	Bootstrap *BootstrapConfiguration `json:"bootstrap,omitempty"`
+
+	Certificates *cnpgv1.CertificatesConfiguration `json:"certificates,omitempty"`
 }
-
-
 
 type BootstrapConfiguration struct {
 	InitDB *cnpgv1.BootstrapInitDB `json:"initdb,omitempty"`

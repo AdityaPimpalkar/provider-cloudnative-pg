@@ -94,6 +94,31 @@ func (p *Provider) Validate(c *controller.Context) error {
 		}
 	}
 
+	if custom.Certificates != nil {
+		if err := validateCertificates(custom.Certificates); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// validateCertificates mirrors CloudNativePG's cluster webhook certificate rules.
+// All certificate fields are optional; CNPG generates self-signed CAs when unset.
+func validateCertificates(certificates *cnpgv1.CertificatesConfiguration) error {
+	if certificates.ServerTLSSecret != "" {
+		if len(certificates.ServerAltDNSNames) != 0 {
+			return fmt.Errorf("server alternative DNS names cannot be specified when server TLS secret is provided.")
+		}
+		if certificates.ServerCASecret == "" {
+			return fmt.Errorf("server CA secret is required when server TLS secret is provided.")
+		}
+	}
+
+	if certificates.ReplicationTLSSecret != "" && certificates.ClientCASecret == "" {
+		return fmt.Errorf("client CA secret is required when replication TLS secret is provided.")
+	}
+
 	return nil
 }
 
@@ -186,6 +211,10 @@ func (p *Provider) Sync(c *controller.Context) error {
 
 	if pg.Spec.ImagePullPolicy == "" {
 		pg.Spec.ImagePullPolicy = corev1.PullIfNotPresent
+	}
+
+	if custom.Certificates != nil {
+		pg.Spec.Certificates = custom.Certificates
 	}
 
 	if err := c.Apply(pg); err != nil {
