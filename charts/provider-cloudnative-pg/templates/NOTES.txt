@@ -18,3 +18,12 @@
 
 NOTE: Ensure that the following prerequisites are installed in your cluster:
   - OpenEverest CRDs (Instances, Providers)
+
+{{- $cnpg := index .Values "cloudnative-pg" }}
+{{- if $cnpg.enabled }}
+3. The CloudNativePG operator has been installed in the {{ $cnpg.namespaceOverride | default .Release.Namespace }} namespace.
+   Verify it with: kubectl get deployment -n {{ $cnpg.namespaceOverride | default .Release.Namespace }}
+{{- else }}
+NOTE: The CloudNativePG operator is not installed by this chart (cloudnative-pg.enabled=false).
+      Install it separately before creating Instance resources.
+{{- end }}

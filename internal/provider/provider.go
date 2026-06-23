@@ -12,7 +12,6 @@ import (
 
 	corev1alpha1 "github.com/openeverest/openeverest/v2/api/core/v1alpha1"
 	"github.com/openeverest/openeverest/v2/provider-runtime/controller"
-	prv "github.com/openeverest/openeverest/v2/provider-runtime/controller"
 
 	cnpgv1 "github.com/cloudnative-pg/cloudnative-pg/api/v1"
 
@@ -22,7 +21,7 @@ import (
 )
 
 // Compile-time check that Provider implements the required interface.
-var _ prv.ProviderInterface = (*Provider)(nil)
+var _ controller.ProviderInterface = (*Provider)(nil)
 
 // Provider implements controller.ProviderInterface for the provider-cloudnative-pg provider.
 type Provider struct {
@@ -56,7 +55,7 @@ func (p *Provider) Validate(c *controller.Context) error {
 	l.Info("Validating instance", "name", c.Name())
 
 	if _, ok := c.Instance().Spec.Components[common.ComponentEngine]; !ok {
-		return fmt.Errorf("engine component is required.")
+		return fmt.Errorf("engine component is required")
 	}
 
 	engine := c.Instance().Spec.Components[common.ComponentEngine]
@@ -70,28 +69,53 @@ func (p *Provider) Validate(c *controller.Context) error {
 	}
 
 	if engine.Replicas == nil {
-		return fmt.Errorf("replicas is required.")
+		return fmt.Errorf("replicas is required")
 	}
 	if int(*engine.Replicas) < 1 {
-		return fmt.Errorf("replicas must be at least 1.")
+		return fmt.Errorf("replicas must be at least 1")
 	}
 	if engine.Storage == nil || engine.Storage.Size.String() == "" {
-		return fmt.Errorf("storage size is required.")
+		return fmt.Errorf("storage size is required")
 	}
 	if engine.Resources == nil {
-		return fmt.Errorf("resources are required.")
+		return fmt.Errorf("resources are required")
 	}
 	if engine.Resources.Requests.Cpu().IsZero() || engine.Resources.Requests.Memory().IsZero() {
-		return fmt.Errorf("both CPU and memory requests are required.")
+		return fmt.Errorf("both CPU and memory requests are required")
 	}
 	if engine.Resources.Limits.Cpu().IsZero() || engine.Resources.Limits.Memory().IsZero() {
-		return fmt.Errorf("both CPU and memory limits are required.")
+		return fmt.Errorf("both CPU and memory limits are required")
 	}
 
 	if custom.Bootstrap != nil {
 		if err := validateBootstrap(custom.Bootstrap); err != nil {
 			return err
 		}
+	}
+
+	if custom.Certificates != nil {
+		if err := validateCertificates(custom.Certificates); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// validateCertificates mirrors CloudNativePG's cluster webhook certificate rules.
+// All certificate fields are optional; CNPG generates self-signed CAs when unset.
+func validateCertificates(certificates *cnpgv1.CertificatesConfiguration) error {
+	if certificates.ServerTLSSecret != "" {
+		if len(certificates.ServerAltDNSNames) != 0 {
+			return fmt.Errorf("server alternative DNS names cannot be specified when server TLS secret is provided")
+		}
+		if certificates.ServerCASecret == "" {
+			return fmt.Errorf("server CA secret is required when server TLS secret is provided")
+		}
+	}
+
+	if certificates.ReplicationTLSSecret != "" && certificates.ClientCASecret == "" {
+		return fmt.Errorf("client CA secret is required when replication TLS secret is provided")
 	}
 
 	return nil
@@ -109,7 +133,7 @@ func validateBootstrap(bootstrap *components.BootstrapConfiguration) error {
 	// 	methods++
 	// }
 	if methods > 1 {
-		return fmt.Errorf("only one bootstrap method can be specified at a time.")
+		return fmt.Errorf("only one bootstrap method can be specified at a time")
 	}
 
 	if bootstrap.InitDB == nil {
@@ -118,10 +142,10 @@ func validateBootstrap(bootstrap *components.BootstrapConfiguration) error {
 
 	initDB := bootstrap.InitDB
 	if (initDB.Database != "" && initDB.Owner == "") || (initDB.Database == "" && initDB.Owner != "") {
-		return fmt.Errorf("bootstrap initdb database and owner must both be specified or both left empty.")
+		return fmt.Errorf("bootstrap initdb database and owner must both be specified or both left empty")
 	}
 	if initDB.Secret != nil && initDB.Secret.Name == "" {
-		return fmt.Errorf("bootstrap initdb secret name cannot be empty.")
+		return fmt.Errorf("bootstrap initdb secret name cannot be empty")
 	}
 
 	return nil
@@ -186,6 +210,10 @@ func (p *Provider) Sync(c *controller.Context) error {
 
 	if pg.Spec.ImagePullPolicy == "" {
 		pg.Spec.ImagePullPolicy = corev1.PullIfNotPresent
+	}
+
+	if custom.Certificates != nil {
+		pg.Spec.Certificates = custom.Certificates
 	}
 
 	if err := c.Apply(pg); err != nil {

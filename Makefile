@@ -20,12 +20,13 @@ CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen-$(CONTROLLER_TOOLS_VERSION)
 YQ_VERSION ?= v4.44.6
 YQ ?= $(LOCALBIN)/yq-$(YQ_VERSION)
 
-# golangci-lint version
-GOLANGCI_LINT_VERSION ?= v1.63.4
+# golangci-lint version (v2.9.0+ required for Go 1.26)
+GOLANGCI_LINT_VERSION ?= v2.12.2
 GOLANGCI_LINT ?= $(LOCALBIN)/golangci-lint-$(GOLANGCI_LINT_VERSION)
 
 # Helm chart directory
 CHART_DIR ?= charts/provider-cloudnative-pg
+CNPG_HELM_REPO ?= https://cloudnative-pg.github.io/charts
 
 .PHONY: help
 help: ## Display this help.
@@ -40,6 +41,21 @@ run: generate ## Run the provider locally.
 .PHONY: lint
 lint: golangci-lint ## Run golangci-lint.
 	$(GOLANGCI_LINT) run
+
+.PHONY: vet
+vet: ## Run go vet.
+	go vet ./...
+
+.PHONY: mod-tidy
+mod-tidy: ## Verify go.mod and go.sum are tidy.
+	@go mod tidy
+	@if git diff --quiet -- go.mod go.sum; then \
+		echo "go.mod and go.sum are tidy."; \
+	else \
+		echo "ERROR: go.mod or go.sum need updating. Run 'go mod tidy' and commit."; \
+		git diff -- go.mod go.sum; \
+		exit 1; \
+	fi
 
 .PHONY: test
 test: ## Run unit tests.
@@ -89,12 +105,18 @@ docker-push: ## Push docker image.
 
 ##@ Helm
 
+.PHONY: helm-deps
+helm-deps: ## Download Helm chart dependencies.
+	@helm repo add cnpg $(CNPG_HELM_REPO) >/dev/null 2>&1 || true
+	helm repo update cnpg
+	helm dependency build $(CHART_DIR)
+
 .PHONY: helm-install
-helm-install: ## Install the provider using Helm.
+helm-install: helm-deps ## Install the provider using Helm.
 	helm install provider-cloudnative-pg $(CHART_DIR) --create-namespace
 
 .PHONY: helm-upgrade
-helm-upgrade: ## Upgrade the provider using Helm.
+helm-upgrade: helm-deps ## Upgrade the provider using Helm.
 	helm upgrade provider-cloudnative-pg $(CHART_DIR)
 
 .PHONY: helm-uninstall
@@ -102,8 +124,12 @@ helm-uninstall: ## Uninstall the provider using Helm.
 	helm uninstall provider-cloudnative-pg
 
 .PHONY: helm-template
-helm-template: ## Render Helm chart templates locally (dry-run).
+helm-template: helm-deps ## Render Helm chart templates locally (dry-run).
 	helm template provider-cloudnative-pg $(CHART_DIR)
+
+.PHONY: helm-lint
+helm-lint: helm-deps ## Lint the Helm chart.
+	helm lint $(CHART_DIR)
 
 ##@ Testing
 
@@ -167,7 +193,7 @@ $(YQ): $(LOCALBIN)
 .PHONY: golangci-lint
 golangci-lint: $(GOLANGCI_LINT) ## Install golangci-lint.
 $(GOLANGCI_LINT): $(LOCALBIN)
-	$(call go-install-tool,$(GOLANGCI_LINT),github.com/golangci/golangci-lint/cmd/golangci-lint,$(GOLANGCI_LINT_VERSION))
+	$(call go-install-tool,$(GOLANGCI_LINT),github.com/golangci/golangci-lint/v2/cmd/golangci-lint,$(GOLANGCI_LINT_VERSION))
 
 # go-install-tool will 'go install' any package with custom target and target name. Usage:
 # $(call go-install-tool,<target>,<package>,<version>)

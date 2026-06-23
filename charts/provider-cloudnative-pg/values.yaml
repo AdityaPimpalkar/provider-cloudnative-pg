@@ -117,8 +117,10 @@ leaderElection:
   # -- Enable leader election (recommended for HA deployments)
   enabled: true
 
-# TODO: Add values for your operator subchart dependency, e.g.:
-# my-operator:
-#   replicaCount: 1
-#   rbac:
-#     create: true
+cloudnative-pg:
+  # -- Install the CloudNativePG operator as a chart dependency
+  enabled: true
+  # -- Namespace for the operator (matches the standalone install target)
+  namespaceOverride: cnpg-system
+  crds:
+    create: true

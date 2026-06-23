@@ -8,13 +8,13 @@ keywords:
   - openeverest
   - provider
   - database
-home: https://github.com/openeverest/provider-cloudnative-pg
+home: https://github.com/adityapimpalkar/provider-cloudnative-pg
 sources:
-  - https://github.com/openeverest/provider-cloudnative-pg
+  - https://github.com/adityapimpalkar/provider-cloudnative-pg
 maintainers:
-  - name: OpenEverest Contributors
-# TODO: If your provider depends on an operator Helm chart, add it here.
-# dependencies:
-#   - name: my-operator
-#     version: "1.0.0"
-#     repository: https://example.com/helm-charts/
+  - name: Aditya Pimpalkar
+dependencies:
+  - name: cloudnative-pg
+    version: "0.28.3"
+    repository: https://cloudnative-pg.github.io/charts
+    condition: cloudnative-pg.enabled

@@ -553,6 +553,21 @@ spec:
                     type: integer
                 type: object
             type: object
+          certificates:
+            properties:
+              clientCASecret:
+                type: string
+              replicationTLSSecret:
+                type: string
+              serverAltDNSNames:
+                items:
+                  type: string
+                type: array
+              serverCASecret:
+                type: string
+              serverTLSSecret:
+                type: string
+            type: object
           managed:
             properties:
               roles:
