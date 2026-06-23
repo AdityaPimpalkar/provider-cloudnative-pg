@@ -20,12 +20,13 @@ CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen-$(CONTROLLER_TOOLS_VERSION)
 YQ_VERSION ?= v4.44.6
 YQ ?= $(LOCALBIN)/yq-$(YQ_VERSION)
 
-# golangci-lint version
-GOLANGCI_LINT_VERSION ?= v1.63.4
+# golangci-lint version (v2.9.0+ required for Go 1.26)
+GOLANGCI_LINT_VERSION ?= v2.12.2
 GOLANGCI_LINT ?= $(LOCALBIN)/golangci-lint-$(GOLANGCI_LINT_VERSION)
 
 # Helm chart directory
 CHART_DIR ?= charts/provider-cloudnative-pg
+CNPG_HELM_REPO ?= https://cloudnative-pg.github.io/charts
 
 .PHONY: help
 help: ## Display this help.
@@ -106,6 +107,8 @@ docker-push: ## Push docker image.
 
 .PHONY: helm-deps
 helm-deps: ## Download Helm chart dependencies.
+	@helm repo add cnpg $(CNPG_HELM_REPO) >/dev/null 2>&1 || true
+	helm repo update cnpg
 	helm dependency build $(CHART_DIR)
 
 .PHONY: helm-install
@@ -190,7 +193,7 @@ $(YQ): $(LOCALBIN)
 .PHONY: golangci-lint
 golangci-lint: $(GOLANGCI_LINT) ## Install golangci-lint.
 $(GOLANGCI_LINT): $(LOCALBIN)
-	$(call go-install-tool,$(GOLANGCI_LINT),github.com/golangci/golangci-lint/cmd/golangci-lint,$(GOLANGCI_LINT_VERSION))
+	$(call go-install-tool,$(GOLANGCI_LINT),github.com/golangci/golangci-lint/v2/cmd/golangci-lint,$(GOLANGCI_LINT_VERSION))
 
 # go-install-tool will 'go install' any package with custom target and target name. Usage:
 # $(call go-install-tool,<target>,<package>,<version>)
