@@ -216,6 +216,10 @@ func (p *Provider) Sync(c *controller.Context) error {
 		pg.Spec.Certificates = custom.Certificates
 	}
 
+	if custom.Monitoring != nil {
+		pg.Spec.Monitoring = custom.Monitoring
+	}
+
 	if err := c.Apply(pg); err != nil {
 		return err
 	}

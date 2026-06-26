@@ -34,9 +34,7 @@ jobs:
         run: make vet
 
       - name: Lint
-        uses: golangci/golangci-lint-action@v6
-        with:
-          version: v2.12.2
+        run: make lint
 
       - name: Unit Tests
         run: make test

@@ -30,6 +30,8 @@ type PostgresqlCustomSpec struct {
 	Bootstrap *BootstrapConfiguration `json:"bootstrap,omitempty"`
 
 	Certificates *cnpgv1.CertificatesConfiguration `json:"certificates,omitempty"`
+
+	Monitoring *cnpgv1.MonitoringConfiguration `json:"monitoring,omitempty"`
 }
 
 type BootstrapConfiguration struct {
