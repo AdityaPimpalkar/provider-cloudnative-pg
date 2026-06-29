@@ -61,6 +61,9 @@ mod-tidy: ## Verify go.mod and go.sum are tidy.
 test: ## Run unit tests.
 	go test ./... -coverprofile cover.out
 
+.PHONY: ci
+ci: mod-tidy build vet lint test verify helm-lint helm-template ## Run all CI checks locally.
+
 ##@ Code Generation
 
 .PHONY: manifests

@@ -734,6 +734,92 @@ spec:
                     type: array
                 type: object
             type: object
+          monitoring:
+            properties:
+              customQueriesConfigMap:
+                items:
+                  properties:
+                    key:
+                      type: string
+                    localObjectReference:
+                      properties:
+                        name:
+                          type: string
+                      type: object
+                  type: object
+                type: array
+              customQueriesSecret:
+                items:
+                  properties:
+                    key:
+                      type: string
+                    localObjectReference:
+                      properties:
+                        name:
+                          type: string
+                      type: object
+                  type: object
+                type: array
+              disableDefaultQueries:
+                type: boolean
+              enablePodMonitor:
+                type: boolean
+              metricsQueriesTTL:
+                properties:
+                  duration:
+                    format: int64
+                    type: integer
+                type: object
+              podMonitorMetricRelabelings:
+                items:
+                  properties:
+                    action:
+                      type: string
+                    modulus:
+                      format: uint64
+                      type: integer
+                    regex:
+                      type: string
+                    replacement:
+                      type: string
+                    separator:
+                      type: string
+                    sourceLabels:
+                      items:
+                        type: string
+                      type: array
+                    targetLabel:
+                      type: string
+                  type: object
+                type: array
+              podMonitorRelabelings:
+                items:
+                  properties:
+                    action:
+                      type: string
+                    modulus:
+                      format: uint64
+                      type: integer
+                    regex:
+                      type: string
+                    replacement:
+                      type: string
+                    separator:
+                      type: string
+                    sourceLabels:
+                      items:
+                        type: string
+                      type: array
+                    targetLabel:
+                      type: string
+                  type: object
+                type: array
+              tls:
+                properties:
+                  enabled:
+                    type: boolean
+                type: object
+            type: object
           postgresql:
             properties:
               enableAlterSystem:
