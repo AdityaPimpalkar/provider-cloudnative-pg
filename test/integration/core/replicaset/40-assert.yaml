@@ -1,0 +1,8 @@
+apiVersion: kuttl.dev/v1
+kind: TestAssert
+timeout: 30
+commands:
+  - command: kubectl get cluster/test-cnpg-cluster -n ${NAMESPACE}
+    expect:
+      output:
+        notContains: "test-cnpg-cluster"
