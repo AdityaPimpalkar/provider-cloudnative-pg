@@ -6,7 +6,7 @@ An [OpenEverest](https://github.com/openeverest) provider that provisions Postgr
 
 ## Project Status
 
-The provider can create and reconcile CloudNativePG `Cluster` resources from OpenEverest `Instance` CRs for local development and testing. Core provisioning (replicas, storage, resources, version selection, bootstrap, PostgreSQL tuning, managed roles) is in place; backup/DR, pooling, monitoring, and integration test coverage are still outstanding.
+The provider can create and reconcile CloudNativePG `Cluster` resources from OpenEverest `Instance` CRs for local development and testing. Core provisioning (replicas, storage, resources, version selection, bootstrap, PostgreSQL tuning, managed roles) is in place; kuttl integration tests cover basic provisioning and status reconciliation. Backup/DR, pooling, monitoring, and CI wiring for integration tests are still outstanding.
 
 Recent additions:
 
@@ -65,7 +65,7 @@ These are commonly used CloudNativePG features that are **not** implemented yet.
 - [ ] **Custom cleanup logic** — `Cleanup()` is a no-op (owned Cluster resources are garbage-collected via owner references; no explicit cleanup for external resources such as backups)
 - [ ] **RBAC marker cleanup** — placeholder kubebuilder markers remain in `Validate()`; active provider markers live in `internal/provider/rbac.go`
 - [ ] **Automated tests** — no `*_test.go` files in the repository
-- [ ] **CI integration tests** — `.github/workflows/test.yaml` exists but the `test/` directory is absent, CNPG operator install is a TODO, and `make test-integration` cannot run
+- [ ] **CI integration tests** — kuttl tests exist under `test/integration/`; `.github/workflows/test.yaml` is still manual-only and needs CI wiring
 
 #### Planned
 
@@ -116,6 +116,7 @@ make apply-example-simple
 | `make helm-template`    | Render Helm templates locally (dry-run)                    |
 | `make test`             | Run unit tests                                             |
 | `make test-integration` | Run kuttl integration tests                                |
+| `make test-integration-core` | Run core kuttl integration tests                      |
 | `make verify`           | Check generated files are up-to-date (CI)                  |
 | `make lint`             | Run golangci-lint                                          |
 
@@ -147,12 +148,40 @@ make install-cloudnative-pg
 # Run the provider locally against the cluster
 make run
 
-# Run integration tests (NOT IMPLEMENTED — test/ directory missing)
+# Run integration tests
 make test-integration
 
 # Tear down the cluster
 make k3d-cluster-down
 ```
+
+### Running Integration Tests
+
+The `test/integration/` directory contains [kuttl](https://kuttl.dev/) tests that verify the provider's behavior.
+
+#### Prerequisites
+
+1. OpenEverest CRDs and the CloudNativePG operator installed (see [Local](#local) above)
+2. Provider CR registered — `make helm-install` (or render and apply the Provider manifest from the chart)
+3. Provider running in the background — use `make run`; if the provider was installed via Helm, scale its Deployment to 0 first to avoid duplicate reconciliation
+
+```bash
+make run
+```
+
+#### Running the Tests
+
+```bash
+make test-integration
+
+# Or run the core replicaset suite only:
+make test-integration-core-replicaset
+
+# Or invoke kuttl directly:
+. ./test/vars.sh && kubectl kuttl test --config ./test/integration/kuttl.yaml
+```
+
+**Note:** The tests assume the provider is already running. They create/update/delete `Instance` resources and assert that the corresponding CloudNativePG `Cluster` resources are reconciled correctly. Cluster readiness is mocked via status patches so tests do not require real PostgreSQL pods.
 
 ## License
 

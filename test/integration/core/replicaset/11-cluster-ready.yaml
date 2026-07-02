@@ -1,0 +1,14 @@
+apiVersion: kuttl.dev/v1
+kind: TestStep
+timeout: 10
+commands:
+  - command: kubectl patch cluster/test-cnpg-cluster --subresource status -n $NAMESPACE -p '{"status":{"instances":3,"readyInstances":3,"conditions":[{"type":"Ready","status":"True","reason":"ClusterIsReady","message":"Cluster is ready","lastTransitionTime":"2026-01-01T00:00:00Z"}]}}' --type=merge
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: test-cnpg-cluster-app
+type: Opaque
+stringData:
+  username: test-user
+  password: test-password

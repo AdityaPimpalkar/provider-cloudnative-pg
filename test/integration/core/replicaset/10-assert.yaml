@@ -1,0 +1,72 @@
+apiVersion: kuttl.dev/v1
+kind: TestAssert
+timeout: 30
+collectors:
+  - command: kubectl get instance/test-cnpg-cluster -n ${NAMESPACE} -o yaml
+  - command: kubectl get cluster/test-cnpg-cluster -n ${NAMESPACE} -o yaml
+resourceRefs:
+  - apiVersion: core.openeverest.io/v1alpha1
+    kind: Instance
+    name: test-cnpg-cluster
+    ref: inst
+  - apiVersion: postgresql.cnpg.io/v1
+    kind: Cluster
+    name: test-cnpg-cluster
+    ref: cluster
+assertAll:
+  - celExpr: "cluster.spec.instances == 3"
+    message: "expected 3 instances"
+  - celExpr: "cluster.spec.storage.size == '5Gi'"
+    message: "storage size mismatch"
+  - celExpr: "cluster.spec.postgresConfiguration.parameters['max_connections'] == '100'"
+    message: "max_connections parameter mismatch"
+  - celExpr: "cluster.spec.postgresConfiguration.parameters['shared_buffers'] == '128MB'"
+    message: "shared_buffers parameter mismatch"
+  - celExpr: "cluster.spec.imageName.endsWith('17.10-standard-trixie')"
+    message: "expected default PostgreSQL 17.10 image"
+---
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: test-cnpg-cluster
+spec:
+  provider: provider-cloudnative-pg
+  components:
+    engine:
+      type: postgresql
+      replicas: 3
+      resources:
+        requests:
+          cpu: "1"
+          memory: 1Gi
+        limits:
+          cpu: "1"
+          memory: 1Gi
+      storage:
+        size: 5Gi
+      customSpec:
+        postgresql:
+          parameters:
+            max_connections: "100"
+            shared_buffers: "128MB"
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: test-cnpg-cluster
+spec:
+  instances: 3
+  imagePullPolicy: IfNotPresent
+  storage:
+    size: 5Gi
+  resources:
+    requests:
+      cpu: "1"
+      memory: 1Gi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+  postgresConfiguration:
+    parameters:
+      max_connections: "100"
+      shared_buffers: "128MB"

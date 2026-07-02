@@ -1,0 +1,28 @@
+apiVersion: kuttl.dev/v1
+kind: TestStep
+timeout: 10
+---
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: test-cnpg-cluster
+spec:
+  provider: provider-cloudnative-pg
+  components:
+    engine:
+      type: postgresql
+      replicas: 3
+      resources:
+        requests:
+          cpu: "1"
+          memory: 1Gi
+        limits:
+          cpu: "1"
+          memory: 1Gi
+      storage:
+        size: 5Gi
+      customSpec:
+        postgresql:
+          parameters:
+            max_connections: "100"
+            shared_buffers: "128MB"

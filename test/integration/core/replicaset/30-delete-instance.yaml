@@ -1,0 +1,7 @@
+apiVersion: kuttl.dev/v1
+kind: TestStep
+timeout: 10
+commands:
+  - script: kubectl -n $NAMESPACE delete instance/test-cnpg-cluster cluster/test-cnpg-cluster --wait=false && sleep 5
+  - script: kubectl -n $NAMESPACE delete secret/test-cnpg-cluster-app --ignore-not-found
+  - command: kubectl patch cluster/test-cnpg-cluster -n $NAMESPACE -p '{"metadata":{"finalizers":null}}' --type merge
