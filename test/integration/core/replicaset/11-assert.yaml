@@ -1,0 +1,76 @@
+apiVersion: kuttl.dev/v1
+kind: TestAssert
+timeout: 60
+collectors:
+  - command: kubectl get instance/test-cnpg-cluster -n ${NAMESPACE} -o yaml
+  - command: kubectl get cluster/test-cnpg-cluster -n ${NAMESPACE} -o yaml
+  - command: kubectl get secret/test-cnpg-cluster-conn -n ${NAMESPACE} -o yaml
+commands:
+  - command: kubectl wait --for=jsonpath='{.status.phase}'=Ready instance/test-cnpg-cluster -n ${NAMESPACE} --timeout=60s
+resourceRefs:
+  - apiVersion: core.openeverest.io/v1alpha1
+    kind: Instance
+    name: test-cnpg-cluster
+    ref: inst
+  - apiVersion: postgresql.cnpg.io/v1
+    kind: Cluster
+    name: test-cnpg-cluster
+    ref: cluster
+assertAll:
+  - celExpr: "inst.status.phase == 'Ready'"
+    message: "instance is not Ready"
+  - celExpr: "cluster.spec.instances == 3"
+    message: "expected 3 instances"
+  - celExpr: "cluster.status.readyInstances == 3"
+    message: "expected 3 ready instances"
+---
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: test-cnpg-cluster
+spec:
+  provider: provider-cloudnative-pg
+  components:
+    engine:
+      type: postgresql
+      replicas: 3
+      resources:
+        requests:
+          cpu: "1"
+          memory: 1Gi
+        limits:
+          cpu: "1"
+          memory: 1Gi
+      storage:
+        size: 5Gi
+      customSpec:
+        postgresql:
+          parameters:
+            max_connections: "100"
+            shared_buffers: "128MB"
+status:
+  phase: Ready
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: test-cnpg-cluster
+spec:
+  instances: 3
+  imagePullPolicy: IfNotPresent
+  storage:
+    size: 5Gi
+  resources:
+    requests:
+      cpu: "1"
+      memory: 1Gi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+  postgresConfiguration:
+    parameters:
+      max_connections: "100"
+      shared_buffers: "128MB"
+status:
+  instances: 3
+  readyInstances: 3

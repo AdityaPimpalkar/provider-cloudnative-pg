@@ -11,6 +11,11 @@ OPENEVEREST_BRANCH ?= release-2.0
 
 # Image URL to use for building/pushing image targets
 IMG ?= ghcr.io/openeverest/provider-cloudnative-pg-dev:latest
+_IMG_REPO = $(firstword $(subst :, ,$(IMG)))
+_IMG_TAG = $(lastword $(subst :, ,$(IMG)))
+
+# k3d cluster name (must match dev/k3d_config.yaml)
+K3D_CLUSTER_NAME ?= provider-cloudnative-pg-test
 
 # controller-gen version
 CONTROLLER_TOOLS_VERSION ?= v0.18.0
@@ -137,11 +142,33 @@ helm-lint: helm-deps ## Lint the Helm chart.
 ##@ Testing
 
 .PHONY: test-integration
-test-integration: ## Run integration tests (kuttl) against a running cluster.
+test-integration: ## Run all integration tests (kuttl) against a running cluster.
 	. ./test/vars.sh && kubectl kuttl test --config ./test/integration/kuttl.yaml
 
+.PHONY: test-integration-core
+test-integration-core: ## Run core integration tests (kuttl).
+	. ./test/vars.sh && kubectl kuttl test --config ./test/integration/kuttl-core.yaml
+
+.PHONY: test-integration-core-replicaset
+test-integration-core-replicaset: ## Run core replicaset integration tests (kuttl).
+	. ./test/vars.sh && kubectl kuttl test --config ./test/integration/kuttl-core.yaml --test "replicaset"
+
+.PHONY: load-image
+load-image: ## Import the provider image (IMG) into the k3d cluster.
+	k3d image import ${IMG} -c ${K3D_CLUSTER_NAME}
+
+.PHONY: deploy-provider-ci
+deploy-provider-ci: helm-deps ## Deploy the provider via Helm for CI (IMG must already be imported into k3d).
+	helm upgrade --install provider-cloudnative-pg $(CHART_DIR) \
+		--create-namespace \
+		--namespace provider-system \
+		--set image.repository=$(_IMG_REPO) \
+		--set image.tag=$(_IMG_TAG) \
+		--set image.pullPolicy=Never \
+		--wait --timeout 5m
+
 .PHONY: install-crds
-install-crds: ## Install OpenEverest and PSMDB CRDs into the cluster.
+install-crds: ## Install OpenEverest CRDs into the cluster.
 	kubectl apply -f https://raw.githubusercontent.com/openeverest/openeverest/$(OPENEVEREST_BRANCH)/config/crd/bases/core.openeverest.io_providers.yaml
 	kubectl apply -f https://raw.githubusercontent.com/openeverest/openeverest/$(OPENEVEREST_BRANCH)/config/crd/bases/core.openeverest.io_instances.yaml
 	kubectl apply -f https://raw.githubusercontent.com/openeverest/openeverest/$(OPENEVEREST_BRANCH)/config/crd/bases/backup.openeverest.io_backupclasses.yaml
@@ -193,6 +220,19 @@ k3d-cluster-down: ## Delete the local k3d cluster.
 
 .PHONY: k3d-cluster-reset
 k3d-cluster-reset: k3d-cluster-down k3d-cluster-up ## Reset the local k3d cluster.
+
+##@ Tilt Development
+
+.PHONY: dev-up
+dev-up: k3d-cluster-up ## Create the k3d cluster and start the Tilt dev environment.
+	tilt up -f dev/Tiltfile
+
+.PHONY: dev-down
+dev-down: ## Stop the Tilt dev environment (keeps the cluster).
+	tilt down -f dev/Tiltfile
+
+.PHONY: dev-destroy
+dev-destroy: k3d-cluster-down ## Stop Tilt and delete the k3d cluster.
 
 ##@ Tool Dependencies
 
