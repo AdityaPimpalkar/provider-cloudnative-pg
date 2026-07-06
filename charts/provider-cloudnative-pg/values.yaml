@@ -120,7 +120,7 @@ leaderElection:
 cloudnative-pg:
   # -- Install the CloudNativePG operator as a chart dependency
   enabled: true
-  # -- Namespace for the operator (matches the standalone install target)
+  fullnameOverride: cnpg-operator
   namespaceOverride: cnpg-system
   crds:
     create: true

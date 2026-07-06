@@ -144,6 +144,10 @@ test-integration: ## Run integration tests (kuttl) against a running cluster.
 install-crds: ## Install OpenEverest and PSMDB CRDs into the cluster.
 	kubectl apply -f https://raw.githubusercontent.com/openeverest/openeverest/$(OPENEVEREST_BRANCH)/config/crd/bases/core.openeverest.io_providers.yaml
 	kubectl apply -f https://raw.githubusercontent.com/openeverest/openeverest/$(OPENEVEREST_BRANCH)/config/crd/bases/core.openeverest.io_instances.yaml
+	kubectl apply -f https://raw.githubusercontent.com/openeverest/openeverest/$(OPENEVEREST_BRANCH)/config/crd/bases/backup.openeverest.io_backupclasses.yaml
+	kubectl apply -f https://raw.githubusercontent.com/openeverest/openeverest/$(OPENEVEREST_BRANCH)/config/crd/bases/backup.openeverest.io_backupstorages.yaml
+	kubectl apply -f https://raw.githubusercontent.com/openeverest/openeverest/$(OPENEVEREST_BRANCH)/config/crd/bases/backup.openeverest.io_backups.yaml
+	kubectl apply -f https://raw.githubusercontent.com/openeverest/openeverest/$(OPENEVEREST_BRANCH)/config/crd/bases/backup.openeverest.io_restores.yaml
 
 install-cloudnative-pg:
 	helm repo add cnpg https://cloudnative-pg.github.io/charts
@@ -151,6 +155,16 @@ install-cloudnative-pg:
 	  --namespace cnpg-system \
 	  --create-namespace \
 	  cnpg/cloudnative-pg
+
+.PHONY: install-barman-plugin
+install-barman-plugin: ## Install cert-manager and the CNPG-I Barman Cloud Plugin (cnpg-system).
+	helm upgrade --install cert-manager oci://quay.io/jetstack/charts/cert-manager \
+	  --version v1.20.3 \
+	  --namespace cert-manager --create-namespace \
+	  --set crds.enabled=true
+	kubectl apply -f https://github.com/cloudnative-pg/plugin-barman-cloud/releases/download/$(BARMAN_PLUGIN_VERSION)/manifest.yaml
+
+BARMAN_PLUGIN_VERSION ?= v0.13.0
 
 .PHONY: check-provider
 check-provider: ## Verify the Provider CR exists before applying Instance CRs.

@@ -23,6 +23,55 @@ rules:
   - update
   - watch
 - apiGroups:
+  - backup.openeverest.io
+  resources:
+  - backupclasses
+  - backupstorages
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - backup.openeverest.io
+  resources:
+  - backups
+  - restores
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - backup.openeverest.io
+  resources:
+  - backups/status
+  - restores/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - barmancloud.cnpg.io
+  resources:
+  - objectstores
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - barmancloud.cnpg.io
+  resources:
+  - objectstores/status
+  verbs:
+  - get
+- apiGroups:
   - coordination.k8s.io
   resources:
   - leases
@@ -69,7 +118,9 @@ rules:
 - apiGroups:
   - postgresql.cnpg.io
   resources:
+  - backups
   - clusters
+  - scheduledbackups
   verbs:
   - create
   - delete
@@ -81,6 +132,7 @@ rules:
 - apiGroups:
   - postgresql.cnpg.io
   resources:
+  - backups/status
   - clusters/status
   verbs:
   - get
