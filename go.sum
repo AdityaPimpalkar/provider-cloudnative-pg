@@ -30,8 +30,8 @@ github.com/clipperhouse/displaywidth v0.11.0 h1:lBc6kY44VFw+TDx4I8opi/EtL9m20WSE
 github.com/clipperhouse/displaywidth v0.11.0/go.mod h1:bkrFNkf81G8HyVqmKGxsPufD3JhNl3dSqnGhOoSD/o0=
 github.com/clipperhouse/uax29/v2 v2.7.0 h1:+gs4oBZ2gPfVrKPthwbMzWZDaAFPGYK72F0NJv2v7Vk=
 github.com/clipperhouse/uax29/v2 v2.7.0/go.mod h1:EFJ2TJMRUaplDxHKj1qAEhCtQPW2tJSwu5BF98AuoVM=
-github.com/cloudnative-pg/barman-cloud v0.5.1 h1:vjkXrrxo2DQXHT9u9usqhtaHiPZ/lTfDVs/pIWYTepQ=
-github.com/cloudnative-pg/barman-cloud v0.5.1/go.mod h1:XPc5IUFP1y4cZX1sg+Pd8j9V4tmUEVnv3BGCpfQOOg8=
+github.com/cloudnative-pg/barman-cloud v0.5.2-0.20260609065833-bd68198c31dc h1:EWlG0LDO3XxVEG/HGDzRZPG0pgULkA8KmYWOSsbBDD0=
+github.com/cloudnative-pg/barman-cloud v0.5.2-0.20260609065833-bd68198c31dc/go.mod h1:UAjYZ7LaVswcdi9Kg8mbTtf5MhG6FCP5RlrmqUmZ+VY=
 github.com/cloudnative-pg/cloudnative-pg v1.29.1 h1:ZNEt1TMlnQKXI1kho2UqQuqdfvIvjGln4kN7C1lsmGA=
 github.com/cloudnative-pg/cloudnative-pg v1.29.1/go.mod h1:Sbgx9jVmkle4/gR2U5JHrzDd74sRPOBHDtPkvncg5v8=
 github.com/cloudnative-pg/cnpg-i v0.5.0 h1:/TOzpNT6cwNgrpftTtrnLKdoHgMwd+88vZgXjlVgXeE=
@@ -172,8 +172,8 @@ github.com/onsi/ginkgo/v2 v2.29.0 h1:rfh+ZFjgJhYWRoIqVf3Uwx/W20yLrcrE2h2GmYVRaag
 github.com/onsi/ginkgo/v2 v2.29.0/go.mod h1:+aXOY+vzZ5mu2iI2HpTZUPmM//oQfsNFX6gU9kNcA44=
 github.com/onsi/gomega v1.41.0 h1:OwKp4pXNgVxf6sCplzYo794OFNuoL2q2SBMU5NSWOjA=
 github.com/onsi/gomega v1.41.0/go.mod h1:M/Uqpu/8qTjtzCLUA2zJHX9Iilrau25x1PdoSRbWh5A=
-github.com/openeverest/openeverest/v2 v2.0.0-dev.1.0.20260702090156-9d1b82f1f604 h1:VDpd1HiXiekIGkYalrm20IrY14NZTH1d36dT8UvvG9w=
-github.com/openeverest/openeverest/v2 v2.0.0-dev.1.0.20260702090156-9d1b82f1f604/go.mod h1:rJFnOYaiWNjfxhCUt8glqA6EH2Ij9EoUbypJ/z6tvtM=
+github.com/openeverest/openeverest/v2 v2.0.0-20260514064117-72f7d8fb4820 h1:m05o0K18Uo+d/dC02yuRGo4Lh7APbqZG6oavbu52qj8=
+github.com/openeverest/openeverest/v2 v2.0.0-20260514064117-72f7d8fb4820/go.mod h1:imiWkGnxy7FhqpkmN4k7PHeAtXn5d6xkmnwYhYR75TI=
 github.com/openeverest/provider-sdk v0.1.1-0.20260630100629-0336260c61cd h1:0K0bcAjJurqO8k8WGZqlJs403ANWSjfWll2t/ZEVYAg=
 github.com/openeverest/provider-sdk v0.1.1-0.20260630100629-0336260c61cd/go.mod h1:tZzPC8LePmrSrx28lPytER/rWuJX1aaftJtACUF9jRo=
 github.com/perimeterx/marshmallow v1.1.5 h1:a2LALqQ1BlHM8PZblsDdidgv1mWi1DgC2UmX50IvK2s=
@@ -304,8 +304,8 @@ k8s.io/kube-openapi v0.0.0-20260603220949-865597e52e25 h1:mPMaPMpBij2V1Wv/fR+HW1
 k8s.io/kube-openapi v0.0.0-20260603220949-865597e52e25/go.mod h1:V/QaCUYDa+0QpcHhVVc5l99Uz56wEMEXBSj9oCDkNDY=
 k8s.io/streaming v0.36.2 h1:NSKthPPg9UFSKsRauVJUVGH2Dvn8fhKmY4qrMkw/p98=
 k8s.io/streaming v0.36.2/go.mod h1:z6fV3D+NVkoeqRMtWwlUZK6U17SY/LqNzOxWL6GyR/s=
-k8s.io/utils v0.0.0-20260626114624-be93311217bd h1:Ea7fgQ5we8Y9T0OX5o0dAHzQOBRI07D/dEYRaB9ZZEs=
-k8s.io/utils v0.0.0-20260626114624-be93311217bd/go.mod h1:xDxuJ0whA3d0I4mf/C4ppKHxXynQ+fxnkmQH0vTHnuk=
+k8s.io/utils v0.0.0-20260507154919-ff6756f316d2 h1:wU4tMEhLGgIbLvXQb1cfN+EcM0wf7zC6CPF+C79jroc=
+k8s.io/utils v0.0.0-20260507154919-ff6756f316d2/go.mod h1:xDxuJ0whA3d0I4mf/C4ppKHxXynQ+fxnkmQH0vTHnuk=
 sigs.k8s.io/controller-runtime v0.24.1 h1:miPEwrmirImAvgME1L9qebGHrOnGJoVmVdtOU9fRfo4=
 sigs.k8s.io/controller-runtime v0.24.1/go.mod h1:vFkfY5fGt5xAC/sKb8IBFKgWPNKG9OUG29dR8Y2wImw=
 sigs.k8s.io/json v0.0.0-20250730193827-2d320260d730 h1:IpInykpT6ceI+QxKBbEflcR5EXP7sU1kvOlxwZh5txg=

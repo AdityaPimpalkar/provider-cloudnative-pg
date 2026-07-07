@@ -1,0 +1,18 @@
+# UI rendering hints for the cnpg-barman-plugin BackupClass.
+
+backup:
+    label: Backup Configuration
+    components:
+        target:
+            path: target
+            uiType: select
+            fieldParams:
+                label: Backup target
+                defaultValue: prefer-standby
+                options:
+                    - label: Prefer standby
+                      value: prefer-standby
+                    - label: Primary only
+                      value: primary
+    componentsOrder:
+        - target

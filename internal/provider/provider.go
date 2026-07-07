@@ -54,101 +54,23 @@ func (p *Provider) Validate(c *controller.Context) error {
 	l := log.FromContext(c.Context())
 	l.Info("Validating instance", "name", c.Name())
 
-	if _, ok := c.Instance().Spec.Components[common.ComponentEngine]; !ok {
+	engine, ok := c.Instance().Spec.Components[common.ComponentEngine]
+	if !ok {
 		return fmt.Errorf("engine component is required")
 	}
 
-	engine := c.Instance().Spec.Components[common.ComponentEngine]
+	if err := cnpg.ValidateEngine(engine); err != nil {
+		return err
+	}
 
 	var custom components.PostgresqlCustomSpec
-	isSetCustomSpec := c.TryDecodeComponentCustomSpec(engine, &custom)
-	if isSetCustomSpec {
+	if c.TryDecodeComponentCustomSpec(engine, &custom) {
 		if err := c.DecodeComponentCustomSpec(engine, &custom); err != nil {
 			return fmt.Errorf("failed to decode component custom spec: %w", err)
 		}
 	}
 
-	if engine.Replicas == nil {
-		return fmt.Errorf("replicas is required")
-	}
-	if int(*engine.Replicas) < 1 {
-		return fmt.Errorf("replicas must be at least 1")
-	}
-	if engine.Storage == nil || engine.Storage.Size.String() == "" {
-		return fmt.Errorf("storage size is required")
-	}
-	if engine.Resources == nil {
-		return fmt.Errorf("resources are required")
-	}
-	if engine.Resources.Requests.Cpu().IsZero() || engine.Resources.Requests.Memory().IsZero() {
-		return fmt.Errorf("both CPU and memory requests are required")
-	}
-	if engine.Resources.Limits.Cpu().IsZero() || engine.Resources.Limits.Memory().IsZero() {
-		return fmt.Errorf("both CPU and memory limits are required")
-	}
-
-	if custom.Bootstrap != nil {
-		if err := validateBootstrap(custom.Bootstrap); err != nil {
-			return err
-		}
-	}
-
-	if custom.Certificates != nil {
-		if err := validateCertificates(custom.Certificates); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-// validateCertificates mirrors CloudNativePG's cluster webhook certificate rules.
-// All certificate fields are optional; CNPG generates self-signed CAs when unset.
-func validateCertificates(certificates *cnpgv1.CertificatesConfiguration) error {
-	if certificates.ServerTLSSecret != "" {
-		if len(certificates.ServerAltDNSNames) != 0 {
-			return fmt.Errorf("server alternative DNS names cannot be specified when server TLS secret is provided")
-		}
-		if certificates.ServerCASecret == "" {
-			return fmt.Errorf("server CA secret is required when server TLS secret is provided")
-		}
-	}
-
-	if certificates.ReplicationTLSSecret != "" && certificates.ClientCASecret == "" {
-		return fmt.Errorf("client CA secret is required when replication TLS secret is provided")
-	}
-
-	return nil
-}
-
-func validateBootstrap(bootstrap *components.BootstrapConfiguration) error {
-	methods := 0
-	if bootstrap.InitDB != nil {
-		methods++
-	}
-	// if bootstrap.Recovery != nil {
-	// 	methods++
-	// }
-	// if bootstrap.PgBaseBackup != nil {
-	// 	methods++
-	// }
-	if methods > 1 {
-		return fmt.Errorf("only one bootstrap method can be specified at a time")
-	}
-
-	if bootstrap.InitDB == nil {
-		return nil
-	}
-
-	initDB := bootstrap.InitDB
-	if (initDB.Database != "" && initDB.Owner == "") || (initDB.Database == "" && initDB.Owner != "") {
-		return fmt.Errorf("bootstrap initdb database and owner must both be specified or both left empty")
-	}
-	if initDB.Secret != nil && initDB.Secret.Name == "" {
-		return fmt.Errorf("bootstrap initdb secret name cannot be empty")
-	}
-
-	return nil
+	return cnpg.ValidateCustomSpec(&custom)
 }
 
 // Sync ensures all required resources exist and are configured correctly.
@@ -162,8 +84,7 @@ func (p *Provider) Sync(c *controller.Context) error {
 	engine := c.Instance().Spec.Components[common.ComponentEngine]
 
 	var custom components.PostgresqlCustomSpec
-	isSetCustomSpec := c.TryDecodeComponentCustomSpec(engine, &custom)
-	if isSetCustomSpec {
+	if c.TryDecodeComponentCustomSpec(engine, &custom) {
 		if err := c.DecodeComponentCustomSpec(engine, &custom); err != nil {
 			return fmt.Errorf("failed to decode component custom spec: %w", err)
 		}

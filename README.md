@@ -54,7 +54,7 @@ These features are implemented in `internal/provider/provider.go` (and supportin
 
 These are commonly used CloudNativePG features that are **not** implemented yet. The provider is suitable for dev/testing but not production-ready until the critical items below are addressed.
 
-- [ ] **Backup and disaster recovery** — no `ScheduledBackup` CR or `Cluster.spec.backup.barmanObjectStore` (continuous WAL archiving, PITR, retention policy)
+- [ ] **Backup and disaster recovery** — CNPG-I [Barman Cloud Plugin](https://cloudnative-pg.github.io/plugin-barman-cloud/) path only (`cnpg-barman-plugin` BackupClass, `ObjectStore` CRs, `method: plugin`); native `barmanObjectStore` not planned unless requested
 - [ ] **Bootstrap recovery methods** — only `initdb` is supported; `bootstrap.recovery` and `bootstrap.pg_basebackup` are not exposed
 - [ ] **CloudNativePG operator packaging** — the CNPG operator is an external prerequisite; it is not installed or bundled by this Helm chart (`charts/provider-cloudnative-pg/Chart.yaml` TODO)
 - [ ] **Connection pooling** — no `Pooler` CR (PgBouncer) support

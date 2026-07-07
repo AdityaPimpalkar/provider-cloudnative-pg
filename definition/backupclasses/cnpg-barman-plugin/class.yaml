@@ -1,0 +1,15 @@
+# CNPG-I Barman Cloud Plugin BackupClass definition.
+# Uses method: plugin with barman-cloud.cloudnative-pg.io — not the deprecated
+# in-tree Cluster.spec.backup.barmanObjectStore integration.
+#
+# See https://cloudnative-pg.github.io/plugin-barman-cloud/docs/latest/usage/
+
+config:
+    openAPIV3Schema: CnpgBarmanPluginBackupConfig
+description: CloudNativePG backups via the CNPG-I Barman Cloud Plugin (object-store WAL archiving and base backups).
+displayName: CNPG Barman Cloud Plugin
+executionMode: ProviderManaged
+providerManaged:
+    limits: {}
+supportedProviders:
+    - provider-cloudnative-pg
