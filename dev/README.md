@@ -64,19 +64,79 @@ All settings live in `dev/.env` (see `dev/.env.example`). Common options:
 
 ## Developing the core and the provider together
 
-When you need to test against a locally built core (not a release), run two
-Tilt instances against the same cluster:
+When OpenEverest core is already running from a **separate Tilt instance**, both
+Tilts must target the **same Kubernetes cluster** (for example `k3d-everest-dev`).
+Do **not** run `make dev-up` in this repo — that creates a different cluster.
 
-1. In the **openeverest** core repo, start the core dev environment
-   (`make dev-up`). It manages `everest-system` and the core CRDs.
-2. In this repo, start the provider Tilt instance on a different port with the
-   core installation disabled:
+### 1. Start OpenEverest core (other repo)
 
-   ```bash
-   INSTALL_OPENEVEREST=false tilt up -f dev/Tiltfile --port 10351
-   ```
+In the **openeverest** repo:
 
-The two instances manage disjoint Kubernetes objects, so they run side by side
-without conflicting. With `INSTALL_OPENEVEREST=false`, the OpenEverest core
-CRDs are expected to already exist in the cluster (installed by the core Tilt
-instance).
+```bash
+make dev-up
+```
+
+Wait until `everest-server` and `everest-controller` are running in
+`everest-system`. The core Tilt installs the OpenEverest CRDs.
+
+### 2. Install provider prerequisites (this repo, one-time per cluster)
+
+Point kubectl at the **same cluster** as the core Tilt:
+
+```bash
+kubectl config use-context k3d-everest-dev   # adjust to your core cluster
+```
+
+Install the CloudNativePG operator and Barman plugin **before** provider Tilt:
+
+```bash
+make install-cloudnative-pg
+make install-barman-plugin
+```
+
+`make install-crds` is only needed if the OpenEverest core is **not** running
+(the core Tilt already installs those CRDs).
+
+### 3. Configure provider Tilt
+
+```bash
+cp dev/.env.example dev/.env
+```
+
+Set at minimum:
+
+```bash
+INSTALL_OPENEVEREST=false
+CLOUDNATIVE_PG_ENABLED=false      # CNPG installed by make install-cloudnative-pg
+PROVIDER_NAMESPACE=default
+K8S_CONTEXT=k3d-everest-dev       # same cluster as core Tilt
+DOCKER_REGISTRY_URL=localhost:4003  # docker port k3d-registry
+ENABLE_BARMAN_PLUGIN=false          # Barman installed by make install-barman-plugin
+```
+
+### 4. Start provider Tilt on a different port
+
+```bash
+kubectl config use-context k3d-everest-dev
+tilt up -f dev/Tiltfile --port 10351
+```
+
+- Core Tilt UI: http://localhost:10350
+- Provider Tilt UI: http://localhost:10351
+- OpenEverest UI: http://localhost:8080
+
+### 5. Verify
+
+```bash
+kubectl get providers
+kubectl get pods -n default -l app.kubernetes.io/name=provider-cloudnative-pg
+kubectl get pods -n cnpg-system
+```
+
+The provider should appear in the OpenEverest UI after refresh.
+
+### Why `CLOUDNATIVE_PG_ENABLED=false`?
+
+The provider chart can bundle the CNPG operator as a subchart. If CNPG is
+already installed as Helm release `cnpg` (`make install-cloudnative-pg`),
+leaving the subchart enabled causes Helm ownership conflicts on CNPG CRDs.
