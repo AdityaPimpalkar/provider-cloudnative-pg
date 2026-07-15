@@ -33,6 +33,8 @@ GOLANGCI_LINT ?= $(LOCALBIN)/golangci-lint-$(GOLANGCI_LINT_VERSION)
 CHART_DIR ?= charts/provider-cloudnative-pg
 CNPG_HELM_REPO ?= https://cloudnative-pg.github.io/charts
 
+BARMAN_PLUGIN_VERSION ?= v0.13.0
+
 .PHONY: help
 help: ## Display this help.
 	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} /^[a-zA-Z_0-9-]+:.*?##/ { printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
@@ -191,32 +193,25 @@ install-barman-plugin: ## Install cert-manager and the CNPG-I Barman Cloud Plugi
 	  --set crds.enabled=true
 	kubectl apply -f https://github.com/cloudnative-pg/plugin-barman-cloud/releases/download/$(BARMAN_PLUGIN_VERSION)/manifest.yaml
 
-BARMAN_PLUGIN_VERSION ?= v0.13.0
-
-.PHONY: check-provider
-check-provider: ## Verify the Provider CR exists before applying Instance CRs.
-	@kubectl get provider provider-cloudnative-pg >/dev/null 2>&1 || { \
-		echo "ERROR: Provider.core.openeverest.io/provider-cloudnative-pg not found."; \
-		echo "Install it first with: make helm-install"; \
-		exit 1; \
-	}
-	@echo "Provider CR is present: provider-cloudnative-pg"
-
-.PHONY: apply-example-simple
-apply-example-simple: check-provider ## Apply minimal example Instance after preflight check.
-	kubectl apply -f examples/instance-simple.yaml
-
 ##@ Local Development Cluster
 
 .PHONY: k3d-cluster-up
 k3d-cluster-up: ## Create a local k3d cluster for development.
-	$(info Creating k3d cluster for testing)
-	k3d cluster create --config ./dev/k3d_config.yaml
+	@if ! k3d cluster list | grep -q "provider-cloudnative-pg-test"; then \
+		echo "Creating K3D cluster for Tilt development"; \
+		k3d cluster create --config ./dev/k3d_config.yaml; \
+	else \
+		echo "K3D cluster cloudnative-pg-test already exists"; \
+	fi
 
 .PHONY: k3d-cluster-down
 k3d-cluster-down: ## Delete the local k3d cluster.
-	$(info Destroying k3d test cluster)
-	k3d cluster delete --config ./dev/k3d_config.yaml
+	@if k3d cluster list | grep -q "provider-cloudnative-pg-test"; then \
+		echo "Destroying K3D dev cluster"; \
+		k3d cluster delete --config ./dev/k3d_config.yaml; \
+	else \
+		echo "K3D cluster cloudnative-pg-test does not exist"; \
+	fi
 
 .PHONY: k3d-cluster-reset
 k3d-cluster-reset: k3d-cluster-down k3d-cluster-up ## Reset the local k3d cluster.

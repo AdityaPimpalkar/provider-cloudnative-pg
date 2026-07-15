@@ -1,9 +1,17 @@
 package provider
 
 import (
+	"fmt"
+
+	"github.com/AlekSi/pointer"
+	"github.com/adityapimpalkar/provider-cloudnative-pg/internal/cnpg/barman"
 	cnpgv1 "github.com/cloudnative-pg/cloudnative-pg/api/v1"
 	backupv1alpha1 "github.com/openeverest/openeverest/v2/api/backup/v1alpha1"
 	"github.com/openeverest/openeverest/v2/provider-runtime/controller"
+	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
@@ -15,6 +23,7 @@ var _ controller.BackupProvider = (*Provider)(nil)
 var _ controller.BackupWatcher = (*Provider)(nil)
 var _ controller.RestoreWatcher = (*Provider)(nil)
 
+
 // SyncBackup creates or updates the operator's backup resource, sets a controller
 // reference from the Backup CR to enable owner-based watches, and maps operator
 // status to OpenEverest states.
@@ -22,53 +31,62 @@ func (p *Provider) SyncBackup(c *controller.Context, backup *backupv1alpha1.Back
 	l := log.FromContext(c.Context())
 	l.Info("Syncing backup", "name", backup.Name)
 
-	// TODO: Implement backup sync logic.
-	// Typical pattern:
-	//   1. Create or update the operator backup CR
-	//   2. Set the backup spec (storage, cluster name, etc.)
-	//   3. Set controller reference so the Backup owns the operator resource
-	//   4. Map operator backup status to BackupExecutionStatus
-	//
-	// Example:
-	//   ob := &operatorv1.MyDatabaseBackup{}
-	//   if err := c.Get(ob, c.Name()); err != nil {
-	//       return controller.BackupExecutionStatus{
-	//           State:   backupv1alpha1.BackupStatePending,
-	//           Message: "Waiting for backup to exist",
-	//       }, nil
-	//   }
-	//
-	//   if _, err := controllerutil.CreateOrUpdate(c.Context(), c.Client(), ob, func() error {
-	//       // Set spec fields here
-	//       return controllerutil.SetControllerReference(backup, ob, c.Client().Scheme())
-	//   }); err != nil {
-	//       return controller.BackupExecutionStatus{}, err
-	//   }
-	//
-	//   exec := controller.BackupExecutionStatus{
-	//       OperatorBackupRef: &corev1.TypedLocalObjectReference{
-	//           APIGroup: pointer.ToString(operatorv1.SchemeGroupVersion.Group),
-	//           Kind:     "MyDatabaseBackup",
-	//           Name:     ob.Name,
-	//       },
-	//       State: backupv1alpha1.BackupStatePending,
-	//   }
-	//
-	//   switch ob.Status.State {
-	//   case "ready":
-	//       exec.State = backupv1alpha1.BackupStateSucceeded
-	//       exec.CompletedAt = pointer.To(metav1.Now())
-	//   case "error":
-	//       exec.State = backupv1alpha1.BackupStateFailed
-	//       exec.Message = ob.Status.Error
-	//   case "running":
-	//       exec.State = backupv1alpha1.BackupStateRunning
-	//   }
-	//   return exec, nil
+	cluster := &cnpgv1.Cluster{}
+	if err := c.Get(cluster, c.Name()); err != nil {
+		if apierrors.IsNotFound(err) {
+			return controller.BackupExecutionStatus{
+				State:   backupv1alpha1.BackupStatePending,
+				Message: "Waiting for CloudnativePG cluster to exist",
+			}, nil
+		}
+		return controller.BackupExecutionStatus{}, fmt.Errorf("get CloudnativePG: %w", err)
+	}
 
-	return controller.BackupExecutionStatus{
+	cnpgBackup := &cnpgv1.Backup{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: backup.Name,
+			Namespace: backup.Namespace,
+		},
+	}
+	if _, err := controllerutil.CreateOrUpdate(c.Context(), c.Client(), cnpgBackup, func() error {
+		cnpgBackup.Spec = cnpgv1.BackupSpec{
+			Cluster:             cnpgv1.LocalObjectReference{Name: c.Name()},
+			Method:              cnpgv1.BackupMethodPlugin,
+			PluginConfiguration: &cnpgv1.BackupPluginConfiguration{
+				Name: barman.PluginName,
+			},
+		}
+		return controllerutil.SetControllerReference(backup, cnpgBackup, c.Client().Scheme())
+	}); err != nil {
+		return controller.BackupExecutionStatus{}, err
+	}
+
+	exec := controller.BackupExecutionStatus{
+		OperatorBackupRef: &corev1.TypedLocalObjectReference{
+			APIGroup: pointer.ToString(cnpgv1.SchemeGroupVersion.Group),
+			Kind:     "Backup",
+			Name:     cnpgBackup.Name,
+		},
 		State: backupv1alpha1.BackupStatePending,
-	}, nil
+	}
+
+	switch cnpgBackup.Status.Phase {
+	case cnpgv1.BackupPhaseCompleted:
+		exec.State = backupv1alpha1.BackupStateSucceeded
+		exec.CompletedAt = cnpgBackup.Status.StoppedAt
+		exec.StartedAt = cnpgBackup.Status.StartedAt
+	case cnpgv1.BackupPhaseRunning:
+		exec.State = backupv1alpha1.BackupStateRunning
+	case cnpgv1.BackupPhaseStarted, cnpgv1.BackupPhasePending:
+		exec.State = backupv1alpha1.BackupStatePending
+	case cnpgv1.BackupPhaseFailed, cnpgv1.BackupPhaseWalArchivingFailing:
+		exec.State = backupv1alpha1.BackupStateFailed
+		exec.Message = cnpgBackup.Status.Error
+	default:
+		exec.State = backupv1alpha1.BackupStatePending
+	}
+
+	return exec, nil
 }
 
 // SyncRestore resolves the source Backup CR, creates or updates the operator's

@@ -10,7 +10,11 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
+	barman "github.com/adityapimpalkar/provider-cloudnative-pg/internal/cnpg/barman"
 	corev1alpha1 "github.com/openeverest/openeverest/v2/api/core/v1alpha1"
+
+	barmancloudv1 "github.com/cloudnative-pg/plugin-barman-cloud/api/v1"
+
 	"github.com/openeverest/openeverest/v2/provider-runtime/controller"
 
 	cnpgv1 "github.com/cloudnative-pg/cloudnative-pg/api/v1"
@@ -33,14 +37,21 @@ func New() *Provider {
 	return &Provider{
 		BaseProvider: controller.BaseProvider{
 			ProviderName: common.ProviderName,
-			SchemeFuncs: []func(*runtime.Scheme) error{
-				cnpgv1.SchemeBuilder.AddToScheme,
-			},
 			WatchConfigs: []controller.WatchConfig{
 				controller.WatchOwned(&cnpgv1.Cluster{}),
+				controller.WatchOwned(&barmancloudv1.ObjectStore{}),
+			},
+			SchemeFuncs: []func(*runtime.Scheme) error{
+				cnpgv1.SchemeBuilder.AddToScheme,
+				addBarmanCloudScheme,
 			},
 		},
 	}
+}
+
+func addBarmanCloudScheme(scheme *runtime.Scheme) error {
+	barmancloudv1.AddKnownTypes(scheme)
+	return nil
 }
 
 // Validate checks if the Instance spec is valid.
@@ -139,6 +150,14 @@ func (p *Provider) Sync(c *controller.Context) error {
 
 	if custom.Monitoring != nil {
 		pg.Spec.Monitoring = custom.Monitoring
+	}
+
+	plugins, err := barman.SyncBackupInfrastructure(c)
+	if err != nil {
+		return err
+	}
+	if len(plugins) > 0 {
+		pg.Spec.Plugins = plugins
 	}
 
 	if err := c.Apply(pg); err != nil {
