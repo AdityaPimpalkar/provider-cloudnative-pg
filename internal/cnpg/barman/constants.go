@@ -3,6 +3,9 @@
 package barman
 
 const (
+	// KindBackup is the kind of the backup resource.
+	KindBackup = "Backup"
+
 	// PluginName is the CNPG-I plugin identifier referenced on Cluster.spec.plugins,
 	// Backup.spec.pluginConfiguration, and ScheduledBackup.spec.pluginConfiguration.
 	PluginName = "barman-cloud.cloudnative-pg.io"

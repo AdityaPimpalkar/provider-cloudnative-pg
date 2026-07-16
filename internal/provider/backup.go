@@ -23,7 +23,6 @@ var _ controller.BackupProvider = (*Provider)(nil)
 var _ controller.BackupWatcher = (*Provider)(nil)
 var _ controller.RestoreWatcher = (*Provider)(nil)
 
-
 // SyncBackup creates or updates the operator's backup resource, sets a controller
 // reference from the Backup CR to enable owner-based watches, and maps operator
 // status to OpenEverest states.
@@ -42,19 +41,26 @@ func (p *Provider) SyncBackup(c *controller.Context, backup *backupv1alpha1.Back
 		return controller.BackupExecutionStatus{}, fmt.Errorf("get CloudnativePG: %w", err)
 	}
 
+	backupCfg, err := barman.DecodeBackupConfig(backup)
+	if err != nil {
+		return controller.BackupExecutionStatus{}, err
+	}
+
 	cnpgBackup := &cnpgv1.Backup{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: backup.Name,
+			Name:      backup.Name,
 			Namespace: backup.Namespace,
 		},
 	}
 	if _, err := controllerutil.CreateOrUpdate(c.Context(), c.Client(), cnpgBackup, func() error {
-		cnpgBackup.Spec = cnpgv1.BackupSpec{
-			Cluster:             cnpgv1.LocalObjectReference{Name: c.Name()},
-			Method:              cnpgv1.BackupMethodPlugin,
-			PluginConfiguration: &cnpgv1.BackupPluginConfiguration{
-				Name: barman.PluginName,
-			},
+		// CNPG BackupSpec is immutable once set only populate on create.
+		if cnpgBackup.CreationTimestamp.IsZero() {
+			cnpgBackup.Spec = cnpgv1.BackupSpec{
+				Cluster:             cnpgv1.LocalObjectReference{Name: c.Name()},
+				Method:              cnpgv1.BackupMethodPlugin,
+				PluginConfiguration: barman.PluginConfiguration(backup.Spec.StorageName),
+				Target:              cnpgv1.BackupTarget(backupCfg.Target),
+			}
 		}
 		return controllerutil.SetControllerReference(backup, cnpgBackup, c.Client().Scheme())
 	}); err != nil {
@@ -64,7 +70,7 @@ func (p *Provider) SyncBackup(c *controller.Context, backup *backupv1alpha1.Back
 	exec := controller.BackupExecutionStatus{
 		OperatorBackupRef: &corev1.TypedLocalObjectReference{
 			APIGroup: pointer.ToString(cnpgv1.SchemeGroupVersion.Group),
-			Kind:     "Backup",
+			Kind:     barman.KindBackup,
 			Name:     cnpgBackup.Name,
 		},
 		State: backupv1alpha1.BackupStatePending,

@@ -1,10 +1,12 @@
 package barman
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
 	"github.com/AlekSi/pointer"
+	cnpgbarmanplugin "github.com/adityapimpalkar/provider-cloudnative-pg/definition/backupclasses/cnpg-barman-plugin"
 	barmanapi "github.com/cloudnative-pg/barman-cloud/pkg/api"
 	cnpgv1 "github.com/cloudnative-pg/cloudnative-pg/api/v1"
 	machineryapi "github.com/cloudnative-pg/machinery/pkg/api"
@@ -136,7 +138,7 @@ func endpointCARef(c *controller.Context, logicalName, endpointURL string) (*mac
 	}
 	if len(secret.Data[EndpointCAKey]) == 0 {
 		return nil, &controller.BackupConfigError{
-			Reason: "EndpointCAInvalid",
+			Reason:  "EndpointCAInvalid",
 			Message: fmt.Sprintf("Secret %q missing key %q", name, EndpointCAKey),
 		}
 	}
@@ -162,4 +164,15 @@ func selectMainStorageName(storages []corev1alpha1.InstanceBackupStorage) string
 		return storages[0].Name
 	}
 	return ""
+}
+
+func DecodeBackupConfig(backup *backupv1alpha1.Backup) (cnpgbarmanplugin.CnpgBarmanPluginBackupConfig, error) {
+	var cfg cnpgbarmanplugin.CnpgBarmanPluginBackupConfig
+	if backup.Spec.Config == nil || len(backup.Spec.Config.Raw) == 0 {
+		return cfg, nil
+	}
+	if err := json.Unmarshal(backup.Spec.Config.Raw, &cfg); err != nil {
+		return cfg, fmt.Errorf("decode backup config: %w", err)
+	}
+	return cfg, nil
 }
