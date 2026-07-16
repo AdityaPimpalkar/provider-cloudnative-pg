@@ -3,7 +3,11 @@ module github.com/adityapimpalkar/provider-cloudnative-pg
 go 1.26.4
 
 require (
+	github.com/AlekSi/pointer v1.2.0
+	github.com/cloudnative-pg/barman-cloud v0.5.2-0.20260609065833-bd68198c31dc
 	github.com/cloudnative-pg/cloudnative-pg v1.29.1
+	github.com/cloudnative-pg/machinery v0.5.0
+	github.com/cloudnative-pg/plugin-barman-cloud v0.13.0
 	github.com/openeverest/openeverest/v2 v2.0.0-20260514064117-72f7d8fb4820
 	k8s.io/api v0.36.2
 	k8s.io/apimachinery v0.36.2
@@ -25,9 +29,7 @@ require (
 	github.com/charmbracelet/x/term v0.2.2 // indirect
 	github.com/clipperhouse/displaywidth v0.11.0 // indirect
 	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect
-	github.com/cloudnative-pg/barman-cloud v0.5.2-0.20260609065833-bd68198c31dc // indirect
 	github.com/cloudnative-pg/cnpg-i v0.5.0 // indirect
-	github.com/cloudnative-pg/machinery v0.5.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/emicklei/go-restful/v3 v3.13.0 // indirect
 	github.com/erikgeiser/coninput v0.0.0-20211004153227-1c3628e74d0f // indirect

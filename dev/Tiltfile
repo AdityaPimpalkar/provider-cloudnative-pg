@@ -51,6 +51,10 @@ provider_namespace = os.getenv('PROVIDER_NAMESPACE', 'default')
 enable_barman_plugin = str2bool(os.getenv('ENABLE_BARMAN_PLUGIN', 'false'))
 barman_plugin_version = os.getenv('BARMAN_PLUGIN_VERSION', 'v0.13.0')
 
+# Install the CloudNativePG operator via the provider chart subchart. Set to
+# false when CNPG is already installed separately (e.g. `make install-cloudnative-pg`).
+cloudnative_pg_enabled = str2bool(os.getenv('CLOUDNATIVE_PG_ENABLED', 'true'))
+
 # Go build environment for the provider binary.
 provider_build_env = os.getenv('PROVIDER_BUILD_ENV', 'CGO_ENABLED=0 GOOS=linux')
 
@@ -170,19 +174,28 @@ docker_build_with_restart(
 # image.repository/image.tag values and live-updates the running pod. Using
 # helm_resource also guarantees the Provider CR is applied only after the core
 # CRDs exist.
-provider_resource_deps = ['provider-build']
+provider_resource_deps = ['provider-build', 'cnpg-system-namespace']
 if install_openeverest:
     provider_resource_deps = provider_resource_deps + ['openeverest']
+
+provider_helm_flags = [
+    '--create-namespace',
+    '--set', 'image.pullPolicy=IfNotPresent',
+    '--set', 'securityContext.readOnlyRootFilesystem=false',
+    '--set', 'cloudnative-pg.enabled={0}'.format(str(cloudnative_pg_enabled).lower()),
+]
+
+local_resource(
+    'cnpg-system-namespace',
+    'kubectl create namespace cnpg-system --dry-run=client -o yaml | kubectl apply -f -',
+    labels=['provider'],
+)
 
 helm_resource(
     'provider-cloudnative-pg',
     chart_dir,
     namespace=provider_namespace,
-    flags=[
-        '--create-namespace',
-        '--set', 'image.pullPolicy=IfNotPresent',
-        '--set', 'securityContext.readOnlyRootFilesystem=false',
-    ],
+    flags=provider_helm_flags,
     image_deps=[provider_image],
     image_keys=[('image.repository', 'image.tag')],
     resource_deps=provider_resource_deps,

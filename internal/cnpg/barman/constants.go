@@ -2,11 +2,10 @@
 // backup path. See https://cloudnative-pg.github.io/plugin-barman-cloud/.
 package barman
 
-import (
-	cnpgv1 "github.com/cloudnative-pg/cloudnative-pg/api/v1"
-)
-
 const (
+	// KindBackup is the kind of the backup resource.
+	KindBackup = "Backup"
+
 	// PluginName is the CNPG-I plugin identifier referenced on Cluster.spec.plugins,
 	// Backup.spec.pluginConfiguration, and ScheduledBackup.spec.pluginConfiguration.
 	PluginName = "barman-cloud.cloudnative-pg.io"
@@ -15,14 +14,11 @@ const (
 	// barmancloud.cnpg.io ObjectStore resource in the same namespace.
 	PluginParameterObjectStore = "barmanObjectName"
 
-	// BackupClassName is the OpenEverest BackupClass used for plugin-managed backups.
-	BackupClassName = "cnpg-barman-plugin"
-)
+	// EndpointCASecretSuffix is appended to the logical storage name to form the
+	// Secret that ObjectStore.spec.configuration.endpointCA references.
+	// Create this Secret yourself in the Instance namespace with key EndpointCAKey.
+	EndpointCASecretSuffix = "-endpoint-ca"
 
-// PluginConfiguration returns the standard pluginConfiguration stanza for
-// Backup and ScheduledBackup resources.
-func PluginConfiguration() *cnpgv1.BackupPluginConfiguration {
-	return &cnpgv1.BackupPluginConfiguration{
-		Name: PluginName,
-	}
-}
+	// EndpointCAKey is the Secret data key that must hold the S3 endpoint CA PEM.
+	EndpointCAKey = "ca.crt"
+)
