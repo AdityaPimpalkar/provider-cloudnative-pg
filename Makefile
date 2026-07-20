@@ -178,7 +178,8 @@ install-crds: ## Install OpenEverest CRDs into the cluster.
 	kubectl apply -f https://raw.githubusercontent.com/openeverest/openeverest/$(OPENEVEREST_BRANCH)/config/crd/bases/backup.openeverest.io_backups.yaml
 	kubectl apply -f https://raw.githubusercontent.com/openeverest/openeverest/$(OPENEVEREST_BRANCH)/config/crd/bases/backup.openeverest.io_restores.yaml
 
-install-cloudnative-pg:
+.PHONY: install-cloudnative-pg
+install-cloudnative-pg: install-crds install-barman-plugin
 	helm repo add cnpg https://cloudnative-pg.github.io/charts
 	helm upgrade --install cnpg \
 	  --namespace cnpg-system \
@@ -192,6 +193,10 @@ install-barman-plugin: ## Install cert-manager and the CNPG-I Barman Cloud Plugi
 	  --namespace cert-manager --create-namespace \
 	  --set crds.enabled=true
 	kubectl apply -f https://github.com/cloudnative-pg/plugin-barman-cloud/releases/download/$(BARMAN_PLUGIN_VERSION)/manifest.yaml
+
+.PHONY: install-backupclasses
+install-backupclasses:
+	kubectl apply -f charts/provider-cloudnative-pg/generated/backupclasses/cnpg-barman-plugin.yaml
 
 ##@ Local Development Cluster
 
