@@ -3,7 +3,7 @@
 apiVersion: k3d.io/v1alpha5
 kind: Simple
 metadata:
-  name: provider-cloudnative-pg-test
+  name: provider-cloudnative-pg-dev
 servers: 1
 agents: 3
 image: rancher/k3s:v1.33.2-k3s1

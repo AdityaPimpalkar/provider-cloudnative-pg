@@ -10,12 +10,12 @@ CONTAINER_TOOL ?= docker
 OPENEVEREST_BRANCH ?= release-2.0
 
 # Image URL to use for building/pushing image targets
-IMG ?= ghcr.io/openeverest/provider-cloudnative-pg-dev:latest
+IMG ?= ghcr.io/adityapimpalkar/provider-cloudnative-pg:latest
 _IMG_REPO = $(firstword $(subst :, ,$(IMG)))
 _IMG_TAG = $(lastword $(subst :, ,$(IMG)))
 
 # k3d cluster name (must match dev/k3d_config.yaml)
-K3D_CLUSTER_NAME ?= provider-cloudnative-pg-test
+K3D_CLUSTER_NAME ?= provider-cloudnative-pg-dev
 
 # controller-gen version
 CONTROLLER_TOOLS_VERSION ?= v0.18.0
@@ -179,12 +179,14 @@ install-crds: ## Install OpenEverest CRDs into the cluster.
 	kubectl apply -f https://raw.githubusercontent.com/openeverest/openeverest/$(OPENEVEREST_BRANCH)/config/crd/bases/backup.openeverest.io_restores.yaml
 
 .PHONY: install-cloudnative-pg
-install-cloudnative-pg: install-crds install-barman-plugin
+install-cloudnative-pg: install-crds ## Install CRDs, CloudNativePG operator, Barman plugin, and BackupClasses.
 	helm repo add cnpg https://cloudnative-pg.github.io/charts
 	helm upgrade --install cnpg \
 	  --namespace cnpg-system \
 	  --create-namespace \
 	  cnpg/cloudnative-pg
+	$(MAKE) install-barman-plugin
+	$(MAKE) install-backupclasses
 
 .PHONY: install-barman-plugin
 install-barman-plugin: ## Install cert-manager and the CNPG-I Barman Cloud Plugin (cnpg-system).
@@ -195,27 +197,27 @@ install-barman-plugin: ## Install cert-manager and the CNPG-I Barman Cloud Plugi
 	kubectl apply -f https://github.com/cloudnative-pg/plugin-barman-cloud/releases/download/$(BARMAN_PLUGIN_VERSION)/manifest.yaml
 
 .PHONY: install-backupclasses
-install-backupclasses:
+install-backupclasses: ## Install provider BackupClass CRs into the cluster.
 	kubectl apply -f charts/provider-cloudnative-pg/generated/backupclasses/cnpg-barman-plugin.yaml
 
 ##@ Local Development Cluster
 
 .PHONY: k3d-cluster-up
 k3d-cluster-up: ## Create a local k3d cluster for development.
-	@if ! k3d cluster list | grep -q "provider-cloudnative-pg-test"; then \
-		echo "Creating K3D cluster for Tilt development"; \
+	@if ! k3d cluster list | grep -q "$(K3D_CLUSTER_NAME)"; then \
+		echo "Creating K3D cluster $(K3D_CLUSTER_NAME) for Tilt development"; \
 		k3d cluster create --config ./dev/k3d_config.yaml; \
 	else \
-		echo "K3D cluster cloudnative-pg-test already exists"; \
+		echo "K3D cluster $(K3D_CLUSTER_NAME) already exists"; \
 	fi
 
 .PHONY: k3d-cluster-down
 k3d-cluster-down: ## Delete the local k3d cluster.
-	@if k3d cluster list | grep -q "provider-cloudnative-pg-test"; then \
-		echo "Destroying K3D dev cluster"; \
+	@if k3d cluster list | grep -q "$(K3D_CLUSTER_NAME)"; then \
+		echo "Destroying K3D cluster $(K3D_CLUSTER_NAME)"; \
 		k3d cluster delete --config ./dev/k3d_config.yaml; \
 	else \
-		echo "K3D cluster cloudnative-pg-test does not exist"; \
+		echo "K3D cluster $(K3D_CLUSTER_NAME) does not exist"; \
 	fi
 
 .PHONY: k3d-cluster-reset
