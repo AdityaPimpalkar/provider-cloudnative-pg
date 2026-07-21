@@ -5,7 +5,7 @@ replicaCount: 1
 
 image:
   # -- Container image repository
-  repository: ghcr.io/openeverest/provider-cloudnative-pg-dev
+  repository: ghcr.io/adityapimpalkar/provider-cloudnative-pg
   # -- Image pull policy
   pullPolicy: IfNotPresent
   # -- Overrides the image tag whose default is the chart appVersion

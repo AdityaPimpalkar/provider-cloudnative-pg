@@ -14,5 +14,5 @@ echo "CNPG_PG_VERSION=${CNPG_PG_VERSION}"
 
 ## ============== K3D cluster configuration ===================
 
-export K3D_CLUSTER_NAME=${K3D_CLUSTER_NAME:-"provider-cloudnative-pg-test"}
+export K3D_CLUSTER_NAME=${K3D_CLUSTER_NAME:-"provider-cloudnative-pg-dev"}
 echo "K3D_CLUSTER_NAME=${K3D_CLUSTER_NAME}"
