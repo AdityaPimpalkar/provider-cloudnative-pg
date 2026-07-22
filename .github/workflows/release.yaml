@@ -12,7 +12,6 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_PREFIX: ghcr.io/${{ github.repository_owner }}
   PROVIDER_IMAGE_NAME: provider-cloudnative-pg
   PROVIDER_DEV_IMAGE_NAME: provider-cloudnative-pg-dev
 
@@ -23,6 +22,8 @@ jobs:
     timeout-minutes: 5
     permissions:
       contents: read
+    outputs:
+      image_prefix: ${{ steps.vars.outputs.image_prefix }}
     steps:
       - name: Require repository admin
         env:
@@ -33,6 +34,13 @@ jobs:
             echo "::error::Only repository admins can run this release workflow (actor=${{ github.actor }}, permission=${permission})"
             exit 1
           fi
+
+      - name: Set image prefix
+        id: vars
+        run: |
+          # OCI/Docker repository names must be lowercase
+          owner_lc="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
+          echo "image_prefix=ghcr.io/${owner_lc}" >> "$GITHUB_OUTPUT"
 
   build:
     name: Build (${{ matrix.arch }})
@@ -55,6 +63,7 @@ jobs:
       id-token: write
       attestations: write
     env:
+      IMAGE_PREFIX: ${{ needs.authorize.outputs.image_prefix }}
       VERSION: ${{ github.event.inputs.version }}
       IS_RC: ${{ contains(github.event.inputs.version, '-') }}
     steps:
@@ -118,13 +127,14 @@ jobs:
 
   create-manifests:
     name: Create multi-arch manifests
-    needs: build
+    needs: [authorize, build]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       contents: read
       packages: write
     env:
+      IMAGE_PREFIX: ${{ needs.authorize.outputs.image_prefix }}
       VERSION: ${{ github.event.inputs.version }}
       IS_RC: ${{ contains(github.event.inputs.version, '-') }}
     steps:
@@ -159,13 +169,14 @@ jobs:
 
   release-chart:
     name: Release Helm chart
-    needs: create-manifests
+    needs: [authorize, create-manifests]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
       contents: write
       packages: write
     env:
+      IMAGE_PREFIX: ${{ needs.authorize.outputs.image_prefix }}
       VERSION: ${{ github.event.inputs.version }}
       IS_RC: ${{ contains(github.event.inputs.version, '-') }}
     steps:
