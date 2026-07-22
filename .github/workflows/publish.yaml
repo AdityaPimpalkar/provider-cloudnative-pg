@@ -13,7 +13,6 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository_owner }}/provider-cloudnative-pg-dev
 
 jobs:
   build:
@@ -33,6 +32,9 @@ jobs:
         run: |
           platform=${{ matrix.platform }}
           echo "PLATFORM_PAIR=${platform//\//-}" >> $GITHUB_ENV
+          # OCI/Docker repository names must be lowercase
+          owner_lc="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
+          echo "IMAGE_NAME=${owner_lc}/provider-cloudnative-pg-dev" >> $GITHUB_ENV
 
       - name: Checkout
         uses: actions/checkout@v4
@@ -84,6 +86,12 @@ jobs:
       - build
 
     steps:
+      - name: Prepare
+        run: |
+          # OCI/Docker repository names must be lowercase
+          owner_lc="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
+          echo "IMAGE_NAME=${owner_lc}/provider-cloudnative-pg-dev" >> $GITHUB_ENV
+
       - name: Download digests
         uses: actions/download-artifact@v4
         with:
