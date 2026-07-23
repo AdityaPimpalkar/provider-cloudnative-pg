@@ -210,18 +210,6 @@ jobs:
           cd charts/provider-cloudnative-pg
           VERSION=${{ env.VERSION }} IMAGE_PREFIX=${{ env.IMAGE_PREFIX }} make release
 
-      - name: Commit chart version bump
-        if: env.IS_RC == 'false'
-        run: |
-          git add charts/provider-cloudnative-pg/Chart.yaml \
-                  charts/provider-cloudnative-pg/values.yaml
-          if git diff --staged --quiet; then
-            echo "No chart version changes to commit"
-          else
-            git commit -m "chore: bump chart to ${VERSION}"
-            git push origin "HEAD:${{ github.ref_name }}"
-          fi
-
       - name: Release chart
         uses: helm/chart-releaser-action@cae68fefc6b5f367a0275617c9f83181ba54714f # v1.7.0
         env:
