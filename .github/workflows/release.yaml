@@ -210,49 +210,73 @@ jobs:
           cd charts/provider-cloudnative-pg
           VERSION=${{ env.VERSION }} IMAGE_PREFIX=${{ env.IMAGE_PREFIX }} make release
 
-      - name: Release chart
-        uses: helm/chart-releaser-action@cae68fefc6b5f367a0275617c9f83181ba54714f # v1.7.0
-        env:
-          CR_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
+      # chart-releaser's cr upload is incompatible with GitHub immutable releases:
+      # it publishes an empty release, then fails uploading assets (422).
+      # Use draft -> attach assets -> publish, plus OCI push.
+      - name: Package chart
+        id: package
+        run: |
+          cd charts/provider-cloudnative-pg
+          helm dependency update .
+          helm package .
+          tgz="provider-cloudnative-pg-${VERSION}.tgz"
+          if [[ ! -f "$tgz" ]]; then
+            echo "::error::Expected chart package $tgz not found"
+            exit 1
+          fi
+          echo "tgz=charts/provider-cloudnative-pg/${tgz}" >> "$GITHUB_OUTPUT"
+          mkdir -p "${GITHUB_WORKSPACE}/.cr-release-packages"
+          cp "$tgz" "${GITHUB_WORKSPACE}/.cr-release-packages/"
 
       - name: Login to GHCR for Helm
         run: echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
 
       - name: Push chart to OCI registry
         run: |
-          cd charts/provider-cloudnative-pg
-          helm package .
-          helm push "provider-cloudnative-pg-${{ env.VERSION }}.tgz" oci://${{ env.IMAGE_PREFIX }}/charts
+          helm push "${{ steps.package.outputs.tgz }}" oci://${{ env.IMAGE_PREFIX }}/charts
 
-  tag:
-    name: Create git tag
-    if: ${{ !contains(github.event.inputs.version, '-') }}
-    needs: release-chart
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      contents: write
-    env:
-      VERSION: ${{ github.event.inputs.version }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v4
-        with:
-          fetch-depth: 0
-          ref: ${{ github.ref_name }}
-
-      - name: Configure Git
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          git config user.name "$GITHUB_ACTOR"
-          git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
-
-      - name: Create and push tag
-        run: |
-          git pull --ff-only origin "${{ github.ref_name }}"
-          git fetch --tags origin
-          if git rev-parse "refs/tags/v${VERSION}" >/dev/null 2>&1; then
-            echo "Tag v${VERSION} already exists; skipping create"
-            exit 0
+          tag="v${VERSION}"
+          title="v${VERSION}"
+          notes="Release v${VERSION}"
+          prerelease_args=()
+          if [[ "${IS_RC}" == "true" ]]; then
+            prerelease_args+=(--prerelease)
+            notes="Pre-release v${VERSION}"
           fi
-          git tag "v${VERSION}"
-          git push origin "v${VERSION}"
+
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Release $tag already exists; skipping create"
+          else
+            # Draft first so assets are attached before immutability locks the release.
+            gh release create "$tag" "${{ steps.package.outputs.tgz }}" \
+              --target "${{ github.sha }}" \
+              --title "$title" \
+              --notes "$notes" \
+              --draft \
+              "${prerelease_args[@]}"
+            gh release edit "$tag" --draft=false
+          fi
+
+      - name: Update Helm repo index on gh-pages
+        env:
+          CR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Install chart-releaser for index generation only (not cr upload).
+          cr_version=v1.7.0
+          install="${RUNNER_TEMP}/cr"
+          mkdir -p "$install"
+          curl -sSLfo /tmp/cr.tar.gz \
+            "https://github.com/helm/chart-releaser/releases/download/${cr_version}/chart-releaser_${cr_version#v}_linux_amd64.tar.gz"
+          tar -xzf /tmp/cr.tar.gz -C "$install" cr
+          "$install/cr" index \
+            --owner "${{ github.repository_owner }}" \
+            --git-repo "${{ github.event.repository.name }}" \
+            --token "${CR_TOKEN}" \
+            --pages-branch gh-pages \
+            --package-path .cr-release-packages \
+            --index-path index.yaml \
+            --push
