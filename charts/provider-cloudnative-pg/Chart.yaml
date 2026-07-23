@@ -2,8 +2,8 @@ apiVersion: v2
 name: provider-cloudnative-pg
 description: A Helm chart for deploying the OpenEverest provider-cloudnative-pg provider
 type: application
-version: 0.1.0
-appVersion: "0.1.0"
+version: 0.1.1
+appVersion: "0.1.1"
 keywords:
   - openeverest
   - provider
