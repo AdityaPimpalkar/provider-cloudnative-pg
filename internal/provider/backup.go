@@ -3,12 +3,11 @@ package provider
 import (
 	"fmt"
 
-	"github.com/AlekSi/pointer"
 	"github.com/adityapimpalkar/provider-cloudnative-pg/internal/cnpg/barman"
 	cnpgv1 "github.com/cloudnative-pg/cloudnative-pg/api/v1"
 	backupv1alpha1 "github.com/openeverest/openeverest/v2/api/backup/v1alpha1"
+	commonv1alpha1 "github.com/openeverest/openeverest/v2/api/common/v1alpha1"
 	"github.com/openeverest/openeverest/v2/provider-runtime/controller"
-	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -58,7 +57,7 @@ func (p *Provider) SyncBackup(c *controller.Context, backup *backupv1alpha1.Back
 			cnpgBackup.Spec = cnpgv1.BackupSpec{
 				Cluster:             cnpgv1.LocalObjectReference{Name: c.Name()},
 				Method:              cnpgv1.BackupMethodPlugin,
-				PluginConfiguration: barman.PluginConfiguration(backup.Spec.StorageName),
+				PluginConfiguration: barman.PluginConfiguration(backup.Spec.StorageRef.Name),
 				Target:              cnpgv1.BackupTarget(backupCfg.Target),
 			}
 		}
@@ -68,10 +67,10 @@ func (p *Provider) SyncBackup(c *controller.Context, backup *backupv1alpha1.Back
 	}
 
 	exec := controller.BackupExecutionStatus{
-		OperatorBackupRef: &corev1.TypedLocalObjectReference{
-			APIGroup: pointer.ToString(cnpgv1.SchemeGroupVersion.Group),
-			Kind:     barman.KindBackup,
-			Name:     cnpgBackup.Name,
+		OperatorBackupRef: &commonv1alpha1.TypedObjectRef{
+			Group: cnpgv1.SchemeGroupVersion.Group,
+			Kind:  barman.KindBackup,
+			Name:  cnpgBackup.Name,
 		},
 		State: backupv1alpha1.BackupStatePending,
 	}
@@ -101,6 +100,21 @@ func (p *Provider) SyncBackup(c *controller.Context, backup *backupv1alpha1.Back
 func (p *Provider) SyncRestore(c *controller.Context, restore *backupv1alpha1.Restore) (controller.RestoreExecutionStatus, error) {
 	l := log.FromContext(c.Context())
 	l.Info("Syncing restore", "name", restore.Name)
+
+	if restore.Spec.DataSource.Backup == nil {
+		return controller.RestoreExecutionStatus{
+			State:   backupv1alpha1.RestoreStateFailed,
+			Message: "backup data source is required",
+		}, nil
+	}
+	backupName := restore.Spec.DataSource.Backup.BackupRef.Name
+	backup := &backupv1alpha1.Backup{}
+	if err := c.Get(backup, backupName); err != nil {
+		return controller.RestoreExecutionStatus{
+			State:   backupv1alpha1.RestoreStateFailed,
+			Message: fmt.Sprintf("source Backup %q not found", backupName),
+		}, nil
+	}
 
 	// TODO: Implement restore sync logic.
 	// Typical pattern:
