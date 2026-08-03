@@ -75,8 +75,8 @@ func (p *Provider) Validate(c *controller.Context) error {
 	}
 
 	var custom components.PostgresqlCustomSpec
-	if c.TryDecodeComponentCustomSpec(engine, &custom) {
-		if err := c.DecodeComponentCustomSpec(engine, &custom); err != nil {
+	if c.TryDecodeComponentParameters(engine, &custom) {
+		if err := c.DecodeComponentParameters(engine, &custom); err != nil {
 			return fmt.Errorf("failed to decode component custom spec: %w", err)
 		}
 	}
@@ -95,8 +95,8 @@ func (p *Provider) Sync(c *controller.Context) error {
 	engine := c.Instance().Spec.Components[common.ComponentEngine]
 
 	var custom components.PostgresqlCustomSpec
-	if c.TryDecodeComponentCustomSpec(engine, &custom) {
-		if err := c.DecodeComponentCustomSpec(engine, &custom); err != nil {
+	if c.TryDecodeComponentParameters(engine, &custom) {
+		if err := c.DecodeComponentParameters(engine, &custom); err != nil {
 			return fmt.Errorf("failed to decode component custom spec: %w", err)
 		}
 	}

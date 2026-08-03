@@ -49,7 +49,7 @@ func SyncBackupInfrastructure(c *controller.Context) ([]cnpgv1.PluginConfigurati
 			if apierrors.IsNotFound(err) {
 				return nil, controller.WaitFor(fmt.Sprintf(
 					"credentials Secret %q for BackupStorage %q not yet present",
-					bg.Spec.S3.CredentialsSecretName, bg.Name))
+					bg.Spec.S3.CredentialsSecretRef.Name, bg.Name))
 			}
 			return nil, &controller.BackupConfigError{
 				Reason:  "CredentialsUnavailable",
@@ -61,18 +61,18 @@ func SyncBackupInfrastructure(c *controller.Context) ([]cnpgv1.PluginConfigurati
 				Reason: "CredentialsIncomplete",
 				Message: fmt.Sprintf(
 					"Secret %q must contain AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY",
-					bg.Spec.S3.CredentialsSecretName),
+					bg.Spec.S3.CredentialsSecretRef.Name),
 			}
 		}
 
-		endpointCA, err := endpointCARef(c, strg.Name, bg.Spec.S3.EndpointURL)
+		endpointCA, err := endpointCARef(c, strg.StorageRef.Name, bg.Spec.S3.EndpointURL)
 		if err != nil {
 			return nil, err
 		}
 
-		objStore := buildObjectStore(c, strg.Name, bg, endpointCA)
+		objStore := buildObjectStore(c, strg.StorageRef.Name, bg, endpointCA)
 		if err := c.Apply(objStore); err != nil {
-			return nil, fmt.Errorf("apply ObjectStore %q: %w", strg.Name, err)
+			return nil, fmt.Errorf("apply ObjectStore %q: %w", strg.StorageRef.Name, err)
 		}
 	}
 
@@ -93,7 +93,7 @@ func buildObjectStore(
 	endpointCA *machineryapi.SecretKeySelector,
 ) *barmancloudv1.ObjectStore {
 	s3 := bg.Spec.S3
-	secretName := s3.CredentialsSecretName
+	secretName := s3.CredentialsSecretRef.Name
 
 	return &barmancloudv1.ObjectStore{
 		ObjectMeta: c.ObjectMeta(logicalName),
@@ -151,27 +151,22 @@ func endpointCARef(c *controller.Context, logicalName, endpointURL string) (*mac
 
 func selectMainStorageName(storages []corev1alpha1.InstanceBackupStorage) string {
 	for _, s := range storages {
-		if s.Main {
-			return s.Name
-		}
-	}
-	for _, s := range storages {
 		if s.PITR != nil && s.PITR.Enabled {
-			return s.Name
+			return s.StorageRef.Name
 		}
 	}
 	if len(storages) > 0 {
-		return storages[0].Name
+		return storages[0].StorageRef.Name
 	}
 	return ""
 }
 
 func DecodeBackupConfig(backup *backupv1alpha1.Backup) (cnpgbarmanplugin.CnpgBarmanPluginBackupConfig, error) {
 	var cfg cnpgbarmanplugin.CnpgBarmanPluginBackupConfig
-	if backup.Spec.Config == nil || len(backup.Spec.Config.Raw) == 0 {
+	if backup.Spec.Parameters == nil || len(backup.Spec.Parameters.Raw) == 0 {
 		return cfg, nil
 	}
-	if err := json.Unmarshal(backup.Spec.Config.Raw, &cfg); err != nil {
+	if err := json.Unmarshal(backup.Spec.Parameters.Raw, &cfg); err != nil {
 		return cfg, fmt.Errorf("decode backup config: %w", err)
 	}
 	return cfg, nil
