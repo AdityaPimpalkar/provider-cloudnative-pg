@@ -176,33 +176,20 @@ func (p *Provider) CleanupBackup(c *controller.Context, backup *backupv1alpha1.B
 	l := log.FromContext(c.Context())
 	l.Info("Cleaning up backup", "name", backup.Name)
 
-	// TODO: Implement backup cleanup logic.
-	// Typical pattern:
-	//   1. Get the operator backup CR
-	//   2. If DeletionPolicy is Retain, remove storage protection finalizers
-	//   3. Delete the operator backup CR
-	//   4. Return true when fully deleted, false to requeue
-	//
-	// Example:
-	//   ob := &operatorv1.MyDatabaseBackup{}
-	//   err := c.Get(ob, backup.Name)
-	//   if apierrors.IsNotFound(err) {
-	//       return true, nil
-	//   }
-	//   if err != nil {
-	//       return false, err
-	//   }
-	//
-	//   if backup.Spec.DeletionPolicy == backupv1alpha1.BackupDeletionPolicyRetain {
-	//       // TODO: remove storage protection finalizer
-	//   }
-	//
-	//   if ob.DeletionTimestamp.IsZero() {
-	//       return false, c.Delete(ob)
-	//   }
-	//   return false, nil
+	cnpgBackup := &cnpgv1.Backup{}
+	if err := c.Get(cnpgBackup, backup.Name); err != nil {
+		if apierrors.IsNotFound(err) {
+			return true, nil
+		}
+		return false, fmt.Errorf("get CloudNativePG backup: %w", err)
+	}
 
-	return true, nil
+	if cnpgBackup.DeletionTimestamp.IsZero() {
+		if err := c.Delete(cnpgBackup); err != nil {
+			return false, fmt.Errorf("delete CloudNativePG backup: %w", err)
+		}
+	}
+	return false, nil
 }
 
 // CleanupRestore deletes the operator restore resource. Return true when fully
