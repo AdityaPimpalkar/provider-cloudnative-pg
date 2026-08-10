@@ -103,7 +103,7 @@ require (
 	github.com/oasdiff/yaml v0.0.9 // indirect
 	github.com/oasdiff/yaml3 v0.0.12 // indirect
 	github.com/oklog/ulid/v2 v2.1.1 // indirect
-	github.com/openeverest/provider-sdk v0.1.1-0.20260630100629-0336260c61cd // indirect
+	github.com/openeverest/provider-sdk v0.1.1-0.20260806102524-dcea23016ac4 // indirect
 	github.com/percona/everest-operator v0.6.0-dev1.0.20260429065444-70caa52c384a // indirect
 	github.com/percona/percona-backup-mongodb v1.8.1-0.20251104101930-05ab6d7e1004 // indirect
 	github.com/percona/percona-postgresql-operator/v2 v2.9.0 // indirect
