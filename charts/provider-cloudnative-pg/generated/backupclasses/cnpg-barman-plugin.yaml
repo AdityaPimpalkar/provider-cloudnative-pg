@@ -5,15 +5,15 @@ kind: BackupClass
 metadata:
   name: cnpg-barman-plugin
 spec:
-  config:
+  description: CloudNativePG backups via the CNPG-I Barman Cloud Plugin (object-store WAL archiving and base backups).
+  displayName: CNPG Barman Cloud Plugin
+  executionMode: ProviderManaged
+  parametersSchema:
     openAPIV3Schema:
       properties:
         target:
           type: string
       type: object
-  description: CloudNativePG backups via the CNPG-I Barman Cloud Plugin (object-store WAL archiving and base backups).
-  displayName: CNPG Barman Cloud Plugin
-  executionMode: ProviderManaged
   providerManaged:
     limits: {}
   supportedProviders:

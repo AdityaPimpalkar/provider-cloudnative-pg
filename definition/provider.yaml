@@ -5,5 +5,5 @@
 components:
     engine:
         type: postgresql
-        customSpecSchema: PostgresqlCustomSpec
+        parametersSchema: CNPGCustomSpec
 name: provider-cloudnative-pg

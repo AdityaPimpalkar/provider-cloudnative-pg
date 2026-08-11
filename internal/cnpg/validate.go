@@ -10,7 +10,7 @@ import (
 	corev1alpha1 "github.com/openeverest/openeverest/v2/api/core/v1alpha1"
 )
 
-func ValidateCustomSpec(custom *components.PostgresqlCustomSpec) error {
+func ValidateCustomSpec(custom *components.CNPGCustomSpec) error {
 	if custom.Bootstrap != nil {
 		if err := ValidateBootstrap(custom.Bootstrap); err != nil {
 			return err

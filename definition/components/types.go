@@ -13,10 +13,10 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
-// PostgresqlCustomSpec defines custom configuration for postgresql components.
+// CNPGCustomSpec defines custom configuration for postgresql components.
 // Add fields here when the postgresql component type needs custom configuration
 // beyond what the base Instance spec provides.
-type PostgresqlCustomSpec struct {
+type CNPGCustomSpec struct {
 	ResizeInUseVolumes *bool `json:"resizeInUseVolumes,omitempty"`
 
 	PersistentVolumeClaimTemplate *corev1.PersistentVolumeClaimSpec `json:"pvcTemplate,omitempty"`

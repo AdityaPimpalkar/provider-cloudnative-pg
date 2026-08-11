@@ -74,7 +74,7 @@ func (p *Provider) Validate(c *controller.Context) error {
 		return err
 	}
 
-	var custom components.PostgresqlCustomSpec
+	var custom components.CNPGCustomSpec
 	if c.TryDecodeComponentParameters(engine, &custom) {
 		if err := c.DecodeComponentParameters(engine, &custom); err != nil {
 			return fmt.Errorf("failed to decode component custom spec: %w", err)
@@ -91,10 +91,14 @@ func (p *Provider) Validate(c *controller.Context) error {
 func (p *Provider) Sync(c *controller.Context) error {
 	l := log.FromContext(c.Context())
 	l.Info("Syncing instance", "name", c.Name())
+	dataSource, err := c.ReconcileDataSource()
+	if err != nil {
+		return fmt.Errorf("reconcile data source: %w", err)
+	}
 
 	engine := c.Instance().Spec.Components[common.ComponentEngine]
 
-	var custom components.PostgresqlCustomSpec
+	var custom components.CNPGCustomSpec
 	if c.TryDecodeComponentParameters(engine, &custom) {
 		if err := c.DecodeComponentParameters(engine, &custom); err != nil {
 			return fmt.Errorf("failed to decode component custom spec: %w", err)
@@ -152,6 +156,19 @@ func (p *Provider) Sync(c *controller.Context) error {
 		pg.Spec.Monitoring = custom.Monitoring
 	}
 
+	if c.Instance().Spec.DataSource != nil {
+		recovery, externalCluster, err := barman.BuildRecoveryConfig(c, custom)
+		if err != nil {
+			return err
+		}
+
+		pg.Spec.Bootstrap = &cnpgv1.BootstrapConfiguration{
+			Recovery: recovery,
+		}
+
+		pg.Spec.ExternalClusters = []cnpgv1.ExternalCluster{externalCluster}
+	}
+
 	plugins, err := barman.SyncBackupInfrastructure(c)
 	if err != nil {
 		return err
@@ -163,10 +180,15 @@ func (p *Provider) Sync(c *controller.Context) error {
 	if err := c.Apply(pg); err != nil {
 		return err
 	}
+
+	if !dataSource.Done {
+		return controller.WaitFor(dataSource.Message)
+	}
+
 	return nil
 }
 
-func buildClusterSpec(engine corev1alpha1.ComponentSpec, custom components.PostgresqlCustomSpec) cnpgv1.ClusterSpec {
+func buildClusterSpec(engine corev1alpha1.ComponentSpec, custom components.CNPGCustomSpec) cnpgv1.ClusterSpec {
 	storage := cnpgv1.StorageConfiguration{
 		Size: engine.Storage.Size.String(),
 	}

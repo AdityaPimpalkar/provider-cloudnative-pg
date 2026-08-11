@@ -9,7 +9,9 @@ import (
 	commonv1alpha1 "github.com/openeverest/openeverest/v2/api/common/v1alpha1"
 	"github.com/openeverest/openeverest/v2/provider-runtime/controller"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
@@ -101,72 +103,55 @@ func (p *Provider) SyncRestore(c *controller.Context, restore *backupv1alpha1.Re
 	l := log.FromContext(c.Context())
 	l.Info("Syncing restore", "name", restore.Name)
 
-	if restore.Spec.DataSource.Backup == nil {
-		return controller.RestoreExecutionStatus{
-			State:   backupv1alpha1.RestoreStateFailed,
-			Message: "backup data source is required",
-		}, nil
-	}
-	backupName := restore.Spec.DataSource.Backup.BackupRef.Name
-	backup := &backupv1alpha1.Backup{}
-	if err := c.Get(backup, backupName); err != nil {
-		return controller.RestoreExecutionStatus{
-			State:   backupv1alpha1.RestoreStateFailed,
-			Message: fmt.Sprintf("source Backup %q not found", backupName),
-		}, nil
+	cluster := &cnpgv1.Cluster{}
+	if err := c.Get(cluster, c.Name()); err != nil {
+		if apierrors.IsNotFound(err) {
+			return controller.RestoreExecutionStatus{
+				State:   backupv1alpha1.RestoreStatePending,
+				Message: "Waiting for recovery Cluster to be created",
+			}, nil
+		}
+		return controller.RestoreExecutionStatus{}, err
 	}
 
-	// TODO: Implement restore sync logic.
-	// Typical pattern:
-	//   1. Get the source Backup CR
-	//   2. Create or update the operator restore CR
-	//   3. Set the restore spec (backup reference, cluster name, etc.)
-	//   4. Set controller reference so the Restore owns the operator resource
-	//   5. Map operator restore status to RestoreExecutionStatus
-	//
-	// Example:
-	//   backup := &backupv1alpha1.Backup{}
-	//   if err := c.Get(backup, restore.Spec.DataSource.BackupName); err != nil {
-	//       return controller.RestoreExecutionStatus{
-	//           State:   backupv1alpha1.RestoreStateFailed,
-	//           Message: fmt.Sprintf("source Backup %q not found", restore.Spec.DataSource.BackupName),
-	//       }, nil
-	//   }
-	//
-	//   or := &operatorv1.MyDatabaseRestore{
-	//       ObjectMeta: metav1.ObjectMeta{Name: restore.Name, Namespace: restore.Namespace},
-	//   }
-	//   if _, err := controllerutil.CreateOrUpdate(c.Context(), c.Client(), or, func() error {
-	//       // Set spec fields here
-	//       return controllerutil.SetControllerReference(restore, or, c.Client().Scheme())
-	//   }); err != nil {
-	//       return controller.RestoreExecutionStatus{}, err
-	//   }
-	//
-	//   exec := controller.RestoreExecutionStatus{
-	//       OperatorRestoreRef: &corev1.TypedLocalObjectReference{
-	//           APIGroup: pointer.ToString(operatorv1.SchemeGroupVersion.Group),
-	//           Kind:     "MyDatabaseRestore",
-	//           Name:     or.Name,
-	//       },
-	//       State: backupv1alpha1.RestoreStatePending,
-	//   }
-	//
-	//   switch or.Status.State {
-	//   case "ready":
-	//       exec.State = backupv1alpha1.RestoreStateSucceeded
-	//       exec.CompletedAt = pointer.To(metav1.Now())
-	//   case "error":
-	//       exec.State = backupv1alpha1.RestoreStateFailed
-	//       exec.Message = or.Status.Error
-	//   case "running":
-	//       exec.State = backupv1alpha1.RestoreStateRunning
-	//   }
-	//   return exec, nil
+	exec := controller.RestoreExecutionStatus{
+		State: backupv1alpha1.RestoreStateRunning,
+		OperatorRestoreRef: &commonv1alpha1.TypedObjectRef{
+			Group: cnpgv1.SchemeGroupVersion.Group,
+			Kind:  "Cluster",
+			Name:  cluster.Name,
+		},
+		StartedAt: &cluster.CreationTimestamp,
+		Message:   cluster.Status.PhaseReason,
+	}
 
-	return controller.RestoreExecutionStatus{
-		State: backupv1alpha1.RestoreStatePending,
-	}, nil
+	ready := meta.FindStatusCondition(
+		cluster.Status.Conditions,
+		string(cnpgv1.ConditionClusterReady),
+	)
+
+	if ready != nil &&
+		ready.Status == metav1.ConditionTrue &&
+		cluster.Status.CurrentPrimary != "" &&
+		cluster.Status.ReadyInstances == cluster.Status.Instances {
+		exec.State = backupv1alpha1.RestoreStateSucceeded
+		exec.CompletedAt = &ready.LastTransitionTime
+		exec.Message = "CloudNativePG recovery completed"
+		return exec, nil
+	}
+
+	switch cluster.Status.Phase {
+	case cnpgv1.PhaseUnrecoverable,
+		cnpgv1.PhaseFailurePlugin,
+		cnpgv1.PhaseCannotCreateClusterObjects,
+		cnpgv1.PhaseImageCatalogError:
+		exec.State = backupv1alpha1.RestoreStateFailed
+		exec.Message = cluster.Status.Phase
+		if cluster.Status.PhaseReason != "" {
+			exec.Message += ": " + cluster.Status.PhaseReason
+		}
+	}
+	return exec, nil
 }
 
 // CleanupBackup deletes the operator backup resource. For DeletionPolicy: Retain,
