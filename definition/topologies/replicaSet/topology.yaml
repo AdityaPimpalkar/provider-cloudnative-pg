@@ -47,7 +47,7 @@ ui:
           uiType: group
           components:
             database:
-              path: spec.components.engine.customSpec.bootstrap.initdb.database
+              path: spec.components.engine.parameters.bootstrap.initdb.database
               uiType: text
               fieldParams:
                 label: "Database name"
@@ -64,10 +64,10 @@ ui:
                 modes:
                   edit:
                     celExpressions:
-                      - celExpr: "spec.components.engine.customSpec.bootstrap.initdb.database == original.spec.components.engine.customSpec.bootstrap.initdb.database"
+                      - celExpr: "spec.components.engine.parameters.bootstrap.initdb.database == original.spec.components.engine.parameters.bootstrap.initdb.database"
                         message: "Database name cannot be changed after creation"
             owner:
-              path: spec.components.engine.customSpec.bootstrap.initdb.owner
+              path: spec.components.engine.parameters.bootstrap.initdb.owner
               uiType: text
               fieldParams:
                 label: "Database owner"
@@ -82,7 +82,7 @@ ui:
                   pattern: "^[a-zA-Z_][a-zA-Z0-9_]*$"
                   message: "Must be a valid PostgreSQL identifier (letters, numbers, underscores; cannot start with a number)"
             credentialsSecret:
-              path: spec.components.engine.customSpec.bootstrap.initdb.secret.name
+              path: spec.components.engine.parameters.bootstrap.initdb.secret.name
               uiType: text
               fieldParams:
                 label: "Credentials secret"
@@ -213,7 +213,7 @@ ui:
             provider: storageClasses
         configuration:
           uiType: text
-          path: spec.components.engine.customSpec.postgresql.parameters
+          path: spec.components.engine.parameters.postgresql.parameters
           fieldParams:
             label: "Engine configuration"
             placeholder: |2

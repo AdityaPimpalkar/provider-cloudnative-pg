@@ -26,5 +26,5 @@ spec:
       storage:
         size: 10Gi
         storageClass: standard
-      customSpec:
+      parameters:
         resizeInUseVolumes: true

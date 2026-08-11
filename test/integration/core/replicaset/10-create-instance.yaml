@@ -21,7 +21,7 @@ spec:
           memory: 1Gi
       storage:
         size: 5Gi
-      customSpec:
+      parameters:
         postgresql:
           parameters:
             max_connections: "100"
