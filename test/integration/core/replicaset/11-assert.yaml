@@ -1,29 +1,3 @@
-apiVersion: kuttl.dev/v1
-kind: TestAssert
-timeout: 60
-collectors:
-  - command: kubectl get instance/test-cnpg-cluster -n ${NAMESPACE} -o yaml
-  - command: kubectl get cluster/test-cnpg-cluster -n ${NAMESPACE} -o yaml
-  - command: kubectl get secret/test-cnpg-cluster-conn -n ${NAMESPACE} -o yaml
-commands:
-  - command: kubectl wait --for=jsonpath='{.status.phase}'=Ready instance/test-cnpg-cluster -n ${NAMESPACE} --timeout=60s
-resourceRefs:
-  - apiVersion: core.openeverest.io/v1alpha1
-    kind: Instance
-    name: test-cnpg-cluster
-    ref: inst
-  - apiVersion: postgresql.cnpg.io/v1
-    kind: Cluster
-    name: test-cnpg-cluster
-    ref: cluster
-assertAll:
-  - celExpr: "inst.status.phase == 'Ready'"
-    message: "instance is not Ready"
-  - celExpr: "cluster.spec.instances == 3"
-    message: "expected 3 instances"
-  - celExpr: "cluster.status.readyInstances == 3"
-    message: "expected 3 ready instances"
----
 apiVersion: core.openeverest.io/v1alpha1
 kind: Instance
 metadata:

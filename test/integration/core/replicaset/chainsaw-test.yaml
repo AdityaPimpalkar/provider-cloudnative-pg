@@ -1,0 +1,70 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/kyverno/chainsaw/main/.schemas/json/test-chainsaw-v1alpha1.json
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: replicaset
+spec:
+  steps:
+    - name: step-00
+      try:
+        - assert:
+            timeout: 30s
+            file: 00-assert.yaml
+
+    - name: step-10
+      try:
+        - apply:
+            file: 10-create-instance.yaml
+        - assert:
+            timeout: 30s
+            file: 10-assert.yaml
+      catch:
+        - script:
+            content: kubectl get instance/test-cnpg-cluster -n $NAMESPACE -o yaml
+        - script:
+            content: kubectl get cluster/test-cnpg-cluster -n $NAMESPACE -o yaml
+
+    - name: step-11
+      try:
+        # Mock CNPG Cluster readiness (status subresource) so the provider can mark Instance Ready.
+        - script:
+            content: >-
+              kubectl patch cluster/test-cnpg-cluster --subresource status -n $NAMESPACE
+              -p '{"status":{"instances":3,"readyInstances":3,"conditions":[{"type":"Ready","status":"True","reason":"ClusterIsReady","message":"Cluster is ready","lastTransitionTime":"2026-01-01T00:00:00Z"}]}}'
+              --type=merge
+        - apply:
+            file: 11-cluster-ready.yaml
+        - script:
+            timeout: 60s
+            content: >-
+              kubectl wait --for=jsonpath='{.status.phase}'=Ready
+              instance/test-cnpg-cluster -n $NAMESPACE --timeout=60s
+        - assert:
+            timeout: 60s
+            file: 11-assert.yaml
+      catch:
+        - script:
+            content: kubectl get instance/test-cnpg-cluster -n $NAMESPACE -o yaml
+        - script:
+            content: kubectl get cluster/test-cnpg-cluster -n $NAMESPACE -o yaml
+        - script:
+            content: kubectl get secret/test-cnpg-cluster-conn -n $NAMESPACE -o yaml
+
+    - name: step-30
+      try:
+        - script:
+            content: >-
+              kubectl -n $NAMESPACE delete instance/test-cnpg-cluster cluster/test-cnpg-cluster
+              --wait=false && sleep 5
+        - script:
+            content: kubectl -n $NAMESPACE delete secret/test-cnpg-cluster-app --ignore-not-found
+        - script:
+            content: >-
+              kubectl patch cluster/test-cnpg-cluster -n $NAMESPACE
+              -p '{"metadata":{"finalizers":null}}' --type merge
+
+    - name: step-40
+      try:
+        - error:
+            timeout: 30s
+            file: 40-errors.yaml

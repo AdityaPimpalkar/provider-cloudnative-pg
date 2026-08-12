@@ -40,10 +40,12 @@ jobs:
           # Install Provider via Helm
           make helm-install
 
-      - name: Install kuttl
+      - name: Install chainsaw
         run: |
-          curl -Lo /usr/local/bin/kubectl-kuttl https://github.com/kudobuilder/kuttl/releases/latest/download/kubectl-kuttl_linux_amd64
-          chmod +x /usr/local/bin/kubectl-kuttl
+          curl -sLo /tmp/chainsaw.tar.gz https://github.com/kyverno/chainsaw/releases/latest/download/chainsaw_linux_amd64.tar.gz
+          tar -xzf /tmp/chainsaw.tar.gz -C /tmp
+          install -m 0755 /tmp/chainsaw /usr/local/bin/chainsaw
+          chainsaw version
 
       - name: Run provider in background
         run: |

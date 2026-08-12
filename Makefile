@@ -144,16 +144,16 @@ helm-lint: helm-deps ## Lint the Helm chart.
 ##@ Testing
 
 .PHONY: test-integration
-test-integration: ## Run all integration tests (kuttl) against a running cluster.
-	. ./test/vars.sh && kubectl kuttl test --config ./test/integration/kuttl.yaml
+test-integration: ## Run all integration tests (chainsaw) against a running cluster.
+	. ./test/vars.sh && chainsaw test --config ./test/integration/.chainsaw.yaml ./test/integration
 
 .PHONY: test-integration-core
-test-integration-core: ## Run core integration tests (kuttl).
-	. ./test/vars.sh && kubectl kuttl test --config ./test/integration/kuttl-core.yaml
+test-integration-core: ## Run core integration tests (chainsaw).
+	. ./test/vars.sh && chainsaw test --config ./test/integration/.chainsaw.yaml ./test/integration/core
 
 .PHONY: test-integration-core-replicaset
-test-integration-core-replicaset: ## Run core replicaset integration tests (kuttl).
-	. ./test/vars.sh && kubectl kuttl test --config ./test/integration/kuttl-core.yaml --test "replicaset"
+test-integration-core-replicaset: ## Run core replicaset integration tests (chainsaw).
+	. ./test/vars.sh && chainsaw test --config ./test/integration/.chainsaw.yaml ./test/integration/core/replicaset
 
 .PHONY: load-image
 load-image: ## Import the provider image (IMG) into the k3d cluster.
