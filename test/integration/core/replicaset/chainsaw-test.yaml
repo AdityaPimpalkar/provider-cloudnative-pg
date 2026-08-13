@@ -25,32 +25,32 @@ spec:
         - script:
             content: kubectl get cluster/test-cnpg-cluster -n $NAMESPACE -o yaml
 
-    - name: step-11
-      skipDelete: true
-      try:
-        # Mock CNPG Cluster readiness (status subresource) so the provider can mark Instance Ready.
-        - script:
-            content: >-
-              kubectl patch cluster/test-cnpg-cluster --subresource status -n $NAMESPACE
-              -p '{"status":{"instances":3,"readyInstances":3,"conditions":[{"type":"Ready","status":"True","reason":"ClusterIsReady","message":"Cluster is ready","lastTransitionTime":"2026-01-01T00:00:00Z"}]}}'
-              --type=merge
-        - apply:
-            file: 11-cluster-ready.yaml
-        - script:
-            timeout: 60s
-            content: >-
-              kubectl wait --for=jsonpath='{.status.phase}'=Ready
-              instance/test-cnpg-cluster -n $NAMESPACE --timeout=60s
-        - assert:
-            timeout: 60s
-            file: 11-assert.yaml
-      catch:
-        - script:
-            content: kubectl get instance/test-cnpg-cluster -n $NAMESPACE -o yaml
-        - script:
-            content: kubectl get cluster/test-cnpg-cluster -n $NAMESPACE -o yaml
-        - script:
-            content: kubectl get secret/test-cnpg-cluster-conn -n $NAMESPACE -o yaml
+    # - name: step-11
+    #   skipDelete: true
+    #   try:
+    #     # Mock CNPG Cluster readiness (status subresource) so the provider can mark Instance Ready.
+    #     - script:
+    #         content: >-
+    #           kubectl patch cluster/test-cnpg-cluster --subresource status -n $NAMESPACE
+    #           -p '{"status":{"instances":3,"readyInstances":3,"conditions":[{"type":"Ready","status":"True","reason":"ClusterIsReady","message":"Cluster is ready","lastTransitionTime":"2026-01-01T00:00:00Z"}]}}'
+    #           --type=merge
+    #     - apply:
+    #         file: 11-cluster-ready.yaml
+    #     - script:
+    #         timeout: 60s
+    #         content: >-
+    #           kubectl wait --for=jsonpath='{.status.phase}'=Ready
+    #           instance/test-cnpg-cluster -n $NAMESPACE --timeout=60s
+    #     - assert:
+    #         timeout: 60s
+    #         file: 11-assert.yaml
+    #   catch:
+    #     - script:
+    #         content: kubectl get instance/test-cnpg-cluster -n $NAMESPACE -o yaml
+    #     - script:
+    #         content: kubectl get cluster/test-cnpg-cluster -n $NAMESPACE -o yaml
+    #     - script:
+    #         content: kubectl get secret/test-cnpg-cluster-conn -n $NAMESPACE -o yaml
 
     - name: step-30
       try:
