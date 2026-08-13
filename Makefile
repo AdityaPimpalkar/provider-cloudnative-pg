@@ -119,7 +119,7 @@ docker-push: ## Push docker image.
 helm-deps: ## Download Helm chart dependencies.
 	@helm repo add cnpg $(CNPG_HELM_REPO) >/dev/null 2>&1 || true
 	helm repo update cnpg
-	helm dependency build $(CHART_DIR)
+	helm dependency update $(CHART_DIR)
 
 .PHONY: helm-install
 helm-install: helm-deps ## Install the provider using Helm.
@@ -144,16 +144,16 @@ helm-lint: helm-deps ## Lint the Helm chart.
 ##@ Testing
 
 .PHONY: test-integration
-test-integration: ## Run all integration tests (kuttl) against a running cluster.
-	. ./test/vars.sh && kubectl kuttl test --config ./test/integration/kuttl.yaml
+test-integration: ## Run all integration tests (chainsaw) against a running cluster.
+	. ./test/vars.sh && chainsaw test --config ./test/integration/.chainsaw.yaml ./test/integration
 
 .PHONY: test-integration-core
-test-integration-core: ## Run core integration tests (kuttl).
-	. ./test/vars.sh && kubectl kuttl test --config ./test/integration/kuttl-core.yaml
+test-integration-core: ## Run core integration tests (chainsaw).
+	. ./test/vars.sh && chainsaw test --config ./test/integration/.chainsaw.yaml ./test/integration/core
 
 .PHONY: test-integration-core-replicaset
-test-integration-core-replicaset: ## Run core replicaset integration tests (kuttl).
-	. ./test/vars.sh && kubectl kuttl test --config ./test/integration/kuttl-core.yaml --test "replicaset"
+test-integration-core-replicaset: ## Run core replicaset integration tests (chainsaw).
+	. ./test/vars.sh && chainsaw test --config ./test/integration/.chainsaw.yaml ./test/integration/core/replicaset
 
 .PHONY: load-image
 load-image: ## Import the provider image (IMG) into the k3d cluster.
