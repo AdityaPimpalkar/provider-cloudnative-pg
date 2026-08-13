@@ -12,6 +12,7 @@ spec:
             file: 00-assert.yaml
 
     - name: step-10
+      skipDelete: true
       try:
         - apply:
             file: 10-create-instance.yaml
@@ -25,6 +26,7 @@ spec:
             content: kubectl get cluster/test-cnpg-cluster -n $NAMESPACE -o yaml
 
     - name: step-11
+      skipDelete: true
       try:
         # Mock CNPG Cluster readiness (status subresource) so the provider can mark Instance Ready.
         - script:
@@ -59,9 +61,11 @@ spec:
         - script:
             content: kubectl -n $NAMESPACE delete secret/test-cnpg-cluster-app --ignore-not-found
         - script:
-            content: >-
-              kubectl patch cluster/test-cnpg-cluster -n $NAMESPACE
-              -p '{"metadata":{"finalizers":null}}' --type merge
+            content: |
+              if kubectl get cluster/test-cnpg-cluster -n "$NAMESPACE" >/dev/null 2>&1; then
+                kubectl patch cluster/test-cnpg-cluster -n "$NAMESPACE" \
+                  -p '{"metadata":{"finalizers":null}}' --type merge
+              fi
 
     - name: step-40
       try:

@@ -3,7 +3,8 @@ kind: Instance
 metadata:
   name: test-cnpg-cluster
 spec:
-  provider: provider-cloudnative-pg
+  providerRef:
+    name: provider-cloudnative-pg
   components:
     engine:
       type: postgresql
@@ -41,7 +42,7 @@ spec:
     limits:
       cpu: "1"
       memory: 1Gi
-  postgresConfiguration:
+  postgresql:
     parameters:
       max_connections: "100"
       shared_buffers: "128MB"

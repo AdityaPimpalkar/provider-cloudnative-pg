@@ -119,7 +119,7 @@ docker-push: ## Push docker image.
 helm-deps: ## Download Helm chart dependencies.
 	@helm repo add cnpg $(CNPG_HELM_REPO) >/dev/null 2>&1 || true
 	helm repo update cnpg
-	helm dependency build $(CHART_DIR)
+	helm dependency update $(CHART_DIR)
 
 .PHONY: helm-install
 helm-install: helm-deps ## Install the provider using Helm.
