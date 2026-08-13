@@ -71,6 +71,9 @@ jobs:
       - name: Install OpenEverest CRDs
         run: make install-crds
 
+      - name: Create CNPG namespace
+        run: kubectl create namespace cnpg-system --dry-run=client -o yaml | kubectl apply -f -
+
       - name: Deploy provider
         run: make deploy-provider-ci
 
