@@ -1,7 +1,3 @@
-apiVersion: kuttl.dev/v1
-kind: TestAssert
-timeout: 30
----
 apiVersion: core.openeverest.io/v1alpha1
 kind: Provider
 metadata:

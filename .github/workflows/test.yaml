@@ -1,57 +1,112 @@
 name: Integration Tests
 
-# Disabled until integration test assets and CNPG operator install are ready.
 on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  push:
+    branches:
+      - main
   workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
+
+env:
+  IMG: provider-cloudnative-pg:ci
 
 jobs:
   test:
     name: Integration Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache: true
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
       - name: Install k3d
         run: |
           curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
+          k3d version
+
+      - name: Install chainsaw
+        env:
+          CHAINSAW_VERSION: v0.2.15
+        run: |
+          curl -sLo /tmp/chainsaw.tar.gz "https://github.com/kyverno/chainsaw/releases/download/${CHAINSAW_VERSION}/chainsaw_linux_amd64.tar.gz"
+          tar -xzf /tmp/chainsaw.tar.gz -C /tmp
+          sudo install -m 0755 /tmp/chainsaw /usr/local/bin/chainsaw
+          chainsaw version
 
       - name: Create k3d cluster
-        run: make k3d-cluster-up
-
-      - name: Install prerequisites
         run: |
-          # Install OpenEverest CRDs
-          kubectl apply -f https://raw.githubusercontent.com/openeverest/openeverest/v2/config/crd/bases/core.openeverest.io_providers.yaml
-          kubectl apply -f https://raw.githubusercontent.com/openeverest/openeverest/v2/config/crd/bases/core.openeverest.io_instances.yaml
+          sudo modprobe br_netfilter
+          make k3d-cluster-up
 
-          # TODO: Install your operator
-          # kubectl apply -f https://example.com/operator/deploy/bundle.yaml
+      - name: Build provider image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          load: true
+          tags: ${{ env.IMG }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
-          # Install Provider via Helm
-          make helm-install
+      - name: Import image into k3d
+        run: make load-image
 
-      - name: Install kuttl
+      - name: Install OpenEverest CRDs
+        run: make install-crds
+
+      - name: Create CNPG namespace
+        run: kubectl create namespace cnpg-system --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Install Barman plugin
         run: |
-          curl -Lo /usr/local/bin/kubectl-kuttl https://github.com/kudobuilder/kuttl/releases/latest/download/kubectl-kuttl_linux_amd64
-          chmod +x /usr/local/bin/kubectl-kuttl
+          make install-barman-plugin
+          kubectl wait --for=condition=Established crd/objectstores.barmancloud.cnpg.io --timeout=2m
 
-      - name: Run provider in background
+      - name: Deploy provider
+        run: make deploy-provider-ci
+
+      - name: Wait for provider
         run: |
-          make run &
-          sleep 5
+          kubectl wait --for=condition=Available -n provider-system \
+            deploy --all --timeout=5m
+          kubectl get provider provider-cloudnative-pg
 
       - name: Run integration tests
         run: make test-integration
+
+      - name: Debug cluster on failure
+        if: failure()
+        run: |
+          kubectl get provider,instance,cluster,pod -A || true
+          kubectl describe pods -n provider-system || true
+          kubectl logs -n provider-system --all-containers --tail=200 -l app.kubernetes.io/name=provider-cloudnative-pg || true
+          kubectl get crd | grep -E 'cnpg|openeverest|barman' || true
+
+      - name: Upload chainsaw report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chainsaw-report-${{ github.run_id }}
+          path: /tmp/chainsaw-report.xml
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Cleanup
         if: always()
