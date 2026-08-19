@@ -17,13 +17,23 @@
    Verify it with: kubectl get providers.core.openeverest.io {{ .Values.provider.name }}
 
 NOTE: Ensure that the following prerequisites are installed in your cluster:
-  - OpenEverest CRDs (Instances, Providers)
+  - OpenEverest CRDs (Instances, Providers, BackupClasses, BackupStorages, Backups, Restores)
+  - cert-manager (required by the Barman Cloud Plugin for TLS)
 
 {{- $cnpg := index .Values "cloudnative-pg" }}
 {{- if $cnpg.enabled }}
-3. The CloudNativePG operator has been installed in the {{ $cnpg.namespaceOverride | default .Release.Namespace }} namespace.
-   Verify it with: kubectl get deployment -n {{ $cnpg.namespaceOverride | default .Release.Namespace }}
+3. The CloudNativePG operator is in namespace {{ .Release.Namespace }}.
+   Verify it with: kubectl get deployment -n {{ .Release.Namespace }} cnpg-operator
 {{- else }}
 NOTE: The CloudNativePG operator is not installed by this chart (cloudnative-pg.enabled=false).
       Install it separately before creating Instance resources.
+{{- end }}
+
+{{- $barman := index .Values "plugin-barman-cloud" }}
+{{- if $barman.enabled }}
+4. The CNPG-I Barman Cloud Plugin is in namespace {{ .Release.Namespace }}.
+   Verify with: kubectl get deployment -n {{ .Release.Namespace }} -l app.kubernetes.io/name=plugin-barman-cloud
+{{- else }}
+NOTE: The Barman Cloud Plugin is not installed by this chart (plugin-barman-cloud.enabled=false).
+      Backups and restores will not work until it is installed.
 {{- end }}

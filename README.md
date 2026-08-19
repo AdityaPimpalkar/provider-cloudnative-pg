@@ -19,8 +19,8 @@ Recent additions:
 
 - Go 1.26+
 - A Kubernetes cluster (k3d, kind, or remote)
-- [OpenEverest CRDs](https://github.com/openeverest/openeverest) installed (`make install-crds`)
-- [CloudNativePG operator](https://cloudnative-pg.io/documentation/current/installation_upgrade/) (`make install-cloudnative-pg`)
+- [OpenEverest CRDs](https://github.com/openeverest/openeverest) installed (`make install-crds`), including backup CRDs (`BackupClass`, `BackupStorage`, `Backup`, `Restore`)
+- [cert-manager](https://cert-manager.io/) — required by the Barman Cloud Plugin (`make install-barman-plugin` installs it once per cluster)
 
 ## Quick Start
 
@@ -71,8 +71,12 @@ make apply-example-simple
 ### Helm
 
 ```bash
-# Install
-helm install provider-cloudnative-pg charts/provider-cloudnative-pg/ --create-namespace
+# Install into the current namespace (default) — operator + Barman plugin too
+helm install provider-cloudnative-pg charts/provider-cloudnative-pg/
+
+# Or into a specific namespace (Hub uses everest-system)
+helm install provider-cloudnative-pg charts/provider-cloudnative-pg/ \
+  --namespace everest-system --create-namespace
 
 # Upgrade
 helm upgrade provider-cloudnative-pg charts/provider-cloudnative-pg/

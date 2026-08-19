@@ -9,7 +9,7 @@ image:
   # -- Image pull policy
   pullPolicy: IfNotPresent
   # -- Overrides the image tag whose default is the chart appVersion
-  tag: "0.1.1"
+  tag: "0.2.2"
 
 # -- Image pull secrets for private registries
 imagePullSecrets: []
@@ -121,6 +121,14 @@ cloudnative-pg:
   # -- Install the CloudNativePG operator as a chart dependency
   enabled: true
   fullnameOverride: cnpg-operator
-  namespaceOverride: cnpg-system
+  crds:
+    create: true
+
+# CNPG-I Barman Cloud Plugin — WAL archiving and base backups.
+# Installs into the same namespace as this release. Requires a cluster-wide
+# cert-manager (not bundled: it is shared cluster infrastructure).
+plugin-barman-cloud:
+  # -- Install the Barman Cloud Plugin as a chart dependency
+  enabled: true
   crds:
     create: true
