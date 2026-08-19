@@ -6,7 +6,7 @@ An [OpenEverest](https://github.com/openeverest) provider that provisions Postgr
 
 ## Project Status
 
-The provider can create and reconcile CloudNativePG `Cluster` resources from OpenEverest `Instance` CRs for local development and testing. Core provisioning (replicas, storage, resources, version selection, bootstrap, PostgreSQL tuning, managed roles) is in place; kuttl integration tests cover basic provisioning and status reconciliation. Backup/DR, pooling, monitoring, and CI wiring for integration tests are still outstanding.
+The provider can create and reconcile CloudNativePG `Cluster` resources from OpenEverest `Instance` CRs for local development and testing. Core provisioning (replicas, storage, resources, version selection, bootstrap, PostgreSQL tuning, managed roles) is in place; chainsaw integration tests cover basic provisioning and status reconciliation. Backup/DR, pooling, monitoring, and CI wiring for integration tests are still outstanding.
 
 Recent additions:
 
@@ -61,8 +61,8 @@ make apply-example-simple
 | `make apply-example-simple` | Apply minimal example Instance with preflight guard   |
 | `make helm-template`    | Render Helm templates locally (dry-run)                    |
 | `make test`             | Run unit tests                                             |
-| `make test-integration` | Run kuttl integration tests                                |
-| `make test-integration-core` | Run core kuttl integration tests                      |
+| `make test-integration` | Run chainsaw integration tests                             |
+| `make test-integration-core` | Run core chainsaw integration tests                   |
 | `make verify`           | Check generated files are up-to-date (CI)                  |
 | `make lint`             | Run golangci-lint                                          |
 
@@ -107,13 +107,14 @@ make k3d-cluster-down
 
 ### Running Integration Tests
 
-The `test/integration/` directory contains [kuttl](https://kuttl.dev/) tests that verify the provider's behavior.
+The `test/integration/` directory contains [chainsaw](https://kyverno.github.io/chainsaw/) tests that verify the provider's behavior.
 
 #### Prerequisites
 
-1. OpenEverest CRDs and the CloudNativePG operator installed (see [Local](#local) above)
-2. Provider CR registered — `make helm-install` (or render and apply the Provider manifest from the chart)
-3. Provider running in the background — use `make run`; if the provider was installed via Helm, scale its Deployment to 0 first to avoid duplicate reconciliation
+1. [chainsaw](https://kyverno.github.io/chainsaw/) installed and available on `PATH`
+2. OpenEverest CRDs and the CloudNativePG operator installed (see [Local](#local) above)
+3. Provider CR registered — `make helm-install` (or render and apply the Provider manifest from the chart)
+4. Provider running in the background — use `make run`; if the provider was installed via Helm, scale its Deployment to 0 first to avoid duplicate reconciliation
 
 ```bash
 make run
@@ -127,8 +128,8 @@ make test-integration
 # Or run the core replicaset suite only:
 make test-integration-core-replicaset
 
-# Or invoke kuttl directly:
-. ./test/vars.sh && kubectl kuttl test --config ./test/integration/kuttl.yaml
+# Or invoke chainsaw directly:
+. ./test/vars.sh && chainsaw test --config ./test/integration/.chainsaw.yaml ./test/integration
 ```
 
 **Note:** The tests assume the provider is already running. They create/update/delete `Instance` resources and assert that the corresponding CloudNativePG `Cluster` resources are reconciled correctly. Cluster readiness is mocked via status patches so tests do not require real PostgreSQL pods.
