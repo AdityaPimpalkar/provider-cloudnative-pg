@@ -6,9 +6,6 @@ $(LOCALBIN):
 # CONTAINER_TOOL defines the container tool to be used for building images.
 CONTAINER_TOOL ?= docker
 
-# OpenEverest branch to use for OpenEverest CRD installation.
-OPENEVEREST_BRANCH ?= release-2.0
-
 # Image URL to use for building/pushing image targets
 IMG ?= ghcr.io/adityapimpalkar/provider-cloudnative-pg:latest
 _IMG_REPO = $(firstword $(subst :, ,$(IMG)))
@@ -32,6 +29,9 @@ GOLANGCI_LINT ?= $(LOCALBIN)/golangci-lint-$(GOLANGCI_LINT_VERSION)
 # Helm chart directory
 CHART_DIR ?= charts/provider-cloudnative-pg
 CNPG_HELM_REPO ?= https://cloudnative-pg.github.io/charts
+OPENEVEREST_HELM_REPO ?= https://openeverest.github.io/helm-charts/
+# Pin a published everest-crds chart version (pre-releases need an explicit pin).
+OPENEVEREST_CRDS_VERSION ?= 2.0.0-dev.2
 # Namespace for standalone operator/plugin install (`make install-cloudnative-pg`).
 HELM_NAMESPACE ?= default
 
@@ -167,7 +167,17 @@ deploy-provider-ci: helm-deps ## Deploy the provider via Helm for CI (IMG must a
 		--set image.repository=$(_IMG_REPO) \
 		--set image.tag=$(_IMG_TAG) \
 		--set image.pullPolicy=Never \
-		--set plugin-barman-cloud.enabled=false
+		--set plugin-barman-cloud.enabled=false \
+		--wait --timeout 5m
+
+.PHONY: install-openeverest-crds
+install-openeverest-crds: ## Install OpenEverest CRDs via the everest-crds Helm chart.
+	@helm repo add openeverest $(OPENEVEREST_HELM_REPO) >/dev/null 2>&1 || true
+	helm repo update openeverest
+	helm upgrade --install everest-crds openeverest/everest-crds \
+	  --version $(OPENEVEREST_CRDS_VERSION) \
+	  --namespace everest-system \
+	  --create-namespace \
 
 .PHONY: install-cloudnative-pg
 install-cloudnative-pg: ## Install CloudNativePG operator, Barman plugin, and BackupClasses.

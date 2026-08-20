@@ -302,9 +302,9 @@ func (p *Provider) Status(c *controller.Context) (controller.Status, error) {
 			pg.Status.ReadyInstances,
 			pg.Status.Instances,
 		)), nil
-	} else {
-		return controller.Initializing("waiting for CloudNativePG cluster to initialize"), nil
 	}
+
+	return controller.Initializing("waiting for CloudNativePG cluster to initialize"), nil
 }
 
 // Cleanup handles deletion of provider-managed resources.

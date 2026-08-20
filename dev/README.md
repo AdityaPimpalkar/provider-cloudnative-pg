@@ -94,8 +94,8 @@ make install-cloudnative-pg
 make install-barman-plugin
 ```
 
-`make install-crds` is only needed if the OpenEverest core is **not** running
-(the core Tilt already installs those CRDs).
+`make install-openeverest-crds` is only needed if the OpenEverest core is **not**
+running (the core Tilt / Helm chart already installs those CRDs).
 
 ### 3. Configure provider Tilt
 

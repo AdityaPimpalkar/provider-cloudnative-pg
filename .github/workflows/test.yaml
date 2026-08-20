@@ -69,14 +69,11 @@ jobs:
         run: make load-image
 
       - name: Install OpenEverest CRDs
-        run: make install-crds
-
-      - name: Create CNPG namespace
-        run: kubectl create namespace cnpg-system --dry-run=client -o yaml | kubectl apply -f -
+        run: make install-openeverest-crds
 
       - name: Install Barman plugin
         run: |
-          make install-barman-plugin
+          HELM_NAMESPACE=provider-system make install-barman-plugin
           kubectl wait --for=condition=Established crd/objectstores.barmancloud.cnpg.io --timeout=2m
 
       - name: Deploy provider
@@ -85,7 +82,7 @@ jobs:
       - name: Wait for provider
         run: |
           kubectl wait --for=condition=Available -n provider-system \
-            deploy --all --timeout=5m
+            deploy/provider-cloudnative-pg deploy/cnpg-operator --timeout=5m
           kubectl get provider provider-cloudnative-pg
 
       - name: Run integration tests

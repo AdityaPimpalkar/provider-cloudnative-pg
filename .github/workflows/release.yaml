@@ -260,23 +260,3 @@ jobs:
               "${prerelease_args[@]}"
             gh release edit "$tag" --draft=false
           fi
-
-      - name: Update Helm repo index on gh-pages
-        env:
-          CR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          # Install chart-releaser for index generation only (not cr upload).
-          cr_version=v1.7.0
-          install="${RUNNER_TEMP}/cr"
-          mkdir -p "$install"
-          curl -sSLfo /tmp/cr.tar.gz \
-            "https://github.com/helm/chart-releaser/releases/download/${cr_version}/chart-releaser_${cr_version#v}_linux_amd64.tar.gz"
-          tar -xzf /tmp/cr.tar.gz -C "$install" cr
-          "$install/cr" index \
-            --owner "${{ github.repository_owner }}" \
-            --git-repo "${{ github.event.repository.name }}" \
-            --token "${CR_TOKEN}" \
-            --pages-branch gh-pages \
-            --package-path .cr-release-packages \
-            --index-path index.yaml \
-            --push
