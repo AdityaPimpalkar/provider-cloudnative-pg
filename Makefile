@@ -6,9 +6,6 @@ $(LOCALBIN):
 # CONTAINER_TOOL defines the container tool to be used for building images.
 CONTAINER_TOOL ?= docker
 
-# OpenEverest branch to use for OpenEverest CRD installation.
-OPENEVEREST_BRANCH ?= release-2.0
-
 # Image URL to use for building/pushing image targets
 IMG ?= ghcr.io/adityapimpalkar/provider-cloudnative-pg:latest
 _IMG_REPO = $(firstword $(subst :, ,$(IMG)))
@@ -32,8 +29,11 @@ GOLANGCI_LINT ?= $(LOCALBIN)/golangci-lint-$(GOLANGCI_LINT_VERSION)
 # Helm chart directory
 CHART_DIR ?= charts/provider-cloudnative-pg
 CNPG_HELM_REPO ?= https://cloudnative-pg.github.io/charts
-
-BARMAN_PLUGIN_VERSION ?= v0.13.0
+OPENEVEREST_HELM_REPO ?= https://openeverest.github.io/helm-charts/
+# Pin a published everest-crds chart version (pre-releases need an explicit pin).
+OPENEVEREST_CRDS_VERSION ?= 2.0.0-dev.2
+# Namespace for standalone operator/plugin install (`make install-cloudnative-pg`).
+HELM_NAMESPACE ?= default
 
 .PHONY: help
 help: ## Display this help.
@@ -167,34 +167,41 @@ deploy-provider-ci: helm-deps ## Deploy the provider via Helm for CI (IMG must a
 		--set image.repository=$(_IMG_REPO) \
 		--set image.tag=$(_IMG_TAG) \
 		--set image.pullPolicy=Never \
+		--set plugin-barman-cloud.enabled=false \
 		--wait --timeout 5m
 
-.PHONY: install-crds
-install-crds: ## Install OpenEverest CRDs into the cluster.
-	kubectl apply -f https://raw.githubusercontent.com/openeverest/openeverest/$(OPENEVEREST_BRANCH)/config/crd/bases/core.openeverest.io_providers.yaml
-	kubectl apply -f https://raw.githubusercontent.com/openeverest/openeverest/$(OPENEVEREST_BRANCH)/config/crd/bases/core.openeverest.io_instances.yaml
-	kubectl apply -f https://raw.githubusercontent.com/openeverest/openeverest/$(OPENEVEREST_BRANCH)/config/crd/bases/backup.openeverest.io_backupclasses.yaml
-	kubectl apply -f https://raw.githubusercontent.com/openeverest/openeverest/$(OPENEVEREST_BRANCH)/config/crd/bases/backup.openeverest.io_backupstorages.yaml
-	kubectl apply -f https://raw.githubusercontent.com/openeverest/openeverest/$(OPENEVEREST_BRANCH)/config/crd/bases/backup.openeverest.io_backups.yaml
-	kubectl apply -f https://raw.githubusercontent.com/openeverest/openeverest/$(OPENEVEREST_BRANCH)/config/crd/bases/backup.openeverest.io_restores.yaml
+.PHONY: install-openeverest-crds
+install-openeverest-crds: ## Install OpenEverest CRDs via the everest-crds Helm chart.
+	@helm repo add openeverest $(OPENEVEREST_HELM_REPO) >/dev/null 2>&1 || true
+	helm repo update openeverest
+	helm upgrade --install everest-crds openeverest/everest-crds \
+	  --version $(OPENEVEREST_CRDS_VERSION) \
+	  --namespace everest-system \
+	  --create-namespace \
 
 .PHONY: install-cloudnative-pg
-install-cloudnative-pg: install-crds ## Install CRDs, CloudNativePG operator, Barman plugin, and BackupClasses.
+install-cloudnative-pg: ## Install CloudNativePG operator, Barman plugin, and BackupClasses.
 	helm repo add cnpg https://cloudnative-pg.github.io/charts
 	helm upgrade --install cnpg \
-	  --namespace cnpg-system \
+	  --namespace $(HELM_NAMESPACE) \
 	  --create-namespace \
 	  cnpg/cloudnative-pg
 	$(MAKE) install-barman-plugin
 	$(MAKE) install-backupclasses
 
 .PHONY: install-barman-plugin
-install-barman-plugin: ## Install cert-manager and the CNPG-I Barman Cloud Plugin (cnpg-system).
+install-barman-plugin: ## Install cert-manager (cluster-wide) and the Barman Cloud Plugin (standalone; also bundled by the Helm chart).
 	helm upgrade --install cert-manager oci://quay.io/jetstack/charts/cert-manager \
 	  --version v1.20.3 \
 	  --namespace cert-manager --create-namespace \
-	  --set crds.enabled=true
-	kubectl apply -f https://github.com/cloudnative-pg/plugin-barman-cloud/releases/download/$(BARMAN_PLUGIN_VERSION)/manifest.yaml
+	  --set crds.enabled=true \
+	  --wait --timeout 5m
+	helm repo add cnpg https://cloudnative-pg.github.io/charts
+	helm upgrade --install plugin-barman-cloud \
+	  --namespace $(HELM_NAMESPACE) \
+	  --create-namespace \
+	  cnpg/plugin-barman-cloud \
+	  --version 0.7.0
 
 .PHONY: install-backupclasses
 install-backupclasses: ## Install provider BackupClass CRs into the cluster.
