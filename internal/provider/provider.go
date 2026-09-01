@@ -40,6 +40,7 @@ func New() *Provider {
 			WatchConfigs: []controller.WatchConfig{
 				controller.WatchOwned(&cnpgv1.Cluster{}),
 				controller.WatchOwned(&barmancloudv1.ObjectStore{}),
+				controller.WatchOwned(&cnpgv1.ScheduledBackup{}),
 			},
 			SchemeFuncs: []func(*runtime.Scheme) error{
 				cnpgv1.SchemeBuilder.AddToScheme,

@@ -16,11 +16,15 @@ import (
 	"github.com/openeverest/openeverest/v2/provider-runtime/controller"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/runtime"
 )
 
 func SyncBackupInfrastructure(c *controller.Context) ([]cnpgv1.PluginConfiguration, error) {
 	backupCfg := c.Instance().Spec.Backup
 	if backupCfg == nil || !backupCfg.Enabled || len(backupCfg.Storages) == 0 {
+		if err := SyncScheduledBackups(c); err != nil {
+			return nil, err
+		}
 		return nil, nil
 	}
 
@@ -70,10 +74,14 @@ func SyncBackupInfrastructure(c *controller.Context) ([]cnpgv1.PluginConfigurati
 			return nil, err
 		}
 
-		objStore := buildObjectStore(c, strg.StorageRef.Name, bg, endpointCA)
+		objStore := buildObjectStore(c, strg.StorageRef.Name, bg, endpointCA, strg.Schedules)
 		if err := c.Apply(objStore); err != nil {
 			return nil, fmt.Errorf("apply ObjectStore %q: %w", strg.StorageRef.Name, err)
 		}
+	}
+
+	if err := SyncScheduledBackups(c); err != nil {
+		return nil, err
 	}
 
 	return []cnpgv1.PluginConfiguration{{
@@ -91,11 +99,12 @@ func buildObjectStore(
 	logicalName string,
 	bg *backupv1alpha1.BackupStorage,
 	endpointCA *machineryapi.SecretKeySelector,
+	schedules []corev1alpha1.InstanceBackupSchedule,
 ) *barmancloudv1.ObjectStore {
 	s3 := bg.Spec.S3
 	secretName := s3.CredentialsSecretRef.Name
 
-	return &barmancloudv1.ObjectStore{
+	obj := &barmancloudv1.ObjectStore{
 		ObjectMeta: c.ObjectMeta(logicalName),
 		Spec: barmancloudv1.ObjectStoreSpec{
 			Configuration: barmanapi.BarmanObjectStoreConfiguration{
@@ -118,8 +127,10 @@ func buildObjectStore(
 					Compression: barmanapi.CompressionTypeGzip,
 				},
 			},
+			RetentionPolicy: retentionPolicyFromSchedules(schedules),
 		},
 	}
+	return obj
 }
 
 func endpointCARef(c *controller.Context, logicalName, endpointURL string) (*machineryapi.SecretKeySelector, error) {
@@ -162,11 +173,17 @@ func selectMainStorageName(storages []corev1alpha1.InstanceBackupStorage) string
 }
 
 func DecodeBackupConfig(backup *backupv1alpha1.Backup) (cnpgbarmanplugin.CnpgBarmanPluginBackupConfig, error) {
+	return DecodeBackupParameters(backup.Spec.Parameters)
+}
+
+// DecodeBackupParameters unmarshals BackupClass-validated parameters from a
+// Backup CR or InstanceBackupSchedule.
+func DecodeBackupParameters(params *runtime.RawExtension) (cnpgbarmanplugin.CnpgBarmanPluginBackupConfig, error) {
 	var cfg cnpgbarmanplugin.CnpgBarmanPluginBackupConfig
-	if backup.Spec.Parameters == nil || len(backup.Spec.Parameters.Raw) == 0 {
+	if params == nil || len(params.Raw) == 0 {
 		return cfg, nil
 	}
-	if err := json.Unmarshal(backup.Spec.Parameters.Raw, &cfg); err != nil {
+	if err := json.Unmarshal(params.Raw, &cfg); err != nil {
 		return cfg, fmt.Errorf("decode backup config: %w", err)
 	}
 	return cfg, nil

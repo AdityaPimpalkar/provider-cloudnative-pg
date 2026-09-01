@@ -74,7 +74,8 @@ Stateful workloads additionally report:
 | Storage expansion | ✅ | when the StorageClass allows volume expansion (`resizeInUseVolumes`) |
 | Backups (on demand) | ✅ | operator-native (`executionMode: ProviderManaged`) via the Barman Cloud Plugin |
 | Restore | ✅ | from a succeeded Backup via Barman |
-| Scheduled backups / PITR | 🚧 | not yet supported |
+| Scheduled backups | ✅ | `Instance.spec.backup.storages[].schedules` → CNPG `ScheduledBackup`; `retentionCopies` approximated onto `ObjectStore.retentionPolicy` |
+| PITR | 🚧 | WAL archiving ObjectStore wiring present; full PITR restore UX not yet supported |
 
 ## Installation
 
