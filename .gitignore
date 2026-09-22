@@ -15,7 +15,7 @@ bin/
 cover.out
 
 # env file
-.env
+dev/.env
 
 # IDE
 .idea/

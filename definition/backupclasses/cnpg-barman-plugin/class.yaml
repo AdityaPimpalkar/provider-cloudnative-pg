@@ -10,6 +10,7 @@ description: CloudNativePG backups via the CNPG-I Barman Cloud Plugin (object-st
 displayName: CNPG Barman Cloud Plugin
 executionMode: ProviderManaged
 providerManaged:
+    supportsPITR: true
     limits: {}
 supportedProviders:
     - provider-cloudnative-pg
