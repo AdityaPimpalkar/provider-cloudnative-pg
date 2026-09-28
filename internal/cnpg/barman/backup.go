@@ -15,6 +15,7 @@ import (
 	"github.com/openeverest/openeverest/v2/provider-runtime/controller"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/runtime"
 )
 
 func SyncBackupInfrastructure(c *controller.Context) ([]cnpgv1.PluginConfiguration, error) {
@@ -149,11 +150,15 @@ func endpointCARef(c *controller.Context, logicalName, endpointURL string) (*mac
 }
 
 func DecodeBackupConfig(backup *backupv1alpha1.Backup) (cnpgbarmanplugin.CnpgBarmanPluginBackupConfig, error) {
+	return decodeBackupParameters(backup.Spec.Parameters)
+}
+
+func decodeBackupParameters(raw *runtime.RawExtension) (cnpgbarmanplugin.CnpgBarmanPluginBackupConfig, error) {
 	var cfg cnpgbarmanplugin.CnpgBarmanPluginBackupConfig
-	if backup.Spec.Parameters == nil || len(backup.Spec.Parameters.Raw) == 0 {
+	if raw == nil || len(raw.Raw) == 0 {
 		return cfg, nil
 	}
-	if err := json.Unmarshal(backup.Spec.Parameters.Raw, &cfg); err != nil {
+	if err := json.Unmarshal(raw.Raw, &cfg); err != nil {
 		return cfg, fmt.Errorf("decode backup config: %w", err)
 	}
 	return cfg, nil
