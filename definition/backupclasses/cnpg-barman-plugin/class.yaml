@@ -11,6 +11,10 @@ displayName: CNPG Barman Cloud Plugin
 executionMode: ProviderManaged
 providerManaged:
     supportsPITR: true
-    limits: {}
+    # CNPG allows a single WAL archiver plugin, and the plugin writes base backups
+    # to that same ObjectStore, so only one storage can hold restorable backups.
+    limits:
+        maxStorages: 1
+        maxPITREnabledStorages: 1
 supportedProviders:
     - provider-cloudnative-pg

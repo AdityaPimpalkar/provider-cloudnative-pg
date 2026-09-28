@@ -12,3 +12,14 @@ func PluginConfiguration(storageName string) *cnpgv1.BackupPluginConfiguration {
 		},
 	}
 }
+
+// ArchiveObjectStoreName returns the ObjectStore the Cluster archives WAL to,
+// which is also where the plugin writes every base backup.
+func ArchiveObjectStoreName(cluster *cnpgv1.Cluster) string {
+	for _, plugin := range cluster.Spec.Plugins {
+		if plugin.Name == PluginName && plugin.IsEnabled() {
+			return plugin.Parameters[PluginParameterObjectStore]
+		}
+	}
+	return ""
+}
