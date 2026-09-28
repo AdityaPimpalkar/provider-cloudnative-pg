@@ -76,5 +76,15 @@ func ValidateEngine(engine corev1alpha1.ComponentSpec) error {
 	if engine.Resources.Limits.Cpu().IsZero() || engine.Resources.Limits.Memory().IsZero() {
 		return fmt.Errorf("both CPU and memory limits are required")
 	}
+	if engine.Resources.Requests.Cpu().Cmp(*engine.Resources.Limits.Cpu()) > 0 {
+		return fmt.Errorf("CPU request %s is greater than limit %s",
+			engine.Resources.Requests.Cpu().String(),
+			engine.Resources.Limits.Cpu().String())
+	}
+	if engine.Resources.Requests.Memory().Cmp(*engine.Resources.Limits.Memory()) > 0 {
+		return fmt.Errorf("memory request %s is greater than limit %s",
+			engine.Resources.Requests.Memory().String(),
+			engine.Resources.Limits.Memory().String())
+	}
 	return nil
 }

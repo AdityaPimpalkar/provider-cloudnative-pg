@@ -13,6 +13,8 @@ import (
 	barman "github.com/adityapimpalkar/provider-cloudnative-pg/internal/cnpg/barman"
 	corev1alpha1 "github.com/openeverest/openeverest/v2/api/core/v1alpha1"
 
+	backupv1alpha1 "github.com/openeverest/openeverest/v2/api/backup/v1alpha1"
+
 	barmancloudv1 "github.com/cloudnative-pg/plugin-barman-cloud/api/v1"
 
 	"github.com/openeverest/openeverest/v2/provider-runtime/controller"
@@ -81,7 +83,11 @@ func (p *Provider) Validate(c *controller.Context) error {
 		}
 	}
 
-	return cnpg.ValidateCustomSpec(&custom)
+	if err := cnpg.ValidateCustomSpec(&custom); err != nil {
+		return err
+	}
+
+	return barman.ValidateDataSource(c.Instance().Spec.DataSource)
 }
 
 // Sync ensures all required resources exist and are configured correctly.
@@ -91,8 +97,7 @@ func (p *Provider) Validate(c *controller.Context) error {
 func (p *Provider) Sync(c *controller.Context) error {
 	l := log.FromContext(c.Context())
 	l.Info("Syncing instance", "name", c.Name())
-	dataSource, err := c.ReconcileDataSource()
-	if err != nil {
+	if _, err := c.ReconcileDataSource(); err != nil {
 		return fmt.Errorf("reconcile data source: %w", err)
 	}
 
@@ -181,10 +186,6 @@ func (p *Provider) Sync(c *controller.Context) error {
 		return err
 	}
 
-	if !dataSource.Done {
-		return controller.WaitFor(dataSource.Message)
-	}
-
 	return nil
 }
 
@@ -230,6 +231,19 @@ func buildClusterSpec(engine corev1alpha1.ComponentSpec, custom components.CNPGC
 func (p *Provider) Status(c *controller.Context) (controller.Status, error) {
 	l := log.FromContext(c.Context())
 	l.Info("Computing status", "name", c.Name())
+
+	if ds := c.Instance().Spec.DataSource; ds != nil {
+		if s := c.GetDataSourceStatus(); s == nil || !s.Done {
+			switch ds.Type {
+			case backupv1alpha1.DataSourceTypePointInTime:
+				return controller.Restoring("point-in-time recovery in progress"), nil
+			case backupv1alpha1.DataSourceTypeBackup:
+				return controller.Restoring("restoring from backup"), nil
+			default:
+				return controller.Restoring("restore in progress"), nil
+			}
+		}
+	}
 
 	pg := &cnpgv1.Cluster{}
 	if err := c.Get(pg, c.Name()); err != nil {

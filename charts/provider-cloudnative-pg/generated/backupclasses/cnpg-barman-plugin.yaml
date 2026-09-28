@@ -16,6 +16,7 @@ spec:
       type: object
   providerManaged:
     limits: {}
+    supportsPITR: true
   supportedProviders:
     - provider-cloudnative-pg
   uiSchema:
