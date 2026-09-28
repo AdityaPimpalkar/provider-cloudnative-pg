@@ -7,6 +7,7 @@ import (
 	cnpgv1 "github.com/cloudnative-pg/cloudnative-pg/api/v1"
 	backupv1alpha1 "github.com/openeverest/openeverest/v2/api/backup/v1alpha1"
 	commonv1alpha1 "github.com/openeverest/openeverest/v2/api/common/v1alpha1"
+	corev1alpha1 "github.com/openeverest/openeverest/v2/api/core/v1alpha1"
 	"github.com/openeverest/openeverest/v2/provider-runtime/controller"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -40,6 +41,16 @@ func (p *Provider) SyncBackup(c *controller.Context, backup *backupv1alpha1.Back
 			}, nil
 		}
 		return controller.BackupExecutionStatus{}, fmt.Errorf("get CloudnativePG: %w", err)
+	}
+
+	exists, err := c.Exists(&cnpgv1.Backup{}, backup.Name)
+	if err != nil {
+		return controller.BackupExecutionStatus{}, fmt.Errorf("get CloudNativePG backup: %w", err)
+	}
+	if !exists {
+		if blocked := backupStorageBlocker(c.Instance(), cluster, backup.Spec.StorageRef.Name); blocked != nil {
+			return *blocked, nil
+		}
 	}
 
 	backupCfg, err := barman.DecodeBackupConfig(backup)
@@ -94,6 +105,39 @@ func (p *Provider) SyncBackup(c *controller.Context, backup *backupv1alpha1.Back
 	}
 
 	return exec, nil
+}
+
+// backupStorageBlocker returns the status to report instead of creating the CNPG
+// Backup, or nil when the backup can start.
+func backupStorageBlocker(instance *corev1alpha1.Instance, cluster *cnpgv1.Cluster, storageName string) *controller.BackupExecutionStatus {
+	if !instanceHasBackupStorage(instance, storageName) {
+		return &controller.BackupExecutionStatus{
+			State: backupv1alpha1.BackupStateFailed,
+			Message: fmt.Sprintf("storage %q is not configured in spec.backup.storages of Instance %q",
+				storageName, instance.Name),
+		}
+	}
+	// The plugin writes base backups to the Cluster's WAL archive whatever storage the Backup names.
+	if barman.ArchiveObjectStoreName(cluster) != storageName {
+		return &controller.BackupExecutionStatus{
+			State:   backupv1alpha1.BackupStatePending,
+			Message: fmt.Sprintf("waiting for CloudNativePG cluster to archive to storage %q", storageName),
+		}
+	}
+	return nil
+}
+
+func instanceHasBackupStorage(instance *corev1alpha1.Instance, storageName string) bool {
+	backup := instance.Spec.Backup
+	if backup == nil || !backup.Enabled {
+		return false
+	}
+	for _, storage := range backup.Storages {
+		if storage.StorageRef.Name == storageName {
+			return true
+		}
+	}
+	return false
 }
 
 // SyncRestore resolves the source Backup CR, creates or updates the operator's
