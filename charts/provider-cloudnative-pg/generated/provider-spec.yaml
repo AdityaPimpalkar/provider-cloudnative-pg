@@ -777,7 +777,7 @@ spec:
                       action:
                         type: string
                       modulus:
-                        format: uint64
+                        format: int64
                         type: integer
                       regex:
                         type: string
@@ -799,7 +799,7 @@ spec:
                       action:
                         type: string
                       modulus:
-                        format: uint64
+                        format: int64
                         type: integer
                       regex:
                         type: string
