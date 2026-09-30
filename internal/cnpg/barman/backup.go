@@ -12,7 +12,6 @@ import (
 	machineryapi "github.com/cloudnative-pg/machinery/pkg/api"
 	barmancloudv1 "github.com/cloudnative-pg/plugin-barman-cloud/api/v1"
 	backupv1alpha1 "github.com/openeverest/openeverest/v2/api/backup/v1alpha1"
-	corev1alpha1 "github.com/openeverest/openeverest/v2/api/core/v1alpha1"
 	"github.com/openeverest/openeverest/v2/provider-runtime/controller"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -24,7 +23,7 @@ func SyncBackupInfrastructure(c *controller.Context) ([]cnpgv1.PluginConfigurati
 		return nil, nil
 	}
 
-	mainName := selectMainStorageName(backupCfg.Storages)
+	mainName := backupCfg.Storages[0].StorageRef.Name
 	for _, strg := range backupCfg.Storages {
 		bg, err := c.BackupStorage(strg.StorageRef.Name)
 		if err != nil {
@@ -147,18 +146,6 @@ func endpointCARef(c *controller.Context, logicalName, endpointURL string) (*mac
 		LocalObjectReference: machineryapi.LocalObjectReference{Name: name},
 		Key:                  EndpointCAKey,
 	}, nil
-}
-
-func selectMainStorageName(storages []corev1alpha1.InstanceBackupStorage) string {
-	for _, s := range storages {
-		if s.PITR != nil && s.PITR.Enabled {
-			return s.StorageRef.Name
-		}
-	}
-	if len(storages) > 0 {
-		return storages[0].StorageRef.Name
-	}
-	return ""
 }
 
 func DecodeBackupConfig(backup *backupv1alpha1.Backup) (cnpgbarmanplugin.CnpgBarmanPluginBackupConfig, error) {
