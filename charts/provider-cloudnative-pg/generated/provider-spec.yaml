@@ -3,6 +3,7 @@
 spec:
   componentTypes:
     postgresql:
+      defaultVersion: "17.10"
       versions:
         - image: ghcr.io/cloudnative-pg/postgresql:14.23-standard-trixie
           version: "14.23"
@@ -10,8 +11,7 @@ spec:
           version: "15.18"
         - image: ghcr.io/cloudnative-pg/postgresql:16.14-standard-trixie
           version: "16.14"
-        - default: true
-          image: ghcr.io/cloudnative-pg/postgresql:17.10-standard-trixie
+        - image: ghcr.io/cloudnative-pg/postgresql:17.10-standard-trixie
           version: "17.10"
         - image: ghcr.io/cloudnative-pg/postgresql:18.4-standard-trixie
           version: "18.4"
@@ -777,7 +777,7 @@ spec:
                       action:
                         type: string
                       modulus:
-                        format: uint64
+                        format: int64
                         type: integer
                       regex:
                         type: string
@@ -799,7 +799,7 @@ spec:
                       action:
                         type: string
                       modulus:
-                        format: uint64
+                        format: int64
                         type: integer
                       regex:
                         type: string
@@ -1034,6 +1034,9 @@ spec:
               type: boolean
           type: object
       type: postgresql
+  defaultVersion: "17.10"
+  release:
+    version: 0.2.2
   topologies:
     replicaSet:
       components:
@@ -1259,7 +1262,6 @@ spec:
   versions:
     - components:
         engine: "17.10"
-      default: true
       name: "17.10"
     - components:
         engine: "18.4"
