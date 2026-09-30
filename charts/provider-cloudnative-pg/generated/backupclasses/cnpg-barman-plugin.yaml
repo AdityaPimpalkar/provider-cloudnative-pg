@@ -15,7 +15,9 @@ spec:
           type: string
       type: object
   providerManaged:
-    limits: {}
+    limits:
+      maxPITREnabledStorages: 1
+      maxStorages: 1
     supportsPITR: true
   supportedProviders:
     - provider-cloudnative-pg
