@@ -41,6 +41,7 @@ func New() *Provider {
 			ProviderName: common.ProviderName,
 			WatchConfigs: []controller.WatchConfig{
 				controller.WatchOwned(&cnpgv1.Cluster{}),
+				controller.WatchOwned(&cnpgv1.Database{}),
 				controller.WatchOwned(&barmancloudv1.ObjectStore{}),
 			},
 			SchemeFuncs: []func(*runtime.Scheme) error{
@@ -84,6 +85,10 @@ func (p *Provider) Validate(c *controller.Context) error {
 	}
 
 	if err := cnpg.ValidateCustomSpec(&custom); err != nil {
+		return err
+	}
+
+	if err := cnpg.ValidateTimescaleDB(&custom, engine.Version, c.Instance().Spec.Version); err != nil {
 		return err
 	}
 
@@ -161,6 +166,10 @@ func (p *Provider) Sync(c *controller.Context) error {
 		pg.Spec.Monitoring = custom.Monitoring
 	}
 
+	if cnpg.IsTimescaleDBEnabled(&custom) {
+		cnpg.BuildTimescaleDBExtension(pg)
+	}
+
 	if c.Instance().Spec.DataSource != nil {
 		recovery, externalCluster, err := barman.BuildRecoveryConfig(c, custom)
 		if err != nil {
@@ -183,6 +192,10 @@ func (p *Provider) Sync(c *controller.Context) error {
 	}
 
 	if err := c.Apply(pg); err != nil {
+		return err
+	}
+
+	if err := cnpg.SyncTimescaleDBDatabase(c, &custom); err != nil {
 		return err
 	}
 
@@ -254,6 +267,17 @@ func (p *Provider) Status(c *controller.Context) (controller.Status, error) {
 	if readyCondition != nil && readyCondition.Status == metav1.ConditionTrue && pg.Status.Instances > 0 && pg.Status.ReadyInstances == pg.Status.Instances {
 		if roleStatus, blocked := cnpg.ManagedRolesStatus(pg); blocked {
 			return roleStatus, nil
+		}
+
+		engine := c.Instance().Spec.Components[common.ComponentEngine]
+		var custom components.CNPGCustomSpec
+		if c.TryDecodeComponentParameters(engine, &custom) {
+			if err := c.DecodeComponentParameters(engine, &custom); err != nil {
+				return controller.Provisioning(fmt.Sprintf("failed to decode component custom spec: %v", err)), nil
+			}
+		}
+		if tsStatus, blocked := cnpg.TimescaleDBStatus(c, &custom); blocked {
+			return tsStatus, nil
 		}
 
 		host := fmt.Sprintf("%s.%s.svc", pg.GetServiceReadWriteName(), c.Namespace())
