@@ -120,6 +120,7 @@ rules:
   resources:
   - backups
   - clusters
+  - databases
   - scheduledbackups
   verbs:
   - create
@@ -134,5 +135,6 @@ rules:
   resources:
   - backups/status
   - clusters/status
+  - databases/status
   verbs:
   - get

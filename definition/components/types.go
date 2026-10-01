@@ -32,6 +32,26 @@ type CNPGCustomSpec struct {
 	Certificates *cnpgv1.CertificatesConfiguration `json:"certificates,omitempty"`
 
 	Monitoring *cnpgv1.MonitoringConfiguration `json:"monitoring,omitempty"`
+
+	// Extensions configures first-class PostgreSQL extensions managed by this provider.
+	Extensions *ExtensionsSpec `json:"extensions,omitempty"`
+}
+
+// ExtensionsSpec lists optional extensions the provider can install and enable.
+type ExtensionsSpec struct {
+	// TimescaleDB installs the Apache-2.0 timescaledb-oss image volume and enables
+	// CREATE EXTENSION timescaledb in the application database.
+	// Requires PostgreSQL 18 and Kubernetes ImageVolume support (1.35+, or 1.33/1.34
+	// with the ImageVolume feature gate). See:
+	// https://github.com/cloudnative-pg/postgres-extensions-containers/tree/main/timescaledb-oss
+	TimescaleDB *TimescaleDBSpec `json:"timescaledb,omitempty"`
+}
+
+// TimescaleDBSpec enables the TimescaleDB OSS extension.
+type TimescaleDBSpec struct {
+	// Enabled installs the extension image on the Cluster and creates a CNPG
+	// Database resource that runs CREATE EXTENSION timescaledb.
+	Enabled bool `json:"enabled"`
 }
 
 type BootstrapConfiguration struct {
