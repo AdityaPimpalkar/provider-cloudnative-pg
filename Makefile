@@ -31,7 +31,7 @@ CHART_DIR ?= charts/provider-cloudnative-pg
 CNPG_HELM_REPO ?= https://cloudnative-pg.github.io/charts
 OPENEVEREST_HELM_REPO ?= https://openeverest.github.io/helm-charts/
 # Pin a published everest-crds chart version (pre-releases need an explicit pin).
-OPENEVEREST_CRDS_VERSION ?= 2.0.0-dev.2
+OPENEVEREST_CRDS_VERSION ?= 2.0.0-dev.3
 # Namespace for standalone operator/plugin install (`make install-cloudnative-pg`).
 HELM_NAMESPACE ?= default
 
