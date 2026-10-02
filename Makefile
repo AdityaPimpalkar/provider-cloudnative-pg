@@ -32,9 +32,6 @@ CNPG_HELM_REPO ?= https://cloudnative-pg.github.io/charts
 OPENEVEREST_HELM_REPO ?= https://openeverest.github.io/helm-charts/
 # Pin a published everest-crds chart version (pre-releases need an explicit pin).
 OPENEVEREST_CRDS_VERSION ?= 2.0.0-dev.3
-# Provider CRD commit with spec.defaultVersion (openeverest#3264). Chart 2.0.0-dev.3
-# still lacks that field; overlay until a newer chart is published.
-OPENEVEREST_PROVIDER_CRD_REF ?= 4a6f351191de515076acb45e85fb72873c22d6c1
 # Namespace for standalone operator/plugin install (`make install-cloudnative-pg`).
 HELM_NAMESPACE ?= default
 
@@ -180,8 +177,7 @@ install-openeverest-crds: ## Install OpenEverest CRDs via the everest-crds Helm 
 	helm upgrade --install everest-crds openeverest/everest-crds \
 	  --version $(OPENEVEREST_CRDS_VERSION) \
 	  --namespace everest-system \
-	  --create-namespace
-	kubectl apply -f https://raw.githubusercontent.com/openeverest/openeverest/$(OPENEVEREST_PROVIDER_CRD_REF)/config/crd/bases/core.openeverest.io_providers.yaml
+	  --create-namespace \
 
 .PHONY: install-cloudnative-pg
 install-cloudnative-pg: ## Install CloudNativePG operator, Barman plugin, and BackupClasses.
