@@ -62,7 +62,7 @@ provider itself is covered under [Installation](#installation).
 | Version upgrades | ✅ | of the deployed PostgreSQL version — change `spec.version`; see [Versions](#versions) |
 | Custom configuration | ✅ | PostgreSQL GUCs via `spec.components.engine.parameters.postgresql` |
 | Bootstrap (`initdb`) | ✅ | database name, owner, and credentials secret |
-| TimescaleDB OSS | ✅ | `parameters.extensions.timescaledb.enabled` — PG **18** only; needs Kubernetes ImageVolume (1.35+, or 1.33/1.34 + feature gate). See [examples/instance-timescaledb.yaml](examples/instance-timescaledb.yaml) |
+| TimescaleDB OSS | ✅ | `parameters.extensions.timescaledb.enabled` — PG **18** only; cannot be disabled once enabled; needs Kubernetes ImageVolume (1.35+, or 1.33/1.34 + feature gate). See [examples/instance-timescaledb.yaml](examples/instance-timescaledb.yaml) |
 | Managed roles | ✅ | CloudNativePG managed roles with readiness gating in `Status()` |
 | Pod scheduling (affinity) | ✅ | `spec.components.engine.parameters.affinity` |
 | Monitoring | 🚧 | optional `monitoring` component — wiring in progress; CNPG `monitoring` parameters are accepted |

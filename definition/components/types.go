@@ -50,7 +50,8 @@ type ExtensionsSpec struct {
 // TimescaleDBSpec enables the TimescaleDB OSS extension.
 type TimescaleDBSpec struct {
 	// Enabled installs the extension image on the Cluster and creates a CNPG
-	// Database resource that runs CREATE EXTENSION timescaledb.
+	// Database resource that runs CREATE EXTENSION timescaledb. Cannot be turned
+	// off once enabled.
 	Enabled bool `json:"enabled"`
 }
 

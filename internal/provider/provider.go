@@ -92,6 +92,10 @@ func (p *Provider) Validate(c *controller.Context) error {
 		return err
 	}
 
+	if err := cnpg.ValidateTimescaleDBNotDisabled(c, &custom); err != nil {
+		return err
+	}
+
 	return barman.ValidateDataSource(c.Instance().Spec.DataSource)
 }
 

@@ -1,19 +1,55 @@
 package cnpg
 
 import (
+	"context"
 	"testing"
 
+	"github.com/AlekSi/pointer"
 	cnpgv1 "github.com/cloudnative-pg/cloudnative-pg/api/v1"
+	corev1alpha1 "github.com/openeverest/openeverest/v2/api/core/v1alpha1"
+	"github.com/openeverest/openeverest/v2/provider-runtime/controller"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	"github.com/adityapimpalkar/provider-cloudnative-pg/definition/components"
 )
 
-func TestValidateTimescaleDB(t *testing.T) {
-	enabled := &components.CNPGCustomSpec{
-		Extensions: &components.ExtensionsSpec{
-			TimescaleDB: &components.TimescaleDBSpec{Enabled: true},
+var timescaleEnabled = &components.CNPGCustomSpec{
+	Extensions: &components.ExtensionsSpec{
+		TimescaleDB: &components.TimescaleDBSpec{Enabled: true},
+	},
+}
+
+func newTimescaleTestContext(t *testing.T, objects ...client.Object) *controller.Context {
+	t.Helper()
+	scheme := runtime.NewScheme()
+	if err := cnpgv1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	instance := &corev1alpha1.Instance{ObjectMeta: metav1.ObjectMeta{Name: "pg", Namespace: "ns"}}
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objects...).Build()
+	return controller.NewContext(context.Background(), cl, instance, "provider-cloudnative-pg")
+}
+
+func timescaleDatabase(generation, observedGeneration int64, applied bool) *cnpgv1.Database {
+	return &cnpgv1.Database{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:       TimescaleDBDatabaseName("pg"),
+			Namespace:  "ns",
+			Generation: generation,
+		},
+		Status: cnpgv1.DatabaseStatus{
+			ObservedGeneration: observedGeneration,
+			Applied:            pointer.To(applied),
+			Extensions:         []cnpgv1.DatabaseObjectStatus{{Name: timescaleSQLName, Applied: applied}},
 		},
 	}
+}
+
+func TestValidateTimescaleDB(t *testing.T) {
+	enabled := timescaleEnabled
 
 	if err := ValidateTimescaleDB(enabled, "18.4", ""); err != nil {
 		t.Fatalf("expected PG 18 to be valid: %v", err)
@@ -78,29 +114,52 @@ func TestBuildTimescaleDBDatabase(t *testing.T) {
 	}
 }
 
-func TestTimescaleExtensionEnsureHelpers(t *testing.T) {
-	present := buildTimescaleDBDatabase("pg", nil, cnpgv1.EnsurePresent)
-	if got := timescaleExtensionEnsure(present); got != cnpgv1.EnsurePresent {
-		t.Fatalf("expected present, got %q", got)
+func TestValidateTimescaleDBNotDisabled(t *testing.T) {
+	tests := []struct {
+		name       string
+		custom     *components.CNPGCustomSpec
+		dbExists   bool
+		wantReject bool
+	}{
+		{name: "never enabled", custom: nil},
+		{name: "enabled with existing Database", custom: timescaleEnabled, dbExists: true},
+		{name: "disabled after being enabled", custom: nil, dbExists: true, wantReject: true},
 	}
-
-	absent := buildTimescaleDBDatabase("pg", nil, cnpgv1.EnsureAbsent)
-	if got := timescaleExtensionEnsure(absent); got != cnpgv1.EnsureAbsent {
-		t.Fatalf("expected absent, got %q", got)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var objects []client.Object
+			if tt.dbExists {
+				objects = append(objects, timescaleDatabase(1, 1, true))
+			}
+			err := ValidateTimescaleDBNotDisabled(newTimescaleTestContext(t, objects...), tt.custom)
+			if gotReject := err != nil; gotReject != tt.wantReject {
+				t.Fatalf("rejected = %t, want %t (err: %v)", gotReject, tt.wantReject, err)
+			}
+		})
 	}
+}
 
-	applied := true
-	absent.Status.Applied = &applied
-	absent.Status.Extensions = []cnpgv1.DatabaseObjectStatus{{
-		Name:    timescaleSQLName,
-		Applied: true,
-	}}
-	if !timescaleExtensionAbsentApplied(absent) {
-		t.Fatal("expected absent+applied to be ready for delete")
+func TestTimescaleDBStatus(t *testing.T) {
+	tests := []struct {
+		name        string
+		db          *cnpgv1.Database
+		wantBlocked bool
+	}{
+		{name: "Database missing", wantBlocked: true},
+		{name: "status from a previous generation", db: timescaleDatabase(2, 1, true), wantBlocked: true},
+		{name: "extension not applied", db: timescaleDatabase(1, 1, false), wantBlocked: true},
+		{name: "extension applied", db: timescaleDatabase(1, 1, true)},
 	}
-
-	absent.Status.Applied = nil
-	if timescaleExtensionAbsentApplied(absent) {
-		t.Fatal("expected not ready when Applied is unset")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var objects []client.Object
+			if tt.db != nil {
+				objects = append(objects, tt.db)
+			}
+			status, blocked := TimescaleDBStatus(newTimescaleTestContext(t, objects...), timescaleEnabled)
+			if blocked != tt.wantBlocked {
+				t.Fatalf("blocked = %t, want %t (status: %+v)", blocked, tt.wantBlocked, status)
+			}
+		})
 	}
 }

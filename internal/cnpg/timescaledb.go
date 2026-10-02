@@ -1,6 +1,7 @@
 package cnpg
 
 import (
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -53,6 +54,24 @@ func ValidateTimescaleDB(custom *components.CNPGCustomSpec, engineVersion, insta
 	return nil
 }
 
+// ValidateTimescaleDBNotDisabled rejects turning TimescaleDB off once its Database
+// CR exists. Dropping the extension safely needs the library loaded and no
+// dependent hypertables, which the provider cannot guarantee.
+func ValidateTimescaleDBNotDisabled(c *controller.Context, custom *components.CNPGCustomSpec) error {
+	if IsTimescaleDBEnabled(custom) {
+		return nil
+	}
+
+	err := c.Get(&cnpgv1.Database{}, TimescaleDBDatabaseName(c.Name()))
+	if err == nil {
+		return errors.New("extensions.timescaledb cannot be disabled once enabled")
+	}
+	if controller.IsNotFound(err) {
+		return nil
+	}
+	return fmt.Errorf("get timescaledb Database: %w", err)
+}
+
 func postgresMajor(engineVersion, instanceVersion string) string {
 	for _, v := range []string{engineVersion, instanceVersion} {
 		if v == "" {
@@ -92,10 +111,6 @@ func BuildTimescaleDBExtension(pg *cnpgv1.Cluster) {
 // BuildTimescaleDBDatabase builds the CNPG Database CR that enables
 // CREATE EXTENSION timescaledb in the application database.
 func BuildTimescaleDBDatabase(clusterName string, custom *components.CNPGCustomSpec) *cnpgv1.Database {
-	return buildTimescaleDBDatabase(clusterName, custom, cnpgv1.EnsurePresent)
-}
-
-func buildTimescaleDBDatabase(clusterName string, custom *components.CNPGCustomSpec, ensure cnpgv1.EnsureOption) *cnpgv1.Database {
 	dbName, owner := applicationDatabaseIdentity(custom)
 	return &cnpgv1.Database{
 		Spec: cnpgv1.DatabaseSpec{
@@ -109,7 +124,7 @@ func buildTimescaleDBDatabase(clusterName string, custom *components.CNPGCustomS
 			Extensions: []cnpgv1.ExtensionSpec{{
 				DatabaseObjectSpec: cnpgv1.DatabaseObjectSpec{
 					Name:   timescaleSQLName,
-					Ensure: ensure,
+					Ensure: cnpgv1.EnsurePresent,
 				},
 				Version: timescaleSQLVersion,
 			}},
@@ -117,55 +132,17 @@ func buildTimescaleDBDatabase(clusterName string, custom *components.CNPGCustomS
 	}
 }
 
-// SyncTimescaleDBDatabase applies or cleans up the owned Database CR.
-// When enabled, ensures CREATE EXTENSION. When disabled after a prior enable,
-// flips the extension to EnsureAbsent, waits for CNPG to apply it, then
-// deletes the Database CR (reclaim=retain so the app DB is kept).
+// SyncTimescaleDBDatabase applies the owned Database CR that runs
+// CREATE EXTENSION timescaledb. Disabling is rejected by Validate.
 func SyncTimescaleDBDatabase(c *controller.Context, custom *components.CNPGCustomSpec) error {
-	name := TimescaleDBDatabaseName(c.Name())
-
-	if IsTimescaleDBEnabled(custom) {
-		db := BuildTimescaleDBDatabase(c.Name(), custom)
-		db.ObjectMeta = c.ObjectMeta(name)
-		if err := c.Apply(db); err != nil {
-			return fmt.Errorf("apply timescaledb Database: %w", err)
-		}
+	if !IsTimescaleDBEnabled(custom) {
 		return nil
 	}
 
-	existing := &cnpgv1.Database{}
-	if err := c.Get(existing, name); err != nil {
-		if controller.IsNotFound(err) {
-			return nil
-		}
-		return fmt.Errorf("get timescaledb Database: %w", err)
-	}
-
-	if timescaleExtensionEnsure(existing) != cnpgv1.EnsureAbsent {
-		// Preserve Name/Owner and ObjectMeta from the live object — Database.Name
-		// is immutable and finalizers must survive the update.
-		db := existing.DeepCopy()
-		db.Spec.ReclaimPolicy = cnpgv1.DatabaseReclaimRetain
-		db.Spec.Extensions = []cnpgv1.ExtensionSpec{{
-			DatabaseObjectSpec: cnpgv1.DatabaseObjectSpec{
-				Name:   timescaleSQLName,
-				Ensure: cnpgv1.EnsureAbsent,
-			},
-			Version: timescaleSQLVersion,
-		}}
-		if err := c.Apply(db); err != nil {
-			return fmt.Errorf("apply timescaledb Database (ensure absent): %w", err)
-		}
-		return nil
-	}
-
-	if !timescaleExtensionAbsentApplied(existing) {
-		// Wait for DROP EXTENSION; WatchOwned(Database) will requeue.
-		return nil
-	}
-
-	if err := c.Delete(existing); err != nil {
-		return fmt.Errorf("delete timescaledb Database: %w", err)
+	db := BuildTimescaleDBDatabase(c.Name(), custom)
+	db.ObjectMeta = c.ObjectMeta(TimescaleDBDatabaseName(c.Name()))
+	if err := c.Apply(db); err != nil {
+		return fmt.Errorf("apply timescaledb Database: %w", err)
 	}
 	return nil
 }
@@ -183,6 +160,10 @@ func TimescaleDBStatus(c *controller.Context, custom *components.CNPGCustomSpec)
 			return controller.Provisioning("waiting for TimescaleDB Database resource"), true
 		}
 		return controller.Provisioning(fmt.Sprintf("waiting to get TimescaleDB Database: %v", err)), true
+	}
+
+	if db.Status.ObservedGeneration != db.Generation {
+		return controller.Provisioning("waiting for TimescaleDB Database to be reconciled"), true
 	}
 
 	if db.Status.Applied == nil || !*db.Status.Applied {
@@ -232,29 +213,4 @@ func hasExtension(exts []cnpgv1.ExtensionConfiguration, name string) bool {
 		}
 	}
 	return false
-}
-
-func timescaleExtensionEnsure(db *cnpgv1.Database) cnpgv1.EnsureOption {
-	for _, ext := range db.Spec.Extensions {
-		if ext.Name == timescaleSQLName {
-			if ext.Ensure == "" {
-				return cnpgv1.EnsurePresent
-			}
-			return ext.Ensure
-		}
-	}
-	return cnpgv1.EnsurePresent
-}
-
-func timescaleExtensionAbsentApplied(db *cnpgv1.Database) bool {
-	if db.Status.Applied == nil || !*db.Status.Applied {
-		return false
-	}
-	for _, ext := range db.Status.Extensions {
-		if ext.Name == timescaleSQLName {
-			return ext.Applied
-		}
-	}
-	// Extension no longer reported — treat as successfully removed.
-	return true
 }

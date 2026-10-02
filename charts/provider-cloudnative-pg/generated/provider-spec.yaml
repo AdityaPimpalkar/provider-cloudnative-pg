@@ -1181,7 +1181,7 @@ spec:
               uiType: toggle
               validation:
                 celExpressions:
-                  - celExpr: '!(has(spec.components.engine.parameters.extensions.timescaledb.enabled) && spec.components.engine.parameters.extensions.timescaledb.enabled) || spec.version.startsWith("18.")'
+                  - celExpr: '!(has(spec.components.engine.parameters.extensions.timescaledb.enabled) && spec.components.engine.parameters.extensions.timescaledb.enabled) || (spec.version >= "18." && spec.version < "19.")'
                     message: TimescaleDB requires PostgreSQL 18. Select a 18.x database version to enable it.
           description: Optional PostgreSQL extensions to install and enable on this instance.
           label: Extensions
