@@ -113,7 +113,8 @@ ui:
                 disabled: true
           validation:
             celExpressions:
-              - celExpr: '!(has(spec.components.engine.parameters.extensions.timescaledb.enabled) && spec.components.engine.parameters.extensions.timescaledb.enabled) || spec.version.startsWith("18.")'
+              # spec["version"] avoids provider-sdk treating .startsWith as a field path.
+              - celExpr: '!(has(spec.components.engine.parameters.extensions.timescaledb.enabled) && spec.components.engine.parameters.extensions.timescaledb.enabled) || spec["version"].startsWith("18.")'
                 message: "TimescaleDB requires PostgreSQL 18. Select a 18.x database version to enable it."
     resources:
       label: "Resources details"
