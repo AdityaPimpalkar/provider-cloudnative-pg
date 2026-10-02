@@ -194,7 +194,7 @@ The technology-specific knobs worth knowing about:
 |---|---|---|
 | `bootstrap.initdb` | `engine` | Initial database name, owner, and optional credentials Secret |
 | `postgresql` | `engine` | Full CloudNativePG `PostgresConfiguration` (GUCs, sync replicas, …) |
-| `extensions.timescaledb` | `engine` | Install + enable TimescaleDB OSS (image volume + `CREATE EXTENSION`); PG 18 + ImageVolume required |
+| `extensions.timescaledb` | `engine` | Install + enable TimescaleDB OSS (image volume + `CREATE EXTENSION`); PG 18 + ImageVolume required. Defaults `timescaledb.telemetry_level=off` and `max_locks_per_transaction=128` unless set in `postgresql.parameters` |
 | `affinity` | `engine` | CloudNativePG `AffinityConfiguration` |
 | `managed` | `engine` | Managed PostgreSQL roles |
 | `resizeInUseVolumes` | `engine` | Allow PVC expansion on running instances |

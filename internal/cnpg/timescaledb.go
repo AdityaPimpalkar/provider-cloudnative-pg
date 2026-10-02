@@ -27,6 +27,12 @@ const (
 	timescalePostgresSupportVersion = "18"
 )
 
+// Defaults from the upstream timescaledb-oss Cluster example; user-set values win.
+var timescaleDefaultParameters = map[string]string{
+	"timescaledb.telemetry_level": "off",
+	"max_locks_per_transaction":   "128",
+}
+
 // IsTimescaleDBEnabled reports whether the first-class TimescaleDB toggle is on.
 func IsTimescaleDBEnabled(custom *components.CNPGCustomSpec) bool {
 	return custom != nil &&
@@ -88,7 +94,7 @@ func postgresMajor(engineVersion, instanceVersion string) string {
 }
 
 // BuildTimescaleDBExtension configures the Cluster for TimescaleDB install:
-// extension image volume and shared_preload_libraries.
+// extension image volume, shared_preload_libraries and default parameters.
 // Matches the upstream timescaledb-oss README Cluster example.
 // https://github.com/cloudnative-pg/postgres-extensions-containers/tree/main/timescaledb-oss#1-add-the-timescaledb-extension-image-to-your-cluster
 func BuildTimescaleDBExtension(pg *cnpgv1.Cluster) {
@@ -105,6 +111,15 @@ func BuildTimescaleDBExtension(pg *cnpgv1.Cluster) {
 
 	if !slices.Contains(cfg.AdditionalLibraries, timescaleLibraryName) {
 		cfg.AdditionalLibraries = append(cfg.AdditionalLibraries, timescaleLibraryName)
+	}
+
+	if cfg.Parameters == nil {
+		cfg.Parameters = map[string]string{}
+	}
+	for name, value := range timescaleDefaultParameters {
+		if _, set := cfg.Parameters[name]; !set {
+			cfg.Parameters[name] = value
+		}
 	}
 }
 

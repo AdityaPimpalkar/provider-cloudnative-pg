@@ -83,6 +83,40 @@ func TestBuildTimescaleDBExtension(t *testing.T) {
 	if len(cfg.AdditionalLibraries) != 1 || cfg.AdditionalLibraries[0] != timescaleLibraryName {
 		t.Fatalf("unexpected shared_preload_libraries: %+v", cfg.AdditionalLibraries)
 	}
+	for name, want := range map[string]string{
+		"max_connections":             "100",
+		"timescaledb.telemetry_level": "off",
+		"max_locks_per_transaction":   "128",
+	} {
+		if got := cfg.Parameters[name]; got != want {
+			t.Errorf("parameter %s = %q, want %q", name, got, want)
+		}
+	}
+}
+
+func TestBuildTimescaleDBExtensionKeepsUserParameters(t *testing.T) {
+	pg := &cnpgv1.Cluster{}
+	pg.Spec.PostgresConfiguration.Parameters = map[string]string{
+		"timescaledb.telemetry_level": "basic",
+		"max_locks_per_transaction":   "512",
+	}
+
+	BuildTimescaleDBExtension(pg)
+
+	params := pg.Spec.PostgresConfiguration.Parameters
+	if params["timescaledb.telemetry_level"] != "basic" || params["max_locks_per_transaction"] != "512" {
+		t.Fatalf("user parameters overridden: %+v", params)
+	}
+}
+
+func TestBuildTimescaleDBExtensionNilParameters(t *testing.T) {
+	pg := &cnpgv1.Cluster{}
+
+	BuildTimescaleDBExtension(pg)
+
+	if got := pg.Spec.PostgresConfiguration.Parameters["timescaledb.telemetry_level"]; got != "off" {
+		t.Fatalf("telemetry_level = %q, want off", got)
+	}
 }
 
 func TestBuildTimescaleDBDatabase(t *testing.T) {
