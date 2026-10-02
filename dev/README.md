@@ -95,7 +95,8 @@ make install-barman-plugin
 ```
 
 `make install-openeverest-crds` is only needed if the OpenEverest core is **not**
-running (the core Tilt / Helm chart already installs those CRDs).
+running (the core Tilt / Helm chart already installs those CRDs). It applies the
+CRDs from the OpenEverest version pinned in `go.mod`.
 
 ### 3. Configure provider Tilt
 
