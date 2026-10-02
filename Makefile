@@ -169,6 +169,7 @@ deploy-provider-ci: helm-deps ## Deploy the provider via Helm for CI (IMG must a
 
 .PHONY: install-openeverest-crds
 install-openeverest-crds: ## Install OpenEverest CRDs from the core version pinned in go.mod.
+	go mod download github.com/openeverest/openeverest/v2
 	kubectl apply --server-side -f "$$(go list -m -f '{{.Dir}}' github.com/openeverest/openeverest/v2)/config/crd/bases"
 
 .PHONY: install-cloudnative-pg
