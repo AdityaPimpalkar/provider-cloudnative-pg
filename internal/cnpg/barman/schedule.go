@@ -126,6 +126,26 @@ func buildScheduledBackups(clusterName string, backup *corev1alpha1.InstanceBack
 	return scheduledBackups, nil
 }
 
+// ScheduleForScheduledBackup returns the Instance backup schedule whose CNPG
+// ScheduledBackup is named sbName.
+func ScheduleForScheduledBackup(
+	instanceName string,
+	backup *corev1alpha1.InstanceBackupSpec,
+	sbName string,
+) (corev1alpha1.InstanceBackupSchedule, bool) {
+	if backup == nil {
+		return corev1alpha1.InstanceBackupSchedule{}, false
+	}
+	for _, storage := range backup.Storages {
+		for _, schedule := range storage.Schedules {
+			if scheduledBackupName(instanceName, schedule.Name) == sbName {
+				return schedule, true
+			}
+		}
+	}
+	return corev1alpha1.InstanceBackupSchedule{}, false
+}
+
 // toCNPGSchedule converts a standard 5-field cron expression into CNPG's
 // format, which has a leading seconds field.
 func toCNPGSchedule(cron string) (string, error) {
