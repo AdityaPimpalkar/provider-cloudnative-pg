@@ -130,9 +130,9 @@ func endpointCARef(c *controller.Context, logicalName, endpointURL string) (*mac
 	name := logicalName + EndpointCASecretSuffix
 	secret := &corev1.Secret{}
 	if err := c.Get(secret, name); err != nil {
+		// No custom CA: rely on the system trust store (public CAs, e.g. AWS S3).
 		if apierrors.IsNotFound(err) {
-			return nil, controller.WaitFor(fmt.Sprintf(
-				"endpoint CA Secret %q (key %q) not yet present", name, EndpointCAKey))
+			return nil, nil
 		}
 		return nil, fmt.Errorf("get endpoint CA Secret %q: %w", name, err)
 	}
