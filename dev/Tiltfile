@@ -177,6 +177,24 @@ provider_resource_deps = ['provider-build']
 if install_openeverest:
     provider_resource_deps = provider_resource_deps + ['openeverest']
 
+# The Barman Cloud Plugin subchart creates cert-manager Certificates/Issuers,
+# so cert-manager CRDs must exist before the provider chart is installed.
+if enable_barman_plugin:
+    helm_resource(
+        'cert-manager',
+        'oci://quay.io/jetstack/charts/cert-manager',
+        release_name='cert-manager',
+        namespace='cert-manager',
+        flags=[
+            '--version', 'v1.20.3',
+            '--create-namespace',
+            '--set', 'crds.enabled=true',
+            '--wait',
+        ],
+        labels=['provider'],
+    )
+    provider_resource_deps = provider_resource_deps + ['cert-manager']
+
 provider_helm_flags = [
     '--create-namespace',
     '--set', 'image.pullPolicy=IfNotPresent',
@@ -200,9 +218,9 @@ helm_resource(
 # BackupStorage (optional)
 # ===========================
 # The Barman Cloud Plugin is installed by the provider chart when
-# ENABLE_BARMAN_PLUGIN=true (same namespace as the provider). cert-manager is
-# a cluster-wide prerequisite. This only applies a BackupStorage CR that
-# points at MinIO from the OpenEverest dev environment.
+# ENABLE_BARMAN_PLUGIN=true (same namespace as the provider), after cert-manager
+# above. This only applies a BackupStorage CR that points at MinIO from the
+# OpenEverest dev environment.
 if enable_barman_plugin:
     backupstorage_yaml = str(read_file('{0}/resources/backupstorage.yaml'.format(
         config.main_dir)))
