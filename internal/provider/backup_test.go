@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"context"
 	"testing"
 
 	"github.com/AlekSi/pointer"
@@ -8,10 +9,16 @@ import (
 	backupv1alpha1 "github.com/openeverest/openeverest/v2/api/backup/v1alpha1"
 	commonv1alpha1 "github.com/openeverest/openeverest/v2/api/common/v1alpha1"
 	corev1alpha1 "github.com/openeverest/openeverest/v2/api/core/v1alpha1"
+	"github.com/openeverest/openeverest/v2/provider-runtime/controller"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	"github.com/adityapimpalkar/provider-cloudnative-pg/internal/cnpg/barman"
 )
+
+const testNamespace = "ns"
 
 func instanceWithStorage(enabled bool, storages ...string) *corev1alpha1.Instance {
 	backup := &corev1alpha1.InstanceBackupSpec{Enabled: enabled}
@@ -91,6 +98,106 @@ func TestBackupStorageBlocker(t *testing.T) {
 			}
 			if got.State != tt.wantState {
 				t.Fatalf("state = %q, want %q (message: %s)", got.State, tt.wantState, got.Message)
+			}
+		})
+	}
+}
+
+func TestSyncBackupStorageChecks(t *testing.T) {
+	scheme := runtime.NewScheme()
+	for _, add := range []func(*runtime.Scheme) error{
+		cnpgv1.AddToScheme, corev1alpha1.AddToScheme, backupv1alpha1.AddToScheme,
+	} {
+		if err := add(scheme); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	tests := []struct {
+		name             string
+		instanceStorage  string
+		clusterArchiveTo string
+		backupStorage    string
+		cnpgBackupExists bool
+		wantState        backupv1alpha1.BackupState
+		wantCNPGBackup   bool
+	}{
+		{
+			name:             "storage not configured on the instance",
+			instanceStorage:  "s3",
+			clusterArchiveTo: "s3",
+			backupStorage:    "other",
+			wantState:        backupv1alpha1.BackupStateFailed,
+		},
+		{
+			name:             "cluster not yet archiving to the storage",
+			instanceStorage:  "new",
+			clusterArchiveTo: "old",
+			backupStorage:    "new",
+			wantState:        backupv1alpha1.BackupStatePending,
+		},
+		{
+			name:             "storage matches",
+			instanceStorage:  "s3",
+			clusterArchiveTo: "s3",
+			backupStorage:    "s3",
+			wantState:        backupv1alpha1.BackupStatePending,
+			wantCNPGBackup:   true,
+		},
+		{
+			name:             "existing backup is not re-checked after the storage changes",
+			instanceStorage:  "new",
+			clusterArchiveTo: "new",
+			backupStorage:    "old",
+			cnpgBackupExists: true,
+			wantState:        backupv1alpha1.BackupStateSucceeded,
+			wantCNPGBackup:   true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			instance := instanceWithStorage(true, tt.instanceStorage)
+			instance.Namespace = testNamespace
+
+			cluster := clusterArchivingTo(tt.clusterArchiveTo, true)
+			cluster.Name = instance.Name
+			cluster.Namespace = testNamespace
+
+			backup := &backupv1alpha1.Backup{
+				ObjectMeta: metav1.ObjectMeta{Name: "backup-1", Namespace: testNamespace},
+				Spec: backupv1alpha1.BackupSpec{
+					StorageRef: commonv1alpha1.ObjectRef{Name: tt.backupStorage},
+				},
+			}
+
+			objects := []client.Object{instance, cluster, backup}
+			if tt.cnpgBackupExists {
+				objects = append(objects, &cnpgv1.Backup{
+					ObjectMeta: metav1.ObjectMeta{Name: backup.Name, Namespace: testNamespace},
+					Status:     cnpgv1.BackupStatus{Phase: cnpgv1.BackupPhaseCompleted},
+				})
+			}
+			cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objects...).Build()
+			c := controller.NewContext(context.Background(), cl, instance, "provider-cloudnative-pg")
+
+			got, err := (&Provider{}).SyncBackup(c, backup)
+			if err != nil {
+				t.Fatalf("SyncBackup: %v", err)
+			}
+			if got.State != tt.wantState {
+				t.Errorf("state = %q, want %q (message: %s)", got.State, tt.wantState, got.Message)
+			}
+
+			cnpgBackup := &cnpgv1.Backup{}
+			err = cl.Get(context.Background(), client.ObjectKey{Namespace: testNamespace, Name: backup.Name}, cnpgBackup)
+			if gotCNPGBackup := err == nil; gotCNPGBackup != tt.wantCNPGBackup {
+				t.Fatalf("CNPG Backup exists = %t, want %t (get err: %v)", gotCNPGBackup, tt.wantCNPGBackup, err)
+			}
+			if tt.wantCNPGBackup && !tt.cnpgBackupExists {
+				store := cnpgBackup.Spec.PluginConfiguration.Parameters[barman.PluginParameterObjectStore]
+				if store != tt.backupStorage {
+					t.Errorf("CNPG Backup object store = %q, want %q", store, tt.backupStorage)
+				}
 			}
 		})
 	}
