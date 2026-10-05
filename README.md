@@ -76,7 +76,8 @@ Stateful workloads additionally report:
 | Storage expansion | ✅ | when the StorageClass allows volume expansion (`resizeInUseVolumes`) |
 | Backups (on demand) | ✅ | operator-native (`executionMode: ProviderManaged`) via the Barman Cloud Plugin; one backup storage per Instance (CNPG supports a single WAL archive) |
 | Restore | ✅ | from a succeeded Backup via Barman |
-| Scheduled backups / PITR | 🚧 | not yet supported |
+| Scheduled backups | 🚧 | `spec.backup.storages[].schedules` → CNPG `ScheduledBackup`; not yet mirrored as OpenEverest Backups |
+| PITR | ✅ | restore to a point in time via `spec.dataSource` |
 
 ## Installation
 

@@ -16,7 +16,8 @@ const (
 
 	// EndpointCASecretSuffix is appended to the logical storage name to form the
 	// Secret that ObjectStore.spec.configuration.endpointCA references.
-	// Create this Secret yourself in the Instance namespace with key EndpointCAKey.
+	// Optional: create it in the Instance namespace (key EndpointCAKey) only for
+	// HTTPS endpoints with a self-signed or private CA.
 	EndpointCASecretSuffix = "-endpoint-ca"
 
 	// EndpointCAKey is the Secret data key that must hold the S3 endpoint CA PEM.
