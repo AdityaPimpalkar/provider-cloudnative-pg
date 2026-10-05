@@ -114,6 +114,7 @@
   resources:
     - backups
     - clusters
+    - databases
     - scheduledbackups
   verbs:
     - create
@@ -128,5 +129,6 @@
   resources:
     - backups/status
     - clusters/status
+    - databases/status
   verbs:
     - get

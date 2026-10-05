@@ -29,9 +29,6 @@ GOLANGCI_LINT ?= $(LOCALBIN)/golangci-lint-$(GOLANGCI_LINT_VERSION)
 # Helm chart directory
 CHART_DIR ?= charts/provider-cloudnative-pg
 CNPG_HELM_REPO ?= https://cloudnative-pg.github.io/charts
-OPENEVEREST_HELM_REPO ?= https://openeverest.github.io/helm-charts/
-# Pin a published everest-crds chart version (pre-releases need an explicit pin).
-OPENEVEREST_CRDS_VERSION ?= 2.0.0-dev.2
 # Namespace for standalone operator/plugin install (`make install-cloudnative-pg`).
 HELM_NAMESPACE ?= default
 
@@ -171,13 +168,9 @@ deploy-provider-ci: helm-deps ## Deploy the provider via Helm for CI (IMG must a
 		--wait --timeout 5m
 
 .PHONY: install-openeverest-crds
-install-openeverest-crds: ## Install OpenEverest CRDs via the everest-crds Helm chart.
-	@helm repo add openeverest $(OPENEVEREST_HELM_REPO) >/dev/null 2>&1 || true
-	helm repo update openeverest
-	helm upgrade --install everest-crds openeverest/everest-crds \
-	  --version $(OPENEVEREST_CRDS_VERSION) \
-	  --namespace everest-system \
-	  --create-namespace \
+install-openeverest-crds: ## Install OpenEverest CRDs from the core version pinned in go.mod.
+	go mod download github.com/openeverest/openeverest/v2
+	kubectl apply --server-side -f "$$(go list -m -f '{{.Dir}}' github.com/openeverest/openeverest/v2)/config/crd/bases"
 
 .PHONY: install-cloudnative-pg
 install-cloudnative-pg: ## Install CloudNativePG operator, Barman plugin, and BackupClasses.
