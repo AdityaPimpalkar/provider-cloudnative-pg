@@ -50,8 +50,6 @@ manages pods directly — all lifecycle work is delegated to the operator.
 | `0.2.x` | `2.0.0-dev.2` | `1.29.x` | `1.30` – `1.34` |
 | `main` | `main` (`defaultVersion`, server-side apply) | `1.29.x` | `1.30` – `1.34` |
 
-TimescaleDB additionally needs Kubernetes ImageVolume support (1.35+, or 1.33/1.34 with the feature gate).
-
 ## Capabilities
 
 What you can do to a running instance through the `Instance` API. Upgrading the
