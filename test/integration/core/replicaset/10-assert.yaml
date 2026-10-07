@@ -32,6 +32,11 @@ spec:
   instances: 3
   imagePullPolicy: IfNotPresent
   (ends_with(imageName, '17.10-standard-trixie')): true
+  inheritedMetadata:
+    labels:
+      core.openeverest.io/component: engine
+      core.openeverest.io/instance: test-cnpg-cluster
+      core.openeverest.io/provider: provider-cloudnative-pg
   storage:
     size: 5Gi
   resources:

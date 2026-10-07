@@ -33,6 +33,11 @@ metadata:
 spec:
   instances: 3
   imagePullPolicy: IfNotPresent
+  inheritedMetadata:
+    labels:
+      core.openeverest.io/component: engine
+      core.openeverest.io/instance: test-cnpg-cluster
+      core.openeverest.io/provider: provider-cloudnative-pg
   storage:
     size: 5Gi
   resources:

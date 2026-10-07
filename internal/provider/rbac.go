@@ -42,11 +42,13 @@ package provider
 // Secrets (CNPG credentials in Status(), connection secret in provider-runtime):
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create;update;patch
 
+// Pods (the runtime counts labelled component pods into Instance status.components):
+// +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
+
 // Examples for other resources:
 //
 //   - Access Kubernetes core resources:
 //   // +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch
-//   // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
 //
 //   - Access PVCs (if managing storage):
 //   // +kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=get;list;watch;create;update;patch;delete

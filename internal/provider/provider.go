@@ -161,6 +161,12 @@ func (p *Provider) Sync(c *controller.Context) error {
 		pg.Spec.Monitoring = custom.Monitoring
 	}
 
+	// CNPG has no pod template; inheritedMetadata reaches the instance pods
+	// (not the bootstrap job pods), so the runtime counts them in status.components.
+	pg.Spec.InheritedMetadata = &cnpgv1.EmbeddedObjectMetadata{
+		Labels: c.PodLabels(common.ComponentEngine),
+	}
+
 	if c.Instance().Spec.DataSource != nil {
 		recovery, externalCluster, err := barman.BuildRecoveryConfig(c, custom)
 		if err != nil {
