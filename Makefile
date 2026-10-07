@@ -23,7 +23,7 @@ YQ_VERSION ?= v4.44.6
 YQ ?= $(LOCALBIN)/yq-$(YQ_VERSION)
 
 # golangci-lint version (v2.9.0+ required for Go 1.26)
-GOLANGCI_LINT_VERSION ?= v2.12.2
+GOLANGCI_LINT_VERSION ?= v2.13.2
 GOLANGCI_LINT ?= $(LOCALBIN)/golangci-lint-$(GOLANGCI_LINT_VERSION)
 
 # Helm chart directory
