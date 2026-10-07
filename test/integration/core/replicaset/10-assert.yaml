@@ -37,6 +37,14 @@ spec:
       core.openeverest.io/component: engine
       core.openeverest.io/instance: test-cnpg-cluster
       core.openeverest.io/provider: provider-cloudnative-pg
+  affinity:
+    nodeSelector:
+      kubernetes.io/os: linux
+    tolerations:
+      - key: dedicated
+        operator: Equal
+        value: database
+        effect: NoSchedule
   topologySpreadConstraints:
     - maxSkew: 1
       topologyKey: topology.kubernetes.io/zone
