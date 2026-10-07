@@ -169,6 +169,7 @@ deploy-provider-ci: helm-deps ## Deploy the provider via Helm for CI (IMG must a
 
 .PHONY: install-openeverest-crds
 install-openeverest-crds: ## Install OpenEverest CRDs from the core version pinned in go.mod.
+	go mod download github.com/openeverest/openeverest/v2
 	kubectl apply --server-side -f "$$(go list -m -f '{{.Dir}}' github.com/openeverest/openeverest/v2)/config/crd/bases"
 
 .PHONY: install-cloudnative-pg
@@ -193,7 +194,8 @@ install-barman-plugin: ## Install cert-manager (cluster-wide) and the Barman Clo
 	  --namespace $(HELM_NAMESPACE) \
 	  --create-namespace \
 	  cnpg/plugin-barman-cloud \
-		  --version 0.8.0
+	  --version 0.8.0
+
 .PHONY: install-backupclasses
 install-backupclasses: ## Install provider BackupClass CRs into the cluster.
 	kubectl apply -f charts/provider-cloudnative-pg/generated/backupclasses/cnpg-barman-plugin.yaml

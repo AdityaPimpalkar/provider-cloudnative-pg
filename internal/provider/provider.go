@@ -41,7 +41,9 @@ func New() *Provider {
 			ProviderName: common.ProviderName,
 			WatchConfigs: []controller.WatchConfig{
 				controller.WatchOwned(&cnpgv1.Cluster{}),
+				controller.WatchOwned(&cnpgv1.Database{}),
 				controller.WatchOwned(&barmancloudv1.ObjectStore{}),
+				controller.WatchOwned(&cnpgv1.ScheduledBackup{}),
 			},
 			SchemeFuncs: []func(*runtime.Scheme) error{
 				cnpgv1.SchemeBuilder.AddToScheme,
@@ -76,6 +78,10 @@ func (p *Provider) Validate(c *controller.Context) error {
 		return err
 	}
 
+	if err := barman.ValidateSchedules(c.Instance().Spec.Backup); err != nil {
+		return err
+	}
+
 	var custom components.CNPGCustomSpec
 	if c.TryDecodeComponentParameters(engine, &custom) {
 		if err := c.DecodeComponentParameters(engine, &custom); err != nil {
@@ -84,6 +90,14 @@ func (p *Provider) Validate(c *controller.Context) error {
 	}
 
 	if err := cnpg.ValidateCustomSpec(&custom); err != nil {
+		return err
+	}
+
+	if err := cnpg.ValidateTimescaleDB(&custom, engine.Version, c.Instance().Spec.Version); err != nil {
+		return err
+	}
+
+	if err := cnpg.ValidateTimescaleDBNotDisabled(c, &custom); err != nil {
 		return err
 	}
 
@@ -97,7 +111,8 @@ func (p *Provider) Validate(c *controller.Context) error {
 func (p *Provider) Sync(c *controller.Context) error {
 	l := log.FromContext(c.Context())
 	l.Info("Syncing instance", "name", c.Name())
-	if _, err := c.ReconcileDataSource(); err != nil {
+	dataSource, err := c.ReconcileDataSource()
+	if err != nil {
 		return fmt.Errorf("reconcile data source: %w", err)
 	}
 
@@ -161,6 +176,10 @@ func (p *Provider) Sync(c *controller.Context) error {
 		pg.Spec.Monitoring = custom.Monitoring
 	}
 
+	if cnpg.IsTimescaleDBEnabled(&custom) {
+		cnpg.BuildTimescaleDBExtension(pg)
+	}
+
 	if c.Instance().Spec.DataSource != nil {
 		recovery, externalCluster, err := barman.BuildRecoveryConfig(c, custom)
 		if err != nil {
@@ -186,7 +205,12 @@ func (p *Provider) Sync(c *controller.Context) error {
 		return err
 	}
 
-	return nil
+	// Scheduled backups would run against a cluster that is still being restored.
+	if !dataSource.Done {
+		return nil
+	}
+
+	return barman.SyncScheduledBackups(c)
 }
 
 func buildClusterSpec(engine corev1alpha1.ComponentSpec, custom components.CNPGCustomSpec) cnpgv1.ClusterSpec {
@@ -254,6 +278,17 @@ func (p *Provider) Status(c *controller.Context) (controller.Status, error) {
 	if readyCondition != nil && readyCondition.Status == metav1.ConditionTrue && pg.Status.Instances > 0 && pg.Status.ReadyInstances == pg.Status.Instances {
 		if roleStatus, blocked := cnpg.ManagedRolesStatus(pg); blocked {
 			return roleStatus, nil
+		}
+
+		engine := c.Instance().Spec.Components[common.ComponentEngine]
+		var custom components.CNPGCustomSpec
+		if c.TryDecodeComponentParameters(engine, &custom) {
+			if err := c.DecodeComponentParameters(engine, &custom); err != nil {
+				return controller.Provisioning(fmt.Sprintf("failed to decode component custom spec: %v", err)), nil
+			}
+		}
+		if tsStatus, blocked := cnpg.TimescaleDBStatus(c, &custom); blocked {
+			return tsStatus, nil
 		}
 
 		host := fmt.Sprintf("%s.%s.svc", pg.GetServiceReadWriteName(), c.Namespace())

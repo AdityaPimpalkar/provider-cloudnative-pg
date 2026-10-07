@@ -96,6 +96,25 @@ ui:
             - database
             - owner
             - credentialsSecret
+    extensions:
+      label: "Extensions"
+      description: "Optional PostgreSQL extensions to install and enable on this instance."
+      components:
+        timescaledb:
+          uiType: toggle
+          path: spec.components.engine.parameters.extensions.timescaledb.enabled
+          fieldParams:
+            label: "TimescaleDB (Apache-2.0)"
+            defaultValue: false
+            modes:
+              edit:
+                disabled: true
+              restore:
+                disabled: true
+          validation:
+            celExpressions:
+              - celExpr: '!(has(spec.components.engine.parameters.extensions.timescaledb.enabled) && spec.components.engine.parameters.extensions.timescaledb.enabled) || (spec.version >= "18." && spec.version < "19.")'
+                message: "TimescaleDB requires PostgreSQL 18. Select a 18.x database version to enable it."
     resources:
       label: "Resources details"
       description: "Configure the resources your new database will have access to."
@@ -229,5 +248,6 @@ ui:
   sectionsOrder:
     - databaseVersion
     - bootstrap
+    - extensions
     - resources
     - advanced
