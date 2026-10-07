@@ -64,7 +64,7 @@ provider itself is covered under [Installation](#installation).
 | Custom configuration | ✅ | PostgreSQL GUCs via `spec.components.engine.parameters.postgresql` |
 | Bootstrap (`initdb`) | ✅ | database name, owner, and credentials secret |
 | Managed roles | ✅ | CloudNativePG managed roles with readiness gating in `Status()` |
-| Pod scheduling (affinity) | ✅ | `spec.components.engine.parameters.affinity` |
+| Pod scheduling | ✅ | `spec.components.engine.schedulingPolicy` (all fields), or `parameters.affinity` — not both |
 | Monitoring | 🚧 | optional `monitoring` component — wiring in progress; CNPG `monitoring` parameters are accepted |
 
 Stateful workloads additionally report:
@@ -193,7 +193,7 @@ The technology-specific knobs worth knowing about:
 |---|---|---|
 | `bootstrap.initdb` | `engine` | Initial database name, owner, and optional credentials Secret |
 | `postgresql` | `engine` | Full CloudNativePG `PostgresConfiguration` (GUCs, sync replicas, …) |
-| `affinity` | `engine` | CloudNativePG `AffinityConfiguration` |
+| `affinity` | `engine` | CloudNativePG `AffinityConfiguration`; rejected together with `schedulingPolicy` `affinity`, `nodeSelector` or `tolerations` |
 | `managed` | `engine` | Managed PostgreSQL roles |
 | `resizeInUseVolumes` | `engine` | Allow PVC expansion on running instances |
 | `certificates` | `engine` | TLS certificate configuration passthrough |

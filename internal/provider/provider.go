@@ -87,6 +87,10 @@ func (p *Provider) Validate(c *controller.Context) error {
 		return err
 	}
 
+	if err := cnpg.ValidateScheduling(engine.SchedulingPolicy, &custom); err != nil {
+		return err
+	}
+
 	return barman.ValidateDataSource(c.Instance().Spec.DataSource)
 }
 
@@ -126,6 +130,7 @@ func (p *Provider) Sync(c *controller.Context) error {
 	if custom.Affinity != nil {
 		pg.Spec.Affinity = *custom.Affinity
 	}
+	applyScheduling(pg, engine.SchedulingPolicy)
 
 	if custom.Bootstrap != nil {
 		pg.Spec.Bootstrap = &cnpgv1.BootstrapConfiguration{
