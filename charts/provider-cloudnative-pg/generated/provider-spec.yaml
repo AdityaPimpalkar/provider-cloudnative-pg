@@ -569,6 +569,14 @@ spec:
                 serverTLSSecret:
                   type: string
               type: object
+            extensions:
+              properties:
+                timescaledb:
+                  properties:
+                    enabled:
+                      type: boolean
+                  type: object
+              type: object
             managed:
               properties:
                 roles:
@@ -1036,7 +1044,7 @@ spec:
       type: postgresql
   defaultVersion: "17.10"
   release:
-    version: 0.2.2
+    version: 0.3.0
   topologies:
     replicaSet:
       components:
@@ -1158,6 +1166,25 @@ spec:
                 required: true
           description: Provide the information about the database version you want to use.
           label: Database version
+        extensions:
+          components:
+            timescaledb:
+              fieldParams:
+                defaultValue: false
+                label: TimescaleDB (Apache-2.0)
+                modes:
+                  edit:
+                    disabled: true
+                  restore:
+                    disabled: true
+              path: spec.components.engine.parameters.extensions.timescaledb.enabled
+              uiType: toggle
+              validation:
+                celExpressions:
+                  - celExpr: '!(has(spec.components.engine.parameters.extensions.timescaledb.enabled) && spec.components.engine.parameters.extensions.timescaledb.enabled) || (spec.version >= "18." && spec.version < "19.")'
+                    message: TimescaleDB requires PostgreSQL 18. Select a 18.x database version to enable it.
+          description: Optional PostgreSQL extensions to install and enable on this instance.
+          label: Extensions
         resources:
           components:
             nodes:
@@ -1257,6 +1284,7 @@ spec:
       sectionsOrder:
         - databaseVersion
         - bootstrap
+        - extensions
         - resources
         - advanced
   versions:

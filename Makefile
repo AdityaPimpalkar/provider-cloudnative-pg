@@ -194,7 +194,8 @@ install-barman-plugin: ## Install cert-manager (cluster-wide) and the Barman Clo
 	  --namespace $(HELM_NAMESPACE) \
 	  --create-namespace \
 	  cnpg/plugin-barman-cloud \
-		  --version 0.8.0
+	  --version 0.8.0
+
 .PHONY: install-backupclasses
 install-backupclasses: ## Install provider BackupClass CRs into the cluster.
 	kubectl apply -f charts/provider-cloudnative-pg/generated/backupclasses/cnpg-barman-plugin.yaml

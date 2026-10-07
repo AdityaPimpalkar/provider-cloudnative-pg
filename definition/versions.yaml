@@ -7,6 +7,7 @@
 #
 # PostgreSQL 13 is omitted (EOL). Align patch versions with catalog-standard-trixie
 # when bumping releases.
+# Name the default version per type via `defaultVersion`.
 
 componentTypes:
   postgresql:
@@ -24,7 +25,7 @@ componentTypes:
         image: ghcr.io/cloudnative-pg/postgresql:18.4-standard-trixie
 
 # Version bundles — curated engine versions exposed as spec.version on an Instance.
-# The bundle named by defaultVersion is used when spec.version is omitted.
+# Top-level defaultVersion is used when spec.version is omitted.
 defaultVersion: "17.10"
 versions:
   - name: "17.10"

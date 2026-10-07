@@ -67,6 +67,17 @@ provider itself is covered under [Installation](#installation).
 | Pod scheduling (affinity) | ✅ | `spec.components.engine.parameters.affinity` |
 | Monitoring | 🚧 | optional `monitoring` component — wiring in progress; CNPG `monitoring` parameters are accepted |
 
+### Extensions
+
+First-class toggles under `spec.components.engine.parameters.extensions` (CNPG extension
+images + `CREATE EXTENSION`).
+
+| Extension | Status | Notes |
+|---|---|---|
+| TimescaleDB OSS | ✅ | `extensions.timescaledb.enabled` — PG **18** only; cannot be disabled once enabled; needs Kubernetes ImageVolume (1.35+, or 1.33/1.34 + feature gate). See [examples/instance-timescaledb.yaml](examples/instance-timescaledb.yaml) |
+| pgvector | 🚧 | planned |
+| pgAudit | 🚧 | planned |
+
 Stateful workloads additionally report:
 
 | Capability | Status | Notes |
@@ -75,7 +86,8 @@ Stateful workloads additionally report:
 | Storage expansion | ✅ | when the StorageClass allows volume expansion (`resizeInUseVolumes`) |
 | Backups (on demand) | ✅ | operator-native (`executionMode: ProviderManaged`) via the Barman Cloud Plugin; one backup storage per Instance (CNPG supports a single WAL archive) |
 | Restore | ✅ | from a succeeded Backup via Barman |
-| Scheduled backups / PITR | 🚧 | not yet supported |
+| Scheduled backups | ✅ | `spec.backup.storages[].schedules` → CNPG `ScheduledBackup`; mirrored as OpenEverest `Backup` CRs |
+| PITR | ✅ | restore to a point in time via `spec.dataSource` |
 
 ## Installation
 
@@ -84,7 +96,7 @@ The provider chart is published as an OCI artifact:
 ```bash
 helm install provider-cloudnative-pg \
   oci://ghcr.io/adityapimpalkar/charts/provider-cloudnative-pg \
-  --version 0.2.2 \
+  --version 0.3.0 \
   --namespace everest-system
 ```
 
@@ -101,7 +113,7 @@ Upgrade and uninstall:
 
 ```bash
 helm upgrade provider-cloudnative-pg \
-  oci://ghcr.io/adityapimpalkar/charts/provider-cloudnative-pg --version 0.2.2
+  oci://ghcr.io/adityapimpalkar/charts/provider-cloudnative-pg --version 0.3.0
 helm uninstall provider-cloudnative-pg --namespace everest-system
 ```
 
@@ -143,7 +155,8 @@ spec:
 
 Component names are defined by this provider — see [definition/provider.yaml](definition/provider.yaml).
 `spec.version` and `spec.topology` are optional; the provider defaults apply.
-More examples live in [examples/](examples/).
+More examples live in [examples/](examples/), including
+[TimescaleDB](examples/instance-timescaledb.yaml).
 
 Watch it come up and read the connection details:
 
@@ -193,6 +206,7 @@ The technology-specific knobs worth knowing about:
 |---|---|---|
 | `bootstrap.initdb` | `engine` | Initial database name, owner, and optional credentials Secret |
 | `postgresql` | `engine` | Full CloudNativePG `PostgresConfiguration` (GUCs, sync replicas, …) |
+| `extensions.timescaledb` | `engine` | Install + enable TimescaleDB OSS (image volume + `CREATE EXTENSION`); PG 18 + ImageVolume required. Defaults `timescaledb.telemetry_level=off` and `max_locks_per_transaction=128` unless set in `postgresql.parameters` |
 | `affinity` | `engine` | CloudNativePG `AffinityConfiguration` |
 | `managed` | `engine` | Managed PostgreSQL roles |
 | `resizeInUseVolumes` | `engine` | Allow PVC expansion on running instances |
@@ -234,8 +248,8 @@ code generation, and the backup/restore interfaces are documented once for all p
 | Path | Purpose |
 |---|---|
 | `cmd/provider/` | Entry point |
-| `internal/provider/` | `ProviderInterface` implementation, backup interfaces, RBAC markers |
-| `internal/cnpg/` | CloudNativePG-specific helpers (roles, Barman backup/restore) |
+| `internal/provider/` | `ProviderInterface` implementation, backup mirror, RBAC markers |
+| `internal/cnpg/` | CloudNativePG helpers — TimescaleDB, roles; `barman/` for backup, restore, and schedules |
 | `internal/common/` | Component name constants |
 | `definition/` | Provider identity, component types, versions, topologies, backup classes |
 | `charts/provider-cloudnative-pg/` | Helm chart (`generated/` is produced by `make generate`) |
