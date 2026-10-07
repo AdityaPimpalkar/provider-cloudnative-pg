@@ -15,11 +15,11 @@ maintainers:
   - name: Aditya Pimpalkar
 dependencies:
   - name: cloudnative-pg
-    version: "0.28.3"
+    version: "0.29.1"
     repository: https://cloudnative-pg.github.io/charts
     condition: cloudnative-pg.enabled
-  # CNPG-I Barman Cloud Plugin (appVersion v0.13.0, matches go.mod).
+  # CNPG-I Barman Cloud Plugin (appVersion v0.15.0, matches go.mod).
   - name: plugin-barman-cloud
-    version: "0.7.0"
+    version: "0.8.0"
     repository: https://cloudnative-pg.github.io/charts
     condition: plugin-barman-cloud.enabled

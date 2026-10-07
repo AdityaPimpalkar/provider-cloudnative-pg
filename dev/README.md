@@ -55,7 +55,7 @@ All settings live in `dev/.env` (see `dev/.env.example`). Common options:
 | `OPENEVEREST_VERSION` | _(latest)_ | Pin a specific core chart version. |
 | `PROVIDER_NAMESPACE` | `default` | Namespace for the provider + DB operator. |
 | `ENABLE_BARMAN_PLUGIN` | `false` | Install cert-manager and the Barman Cloud Plugin in `cnpg-system`, plus a `BackupStorage` CR that uses MinIO from the OpenEverest dev environment. |
-| `BARMAN_PLUGIN_VERSION` | `v0.13.0` | Barman plugin release manifest. |
+| `BARMAN_PLUGIN_VERSION` | `v0.15.0` | Barman plugin release manifest. |
 
 > **Note:** While OpenEverest v2 is in pre-release, the Helm repository only
 > publishes pre-release tags (e.g. `2.0.0-dev.1`). Helm's "latest" resolution
