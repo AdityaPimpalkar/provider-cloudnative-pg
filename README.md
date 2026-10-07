@@ -48,7 +48,7 @@ manages pods directly — all lifecycle work is delegated to the operator.
 | provider-cloudnative-pg | OpenEverest | CloudNativePG | Kubernetes |
 |---|---|---|---|
 | `0.2.x` | `2.0.0-dev.2` | `1.29.x` | `1.30` – `1.34` |
-| `main` | `main` (server-side apply) | `1.30.x` | `1.34` – `1.36` |
+| `main` | `2.0.0-dev.4` | `1.30.x` | `1.34` – `1.36` |
 
 ## Capabilities
 
@@ -64,7 +64,7 @@ provider itself is covered under [Installation](#installation).
 | Custom configuration | ✅ | PostgreSQL GUCs via `spec.components.engine.parameters.postgresql` |
 | Bootstrap (`initdb`) | ✅ | database name, owner, and credentials secret |
 | Managed roles | ✅ | CloudNativePG managed roles with readiness gating in `Status()` |
-| Pod scheduling (affinity) | ✅ | `spec.components.engine.parameters.affinity` |
+| Pod scheduling | ✅ | `spec.components.engine.schedulingPolicy` (all fields), or `parameters.affinity` — not both |
 | Monitoring | 🚧 | optional `monitoring` component — wiring in progress; CNPG `monitoring` parameters are accepted |
 
 ### Extensions
@@ -207,7 +207,7 @@ The technology-specific knobs worth knowing about:
 | `bootstrap.initdb` | `engine` | Initial database name, owner, and optional credentials Secret |
 | `postgresql` | `engine` | Full CloudNativePG `PostgresConfiguration` (GUCs, sync replicas, …) |
 | `extensions.timescaledb` | `engine` | Install + enable TimescaleDB OSS (image volume + `CREATE EXTENSION`); PG 18 + ImageVolume required. Defaults `timescaledb.telemetry_level=off` and `max_locks_per_transaction=128` unless set in `postgresql.parameters` |
-| `affinity` | `engine` | CloudNativePG `AffinityConfiguration` |
+| `affinity` | `engine` | CloudNativePG `AffinityConfiguration`; rejected together with `schedulingPolicy` `affinity`, `nodeSelector` or `tolerations` |
 | `managed` | `engine` | Managed PostgreSQL roles |
 | `resizeInUseVolumes` | `engine` | Allow PVC expansion on running instances |
 | `certificates` | `engine` | TLS certificate configuration passthrough |

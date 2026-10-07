@@ -18,6 +18,18 @@ spec:
           memory: 1Gi
       storage:
         size: 5Gi
+      schedulingPolicy:
+        nodeSelector:
+          kubernetes.io/os: linux
+        tolerations:
+          - key: dedicated
+            operator: Equal
+            value: database
+            effect: NoSchedule
+        topologySpreadConstraints:
+          - maxSkew: 1
+            topologyKey: topology.kubernetes.io/zone
+            whenUnsatisfiable: ScheduleAnyway
       parameters:
         postgresql:
           parameters:

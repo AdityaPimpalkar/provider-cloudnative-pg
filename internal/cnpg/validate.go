@@ -7,6 +7,7 @@ import (
 
 	"github.com/adityapimpalkar/provider-cloudnative-pg/definition/components"
 
+	commonv1alpha1 "github.com/openeverest/openeverest/v2/api/common/v1alpha1"
 	corev1alpha1 "github.com/openeverest/openeverest/v2/api/core/v1alpha1"
 )
 
@@ -85,6 +86,18 @@ func ValidateEngine(engine corev1alpha1.ComponentSpec) error {
 		return fmt.Errorf("memory request %s is greater than limit %s",
 			engine.Resources.Requests.Memory().String(),
 			engine.Resources.Limits.Memory().String())
+	}
+	return nil
+}
+
+// ValidateScheduling rejects placing pods through both parameters.affinity and
+// schedulingPolicy, as both write the Cluster's spec.affinity.
+func ValidateScheduling(policy *commonv1alpha1.SchedulingPolicy, custom *components.CNPGCustomSpec) error {
+	if policy == nil || custom.Affinity == nil {
+		return nil
+	}
+	if policy.Affinity != nil || len(policy.NodeSelector) > 0 || len(policy.Tolerations) > 0 {
+		return fmt.Errorf("parameters.affinity cannot be combined with schedulingPolicy affinity, nodeSelector or tolerations")
 	}
 	return nil
 }
