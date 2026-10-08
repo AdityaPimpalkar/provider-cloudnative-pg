@@ -1044,7 +1044,7 @@ spec:
       type: postgresql
   defaultVersion: "17.10"
   release:
-    version: 0.3.0
+    version: 0.3.1
   topologies:
     replicaSet:
       components:

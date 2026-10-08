@@ -96,7 +96,7 @@ The provider chart is published as an OCI artifact:
 ```bash
 helm install provider-cloudnative-pg \
   oci://ghcr.io/adityapimpalkar/charts/provider-cloudnative-pg \
-  --version 0.3.0 \
+  --version 0.3.1 \
   --namespace everest-system
 ```
 
@@ -113,7 +113,7 @@ Upgrade and uninstall:
 
 ```bash
 helm upgrade provider-cloudnative-pg \
-  oci://ghcr.io/adityapimpalkar/charts/provider-cloudnative-pg --version 0.3.0
+  oci://ghcr.io/adityapimpalkar/charts/provider-cloudnative-pg --version 0.3.1
 helm uninstall provider-cloudnative-pg --namespace everest-system
 ```
 
