@@ -262,7 +262,7 @@ code generation, and the backup/restore interfaces are documented once for all p
 | `definition/` | Provider identity, component types, versions, topologies, backup classes |
 | `charts/provider-cloudnative-pg/` | Helm chart (`generated/` is produced by `make generate`) |
 | `config/rbac/role.yaml` | Generated `ClusterRole` — do not edit |
-| `test/integration/` | Chainsaw suites: `core/replicaset` |
+| `test/integration/` | Chainsaw suites: `core/replicaset`, `extensions/bundled`, `extensions/imagevolume` |
 | `test/vars.sh` | Pinned versions used by tests |
 | `examples/` | Example `Instance` resources |
 | `dev/` | Tilt dev environment, `.env` configuration, k3d cluster config |
@@ -273,7 +273,11 @@ code generation, and the backup/restore interfaces are documented once for all p
 - **Unit tests** — `make test`.
 - **Integration tests** — chainsaw suites under [test/integration/](test/integration/).
   Individual suites are also exposed as make targets (`make test-integration-core`,
-  `make test-integration-core-replicaset`, …).
+  `make test-integration-core-replicaset`, `make test-integration-extensions`, …).
+  The extension suites run a one-instance PostgreSQL and use each extension through `psql`.
+  `extensions/imagevolume` needs Kubernetes ImageVolume (1.35+ with containerd 2.1+), so
+  `make test-integration` skips it; run it with `make test-integration-imagevolume` (e.g. on
+  a k3d cluster created with `--image rancher/k3s:v1.35.9-k3s1`).
 - **CI** — [.github/workflows/build.yaml](.github/workflows/build.yaml) runs lint, build, unit
   tests, generated-file verification, and Helm lint;
   [.github/workflows/test.yaml](.github/workflows/test.yaml) runs the integration suites.

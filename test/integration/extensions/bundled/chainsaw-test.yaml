@@ -1,0 +1,44 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/kyverno/chainsaw/main/.schemas/json/test-chainsaw-v1alpha1.json
+# Extensions shipped in the standard operand images (any supported PostgreSQL),
+# checked by using them in the application database.
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: extensions-bundled
+spec:
+  timeouts:
+    assert: 6m
+    cleanup: 3m
+  steps:
+    - name: create-instance
+      try:
+        - apply:
+            file: 00-instance.yaml
+        - assert:
+            file: 00-assert.yaml
+      catch:
+        - script:
+            content: kubectl get instance,cluster,database,pod -n $NAMESPACE -o wide
+        - script:
+            content: kubectl get instance/ext-bundled -n $NAMESPACE -o yaml
+        - script:
+            content: kubectl get database/ext-bundled-extensions -n $NAMESPACE -o yaml
+
+    - name: use-extensions
+      try:
+        - script:
+            timeout: 2m
+            content: |
+              set -e
+              q() { kubectl exec -n "$NAMESPACE" ext-bundled-1 -c postgres -- psql -v ON_ERROR_STOP=1 -d app -tAc "$1"; }
+              expect() { got="$(q "$1")"; [ "$got" = "$2" ] || { echo "query: $1"; echo "got: $got, want: $2"; exit 1; }; }
+
+              expect "SELECT count(*) FROM pg_extension WHERE extname IN ('vector', 'pgaudit')" "2"
+
+              q "CREATE TABLE items (id int PRIMARY KEY, embedding vector(3))"
+              q "INSERT INTO items VALUES (1, '[1,2,3]'), (2, '[4,5,6]')"
+              q "CREATE INDEX ON items USING hnsw (embedding vector_l2_ops)"
+              expect "SELECT id FROM items ORDER BY embedding <-> '[3,1,2]' LIMIT 1" "1"
+
+              expect "SELECT current_setting('shared_preload_libraries') ~ 'pgaudit'" "t"
+              expect "SHOW pgaudit.log" "ddl, role"

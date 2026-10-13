@@ -1,0 +1,20 @@
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: ext-bundled
+status:
+  phase: Ready
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Database
+metadata:
+  name: ext-bundled-extensions
+spec:
+  name: app
+  cluster:
+    name: ext-bundled
+  extensions:
+    - name: vector
+      ensure: present
+status:
+  applied: true

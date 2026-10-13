@@ -1,0 +1,22 @@
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: ext-images
+status:
+  phase: Ready
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Database
+metadata:
+  name: ext-images-extensions
+spec:
+  name: app
+  cluster:
+    name: ext-images
+  extensions:
+    - name: timescaledb
+    - name: postgis
+    - name: pgrouting
+    - name: pg_ivm
+status:
+  applied: true

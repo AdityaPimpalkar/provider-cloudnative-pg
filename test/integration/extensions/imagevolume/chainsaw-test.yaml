@@ -1,0 +1,68 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/kyverno/chainsaw/main/.schemas/json/test-chainsaw-v1alpha1.json
+# Extensions mounted from CloudNativePG extension images. Needs PostgreSQL 18
+# and Kubernetes ImageVolume (1.35+, or 1.33/1.34 with the feature gate, and
+# containerd 2.1+), so `make test-integration` skips it; run it with
+# `make test-integration-imagevolume`.
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: extensions-imagevolume
+  labels:
+    requires: imagevolume
+spec:
+  timeouts:
+    assert: 10m
+    cleanup: 3m
+  steps:
+    - name: create-instance
+      try:
+        - apply:
+            file: 00-instance.yaml
+        - assert:
+            file: 00-assert.yaml
+      catch:
+        - script:
+            content: kubectl get instance,cluster,database,pod -n $NAMESPACE -o wide
+        - script:
+            content: kubectl get instance/ext-images -n $NAMESPACE -o yaml
+        - script:
+            content: kubectl get database/ext-images-extensions -n $NAMESPACE -o yaml
+        - script:
+            content: kubectl describe pod -n $NAMESPACE -l cnpg.io/cluster=ext-images
+
+    - name: use-extensions
+      try:
+        - script:
+            timeout: 2m
+            content: |
+              set -e
+              q() { kubectl exec -n "$NAMESPACE" ext-images-1 -c postgres -- psql -v ON_ERROR_STOP=1 -d app -tAc "$1"; }
+              expect() { got="$(q "$1")"; [ "$got" = "$2" ] || { echo "query: $1"; echo "got: $got, want: $2"; exit 1; }; }
+
+              expect "SELECT count(*) FROM pg_extension WHERE extname IN ('timescaledb', 'postgis', 'pgrouting', 'pg_ivm')" "4"
+
+              # TimescaleDB
+              q "CREATE TABLE metrics (t timestamptz NOT NULL, v double precision)"
+              q "SELECT create_hypertable('metrics', by_range('t'))"
+              q "INSERT INTO metrics VALUES (now(), 1), (now() - interval '30 days', 2)"
+              expect "SELECT count(*) FROM timescaledb_information.chunks WHERE hypertable_name = 'metrics'" "2"
+
+              # PostGIS, including a reprojection that needs PROJ_DATA and the system libraries
+              expect "SELECT round(ST_X(ST_Transform(ST_SetSRID(ST_MakePoint(1, 0), 4326), 3857)))" "111319"
+
+              # pgRouting on a two-edge graph
+              q "CREATE TABLE edges (id bigint, source bigint, target bigint, cost float8)"
+              q "INSERT INTO edges VALUES (1, 1, 2, 1), (2, 2, 3, 1)"
+              expect "SELECT max(agg_cost) FROM pgr_dijkstra('SELECT id, source, target, cost FROM edges', 1, 3)" "2"
+
+              # pg_ivm keeps the view in sync with its base table
+              q "CREATE TABLE ivm_base (x int)"
+              q "SELECT pgivm.create_immv('ivm_view', 'SELECT count(*) AS n FROM ivm_base')"
+              q "INSERT INTO ivm_base VALUES (1), (2)"
+              expect "SELECT n FROM ivm_view" "2"
+
+              # wal2json decodes a change from a logical replication slot
+              q "SELECT pg_create_logical_replication_slot('w2j', 'wal2json')"
+              q "INSERT INTO ivm_base VALUES (3)"
+              expect "SELECT count(*) > 0 FROM pg_logical_slot_get_changes('w2j', NULL, NULL) WHERE data LIKE '%ivm_base%'" "t"
+              q "SELECT pg_drop_replication_slot('w2j')"
