@@ -9,6 +9,7 @@
 # for detailed guidance.
 
 config:
+  parametersSchema: ReplicaSetTopologyParameters
   components:
     engine:
       defaults:
@@ -115,6 +116,17 @@ ui:
             celExpressions:
               - celExpr: '!(has(spec.components.engine.parameters.extensions.timescaledb.enabled) && spec.components.engine.parameters.extensions.timescaledb.enabled) || (spec.version >= "18." && spec.version < "19.")'
                 message: "TimescaleDB requires PostgreSQL 18. Select a 18.x database version to enable it."
+    monitoring:
+      label: "Monitoring"
+      description: "Collect PostgreSQL metrics with Prometheus."
+      components:
+        prometheus:
+          uiType: toggle
+          path: spec.topology.parameters.monitoring.prometheus.enabled
+          fieldParams:
+            label: "Prometheus"
+            helperText: "Creates a PodMonitor that scrapes the CloudNativePG metrics exporter. Requires the Prometheus Operator."
+            defaultValue: false
     resources:
       label: "Resources details"
       description: "Configure the resources your new database will have access to."

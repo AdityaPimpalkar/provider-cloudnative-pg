@@ -20,6 +20,7 @@ import (
 	"github.com/openeverest/openeverest/v2/provider-runtime/controller"
 
 	cnpgv1 "github.com/cloudnative-pg/cloudnative-pg/api/v1"
+	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 
 	"github.com/adityapimpalkar/provider-cloudnative-pg/definition/components"
 	"github.com/adityapimpalkar/provider-cloudnative-pg/internal/cnpg"
@@ -48,6 +49,7 @@ func New() *Provider {
 			SchemeFuncs: []func(*runtime.Scheme) error{
 				cnpgv1.SchemeBuilder.AddToScheme,
 				addBarmanCloudScheme,
+				monitoringv1.AddToScheme,
 			},
 		},
 	}
@@ -102,6 +104,10 @@ func (p *Provider) Validate(c *controller.Context) error {
 	}
 
 	if err := cnpg.ValidateTimescaleDBNotDisabled(c, &custom); err != nil {
+		return err
+	}
+
+	if err := validatePrometheus(c, &custom); err != nil {
 		return err
 	}
 
@@ -213,6 +219,10 @@ func (p *Provider) Sync(c *controller.Context) error {
 	}
 
 	if err := c.Apply(pg); err != nil {
+		return err
+	}
+
+	if err := syncPodMonitor(c, pg); err != nil {
 		return err
 	}
 
