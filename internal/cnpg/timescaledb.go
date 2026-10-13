@@ -1,13 +1,11 @@
 package cnpg
 
 import (
-	"errors"
 	"fmt"
 	"slices"
 	"strings"
 
 	cnpgv1 "github.com/cloudnative-pg/cloudnative-pg/api/v1"
-	"github.com/openeverest/openeverest/v2/provider-runtime/controller"
 	corev1 "k8s.io/api/core/v1"
 
 	"github.com/adityapimpalkar/provider-cloudnative-pg/definition/components"
@@ -60,24 +58,6 @@ func ValidateTimescaleDB(custom *components.CNPGCustomSpec, engineVersion, insta
 	return nil
 }
 
-// ValidateTimescaleDBNotDisabled rejects turning TimescaleDB off once its Database
-// CR exists. Dropping the extension safely needs the library loaded and no
-// dependent hypertables, which the provider cannot guarantee.
-func ValidateTimescaleDBNotDisabled(c *controller.Context, custom *components.CNPGCustomSpec) error {
-	if IsTimescaleDBEnabled(custom) {
-		return nil
-	}
-
-	err := c.Get(&cnpgv1.Database{}, TimescaleDBDatabaseName(c.Name()))
-	if err == nil {
-		return errors.New("extensions.timescaledb cannot be disabled once enabled")
-	}
-	if controller.IsNotFound(err) {
-		return nil
-	}
-	return fmt.Errorf("get timescaledb Database: %w", err)
-}
-
 func postgresMajor(engineVersion, instanceVersion string) string {
 	for _, v := range []string{engineVersion, instanceVersion} {
 		if v == "" {
@@ -121,104 +101,6 @@ func BuildTimescaleDBExtension(pg *cnpgv1.Cluster) {
 			cfg.Parameters[name] = value
 		}
 	}
-}
-
-// BuildTimescaleDBDatabase builds the CNPG Database CR that enables
-// CREATE EXTENSION timescaledb in the application database.
-func BuildTimescaleDBDatabase(clusterName string, custom *components.CNPGCustomSpec) *cnpgv1.Database {
-	dbName, owner := applicationDatabaseIdentity(custom)
-	return &cnpgv1.Database{
-		Spec: cnpgv1.DatabaseSpec{
-			Name:  dbName,
-			Owner: owner,
-			ClusterRef: corev1.LocalObjectReference{
-				Name: clusterName,
-			},
-			// retain: deleting this CR must not DROP the application database.
-			ReclaimPolicy: cnpgv1.DatabaseReclaimRetain,
-			Extensions: []cnpgv1.ExtensionSpec{{
-				DatabaseObjectSpec: cnpgv1.DatabaseObjectSpec{
-					Name:   timescaleSQLName,
-					Ensure: cnpgv1.EnsurePresent,
-				},
-				Version: timescaleSQLVersion,
-			}},
-		},
-	}
-}
-
-// SyncTimescaleDBDatabase applies the owned Database CR that runs
-// CREATE EXTENSION timescaledb. Disabling is rejected by Validate.
-func SyncTimescaleDBDatabase(c *controller.Context, custom *components.CNPGCustomSpec) error {
-	if !IsTimescaleDBEnabled(custom) {
-		return nil
-	}
-
-	db := BuildTimescaleDBDatabase(c.Name(), custom)
-	db.ObjectMeta = c.ObjectMeta(TimescaleDBDatabaseName(c.Name()))
-	if err := c.Apply(db); err != nil {
-		return fmt.Errorf("apply timescaledb Database: %w", err)
-	}
-	return nil
-}
-
-// TimescaleDBStatus gates Instance readiness on the Database CR when TimescaleDB
-// is enabled. Returns blocked=true while the extension is still reconciling.
-func TimescaleDBStatus(c *controller.Context, custom *components.CNPGCustomSpec) (controller.Status, bool) {
-	if !IsTimescaleDBEnabled(custom) {
-		return controller.Status{}, false
-	}
-
-	db := &cnpgv1.Database{}
-	if err := c.Get(db, TimescaleDBDatabaseName(c.Name())); err != nil {
-		if controller.IsNotFound(err) {
-			return controller.Provisioning("waiting for TimescaleDB Database resource"), true
-		}
-		return controller.Provisioning(fmt.Sprintf("waiting to get TimescaleDB Database: %v", err)), true
-	}
-
-	if db.Status.ObservedGeneration != db.Generation {
-		return controller.Provisioning("waiting for TimescaleDB Database to be reconciled"), true
-	}
-
-	if db.Status.Applied == nil || !*db.Status.Applied {
-		msg := db.Status.Message
-		if msg == "" {
-			msg = "waiting for TimescaleDB extension to be applied"
-		}
-		return controller.Provisioning(msg), true
-	}
-
-	for _, ext := range db.Status.Extensions {
-		if ext.Name == timescaleSQLName && !ext.Applied {
-			msg := ext.Message
-			if msg == "" {
-				msg = "waiting for TimescaleDB extension to be installed"
-			}
-			return controller.Provisioning(msg), true
-		}
-	}
-
-	return controller.Status{}, false
-}
-
-// TimescaleDBDatabaseName is the owned Database object name for an Instance.
-func TimescaleDBDatabaseName(instanceName string) string {
-	return instanceName + "-timescaledb"
-}
-
-func applicationDatabaseIdentity(custom *components.CNPGCustomSpec) (name, owner string) {
-	name = cnpgv1.DefaultApplicationDatabaseName
-	owner = cnpgv1.DefaultApplicationUserName
-	if custom != nil && custom.Bootstrap != nil && custom.Bootstrap.InitDB != nil {
-		if custom.Bootstrap.InitDB.Database != "" {
-			name = custom.Bootstrap.InitDB.Database
-		}
-		if custom.Bootstrap.InitDB.Owner != "" {
-			owner = custom.Bootstrap.InitDB.Owner
-		}
-	}
-	return name, owner
 }
 
 func hasExtension(exts []cnpgv1.ExtensionConfiguration, name string) bool {

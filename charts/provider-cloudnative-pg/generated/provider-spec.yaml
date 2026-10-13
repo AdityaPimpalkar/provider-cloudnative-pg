@@ -571,7 +571,37 @@ spec:
               type: object
             extensions:
               properties:
+                pgaudit:
+                  properties:
+                    enabled:
+                      type: boolean
+                  type: object
+                pgivm:
+                  properties:
+                    enabled:
+                      type: boolean
+                  type: object
+                pgrouting:
+                  properties:
+                    enabled:
+                      type: boolean
+                  type: object
+                pgvector:
+                  properties:
+                    enabled:
+                      type: boolean
+                  type: object
+                postgis:
+                  properties:
+                    enabled:
+                      type: boolean
+                  type: object
                 timescaledb:
+                  properties:
+                    enabled:
+                      type: boolean
+                  type: object
+                wal2json:
                   properties:
                     enabled:
                       type: boolean
@@ -1168,6 +1198,76 @@ spec:
           label: Database version
         extensions:
           components:
+            pgaudit:
+              fieldParams:
+                defaultValue: false
+                helperText: Audit logging of DDL and role changes (pgaudit.log = 'ddl, role'); set pgaudit.* PostgreSQL parameters to change it. Restarts the instances.
+                label: pgAudit
+              path: spec.components.engine.parameters.extensions.pgaudit.enabled
+              uiType: toggle
+            pgivm:
+              fieldParams:
+                defaultValue: false
+                helperText: Incrementally maintained materialized views. PostgreSQL 18 only; cannot be disabled once enabled.
+                label: pg_ivm
+                modes:
+                  edit:
+                    disabled: true
+                  restore:
+                    disabled: true
+              path: spec.components.engine.parameters.extensions.pgivm.enabled
+              uiType: toggle
+              validation:
+                celExpressions:
+                  - celExpr: '!(has(spec.components.engine.parameters.extensions.pgivm.enabled) && spec.components.engine.parameters.extensions.pgivm.enabled) || (spec.version >= "18." && spec.version < "19.")'
+                    message: pg_ivm requires PostgreSQL 18. Select a 18.x database version to enable it.
+            pgrouting:
+              fieldParams:
+                defaultValue: false
+                helperText: Routing on PostGIS geometries. PostgreSQL 18 only; requires PostGIS; cannot be disabled once enabled.
+                label: pgRouting
+                modes:
+                  edit:
+                    disabled: true
+                  restore:
+                    disabled: true
+              path: spec.components.engine.parameters.extensions.pgrouting.enabled
+              uiType: toggle
+              validation:
+                celExpressions:
+                  - celExpr: '!(has(spec.components.engine.parameters.extensions.pgrouting.enabled) && spec.components.engine.parameters.extensions.pgrouting.enabled) || (spec.version >= "18." && spec.version < "19.")'
+                    message: pgRouting requires PostgreSQL 18. Select a 18.x database version to enable it.
+                  - celExpr: '!(has(spec.components.engine.parameters.extensions.pgrouting.enabled) && spec.components.engine.parameters.extensions.pgrouting.enabled) || (has(spec.components.engine.parameters.extensions.postgis.enabled) && spec.components.engine.parameters.extensions.postgis.enabled)'
+                    message: pgRouting requires PostGIS. Enable PostGIS too.
+            pgvector:
+              fieldParams:
+                defaultValue: false
+                helperText: Vector similarity search. Installed in the application database; cannot be disabled once enabled.
+                label: pgvector
+              path: spec.components.engine.parameters.extensions.pgvector.enabled
+              uiType: toggle
+              validation:
+                modes:
+                  edit:
+                    celExpressions:
+                      - celExpr: '!(has(original.spec.components.engine.parameters.extensions.pgvector.enabled) && original.spec.components.engine.parameters.extensions.pgvector.enabled) || (has(spec.components.engine.parameters.extensions.pgvector.enabled) && spec.components.engine.parameters.extensions.pgvector.enabled)'
+                        message: pgvector cannot be disabled once enabled
+            postgis:
+              fieldParams:
+                defaultValue: false
+                helperText: Spatial types and functions. PostgreSQL 18 only; cannot be disabled once enabled.
+                label: PostGIS
+                modes:
+                  edit:
+                    disabled: true
+                  restore:
+                    disabled: true
+              path: spec.components.engine.parameters.extensions.postgis.enabled
+              uiType: toggle
+              validation:
+                celExpressions:
+                  - celExpr: '!(has(spec.components.engine.parameters.extensions.postgis.enabled) && spec.components.engine.parameters.extensions.postgis.enabled) || (spec.version >= "18." && spec.version < "19.")'
+                    message: PostGIS requires PostgreSQL 18. Select a 18.x database version to enable it.
             timescaledb:
               fieldParams:
                 defaultValue: false
@@ -1183,6 +1283,30 @@ spec:
                 celExpressions:
                   - celExpr: '!(has(spec.components.engine.parameters.extensions.timescaledb.enabled) && spec.components.engine.parameters.extensions.timescaledb.enabled) || (spec.version >= "18." && spec.version < "19.")'
                     message: TimescaleDB requires PostgreSQL 18. Select a 18.x database version to enable it.
+            wal2json:
+              fieldParams:
+                defaultValue: false
+                helperText: JSON output plugin for logical decoding (change data capture). PostgreSQL 18 only.
+                label: wal2json
+                modes:
+                  edit:
+                    disabled: true
+                  restore:
+                    disabled: true
+              path: spec.components.engine.parameters.extensions.wal2json.enabled
+              uiType: toggle
+              validation:
+                celExpressions:
+                  - celExpr: '!(has(spec.components.engine.parameters.extensions.wal2json.enabled) && spec.components.engine.parameters.extensions.wal2json.enabled) || (spec.version >= "18." && spec.version < "19.")'
+                    message: wal2json requires PostgreSQL 18. Select a 18.x database version to enable it.
+          componentsOrder:
+            - pgvector
+            - pgaudit
+            - timescaledb
+            - postgis
+            - pgrouting
+            - pgivm
+            - wal2json
           description: Optional PostgreSQL extensions to install and enable on this instance.
           label: Extensions
         resources:

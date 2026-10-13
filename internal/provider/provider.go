@@ -97,11 +97,11 @@ func (p *Provider) Validate(c *controller.Context) error {
 		return err
 	}
 
-	if err := cnpg.ValidateTimescaleDB(&custom, engine.Version, c.Instance().Spec.Version); err != nil {
+	if err := cnpg.ValidateExtensions(&custom, engine.Version, c.Instance().Spec.Version); err != nil {
 		return err
 	}
 
-	if err := cnpg.ValidateTimescaleDBNotDisabled(c, &custom); err != nil {
+	if err := cnpg.ValidateExtensionsNotDisabled(c, &custom); err != nil {
 		return err
 	}
 
@@ -187,9 +187,7 @@ func (p *Provider) Sync(c *controller.Context) error {
 		Labels: c.PodLabels(common.ComponentEngine),
 	}
 
-	if cnpg.IsTimescaleDBEnabled(&custom) {
-		cnpg.BuildTimescaleDBExtension(pg)
-	}
+	cnpg.ApplyExtensions(pg, &custom)
 
 	if c.Instance().Spec.DataSource != nil {
 		recovery, externalCluster, err := barman.BuildRecoveryConfig(c, custom)
@@ -216,9 +214,13 @@ func (p *Provider) Sync(c *controller.Context) error {
 		return err
 	}
 
-	// Scheduled backups would run against a cluster that is still being restored.
+	// The application database and its backups only exist once a restore is done.
 	if !dataSource.Done {
 		return nil
+	}
+
+	if err := cnpg.SyncExtensionsDatabase(c, &custom); err != nil {
+		return err
 	}
 
 	return barman.SyncScheduledBackups(c)
@@ -298,8 +300,8 @@ func (p *Provider) Status(c *controller.Context) (controller.Status, error) {
 				return controller.Provisioning(fmt.Sprintf("failed to decode component custom spec: %v", err)), nil
 			}
 		}
-		if tsStatus, blocked := cnpg.TimescaleDBStatus(c, &custom); blocked {
-			return tsStatus, nil
+		if extStatus, blocked := cnpg.ExtensionsStatus(c, &custom); blocked {
+			return extStatus, nil
 		}
 
 		host := fmt.Sprintf("%s.%s.svc", pg.GetServiceReadWriteName(), c.Namespace())

@@ -31,6 +31,9 @@ spec:
             topologyKey: topology.kubernetes.io/zone
             whenUnsatisfiable: ScheduleAnyway
       parameters:
+        extensions:
+          pgvector:
+            enabled: true
         postgresql:
           parameters:
             max_connections: "100"

@@ -66,3 +66,17 @@ spec:
     parameters:
       max_connections: "100"
       shared_buffers: "128MB"
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Database
+metadata:
+  name: test-cnpg-cluster-extensions
+spec:
+  name: app
+  owner: app
+  cluster:
+    name: test-cnpg-cluster
+  databaseReclaimPolicy: retain
+  extensions:
+    - name: vector
+      ensure: present

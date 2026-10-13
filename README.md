@@ -69,14 +69,22 @@ provider itself is covered under [Installation](#installation).
 
 ### Extensions
 
-First-class toggles under `spec.components.engine.parameters.extensions` (CNPG extension
-images + `CREATE EXTENSION`).
+First-class toggles under `spec.components.engine.parameters.extensions.<name>.enabled`. The
+provider runs `CREATE EXTENSION` for each enabled one in the application database through a
+single CNPG `Database` resource (`<instance>-extensions`). Extensions not in the `standard`
+operand images are mounted from the official CloudNativePG extension images (trixie builds,
+pinned by digest): these need PostgreSQL **18** and Kubernetes ImageVolume (1.35+, or
+1.33/1.34 + feature gate), and adding one restarts the instances.
 
-| Extension | Status | Notes |
-|---|---|---|
-| TimescaleDB OSS | ✅ | `extensions.timescaledb.enabled` — PG **18** only; cannot be disabled once enabled; needs Kubernetes ImageVolume (1.35+, or 1.33/1.34 + feature gate). See [examples/instance-timescaledb.yaml](examples/instance-timescaledb.yaml) |
-| pgvector | 🚧 | planned |
-| pgAudit | 🚧 | planned |
+| Extension | Toggle | Status | Notes |
+|---|---|---|---|
+| pgvector | `pgvector` | ✅ | PG 14–18, bundled in the `standard` images: no image change or restart; can be enabled on a running instance but not disabled. See [examples/instance-pgvector.yaml](examples/instance-pgvector.yaml) |
+| pgAudit | `pgaudit` | ✅ | PG 14–18, bundled; sets `pgaudit.log: "ddl, role"` unless a value is set in `postgresql.parameters`, and the operator then preloads it and creates it in every database. Can be disabled (the operator drops it). Restarts the instances |
+| TimescaleDB OSS | `timescaledb` | ✅ | Image volume; cannot be disabled once enabled. See [examples/instance-timescaledb.yaml](examples/instance-timescaledb.yaml) |
+| PostGIS | `postgis` | ✅ | Image volume; cannot be disabled once enabled |
+| pgRouting | `pgrouting` | ✅ | Image volume; requires `postgis`; cannot be disabled once enabled |
+| pg_ivm | `pgivm` | ✅ | Image volume, preloaded; cannot be disabled once enabled |
+| wal2json | `wal2json` | ✅ | Image volume; a logical decoding output plugin (no `CREATE EXTENSION`), so it can be disabled — drop the replication slots that use it first |
 
 Stateful workloads additionally report:
 
@@ -156,7 +164,7 @@ spec:
 Component names are defined by this provider — see [definition/provider.yaml](definition/provider.yaml).
 `spec.version` and `spec.topology` are optional; the provider defaults apply.
 More examples live in [examples/](examples/), including
-[TimescaleDB](examples/instance-timescaledb.yaml).
+[TimescaleDB](examples/instance-timescaledb.yaml) and [pgvector](examples/instance-pgvector.yaml).
 
 Watch it come up and read the connection details:
 
@@ -206,7 +214,7 @@ The technology-specific knobs worth knowing about:
 |---|---|---|
 | `bootstrap.initdb` | `engine` | Initial database name, owner, and optional credentials Secret |
 | `postgresql` | `engine` | Full CloudNativePG `PostgresConfiguration` (GUCs, sync replicas, …) |
-| `extensions.timescaledb` | `engine` | Install + enable TimescaleDB OSS (image volume + `CREATE EXTENSION`); PG 18 + ImageVolume required. Defaults `timescaledb.telemetry_level=off` and `max_locks_per_transaction=128` unless set in `postgresql.parameters` |
+| `extensions.*` | `engine` | First-class extensions; see [Extensions](#extensions). TimescaleDB also defaults `timescaledb.telemetry_level=off` and `max_locks_per_transaction=128` unless set in `postgresql.parameters` |
 | `affinity` | `engine` | CloudNativePG `AffinityConfiguration`; rejected together with `schedulingPolicy` `affinity`, `nodeSelector` or `tolerations` |
 | `managed` | `engine` | Managed PostgreSQL roles |
 | `resizeInUseVolumes` | `engine` | Allow PVC expansion on running instances |
