@@ -1051,8 +1051,22 @@ spec:
         backupAgent:
           optional: true
         engine: {}
-        monitoring:
-          optional: true
+      parametersSchema:
+        openAPIV3Schema:
+          properties:
+            monitoring:
+              properties:
+                prometheus:
+                  properties:
+                    enabled:
+                      type: boolean
+                    podMonitorLabels:
+                      additionalProperties:
+                        type: string
+                      type: object
+                  type: object
+              type: object
+          type: object
   uiSchema:
     replicaSet:
       sections:
@@ -1185,6 +1199,17 @@ spec:
                     message: TimescaleDB requires PostgreSQL 18. Select a 18.x database version to enable it.
           description: Optional PostgreSQL extensions to install and enable on this instance.
           label: Extensions
+        monitoring:
+          components:
+            prometheus:
+              fieldParams:
+                defaultValue: false
+                helperText: Creates a PodMonitor that scrapes the CloudNativePG metrics exporter. Requires the Prometheus Operator.
+                label: Prometheus
+              path: spec.topology.parameters.monitoring.prometheus.enabled
+              uiType: toggle
+          description: Collect PostgreSQL metrics with Prometheus.
+          label: Monitoring
         resources:
           components:
             nodes:
@@ -1285,6 +1310,7 @@ spec:
         - databaseVersion
         - bootstrap
         - extensions
+        - monitoring
         - resources
         - advanced
   versions:

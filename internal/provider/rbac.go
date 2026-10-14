@@ -49,6 +49,9 @@ package provider
 // Pods (the runtime counts labelled component pods into Instance status.components):
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
 
+// Prometheus Operator PodMonitors (spec.topology.parameters.monitoring.prometheus):
+// +kubebuilder:rbac:groups=monitoring.coreos.com,resources=podmonitors,verbs=get;list;watch;create;update;patch;delete
+
 // Examples for other resources:
 //
 //   - Access Kubernetes core resources:

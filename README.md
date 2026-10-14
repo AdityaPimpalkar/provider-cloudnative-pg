@@ -65,7 +65,7 @@ provider itself is covered under [Installation](#installation).
 | Bootstrap (`initdb`) | ✅ | database name, owner, and credentials secret |
 | Managed roles | ✅ | CloudNativePG managed roles with readiness gating in `Status()` |
 | Pod scheduling | ✅ | `spec.components.engine.schedulingPolicy` (all fields), or `parameters.affinity` — not both |
-| Monitoring | 🚧 | optional `monitoring` component — wiring in progress; CNPG `monitoring` parameters are accepted |
+| Monitoring | ✅ | Prometheus: a PodMonitor for the instance pods via `spec.topology.parameters.monitoring.prometheus`; requires the Prometheus Operator. See [Scrape metrics with Prometheus](#scrape-metrics-with-prometheus) |
 
 ### Extensions
 
@@ -168,13 +168,40 @@ kubectl get instance my-instance -o jsonpath='{.status.connectionSecretRef.name}
 The credentials (host, port, username, password, uri) live in the connection
 Secret named by `.status.connectionSecretRef.name`.
 
+### Scrape metrics with Prometheus
+
+Every CloudNativePG instance pod serves its metrics exporter on port `metrics` (9187).
+With the [Prometheus Operator](https://prometheus-operator.dev/) in the cluster, enable
+Prometheus (the **Monitoring → Prometheus** toggle in the UI) to get a PodMonitor
+(`<instance>-metrics`) that scrapes it, over HTTPS when
+`spec.components.engine.parameters.monitoring.tls.enabled` is set. `podMonitorLabels` lets
+your Prometheus `podMonitorSelector` pick it up. Turning it off removes the PodMonitor.
+
+```yaml
+spec:
+  topology:
+    type: replicaSet
+    parameters:
+      monitoring:
+        prometheus:
+          enabled: true
+          podMonitorLabels:
+            release: kube-prometheus-stack
+```
+
+The PodMonitor carries `app.kubernetes.io/managed-by=everest` and
+`app.kubernetes.io/instance=<instance>`, which the OpenEverest metrics plugin uses to find it.
+Don't combine it with CloudNativePG's deprecated `monitoring.enablePodMonitor`, which would
+scrape every pod twice; the provider rejects that combination.
+
 ## Topologies
 
 | Topology | Default | Description |
 |---|---|---|
 | `replicaSet` | ✅ | A CloudNativePG primary + standby cluster built from the `engine` component (default 3 instances) |
 
-The `backupAgent` and `monitoring` components are optional.
+The `backupAgent` component is optional. Prometheus scraping is a topology
+parameter (`spec.topology.parameters.monitoring.prometheus`), not a component.
 
 ## Versions
 
@@ -211,7 +238,8 @@ The technology-specific knobs worth knowing about:
 | `managed` | `engine` | Managed PostgreSQL roles |
 | `resizeInUseVolumes` | `engine` | Allow PVC expansion on running instances |
 | `certificates` | `engine` | TLS certificate configuration passthrough |
-| `monitoring` | `engine` | CloudNativePG monitoring configuration |
+| `monitoring` | `engine` | CloudNativePG monitoring configuration (custom queries, metrics TLS, …) |
+| `monitoring.prometheus` | topology | Create a PodMonitor for the instance; see [Scrape metrics with Prometheus](#scrape-metrics-with-prometheus) |
 
 ## Development
 
