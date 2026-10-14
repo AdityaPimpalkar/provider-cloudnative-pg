@@ -1,14 +1,11 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/kyverno/chainsaw/main/.schemas/json/test-chainsaw-v1alpha1.json
-# Extensions mounted from CloudNativePG extension images. Needs PostgreSQL 18
-# and Kubernetes ImageVolume (1.35+, or 1.33/1.34 with the feature gate, and
-# containerd 2.1+), so `make test-integration` skips it; run it with
-# `make test-integration-imagevolume`.
+# Extensions mounted as image volumes from the provider's extensions catalog.
+# Needs PostgreSQL 18 and Kubernetes ImageVolume (1.35+, or 1.33/1.34 with the
+# feature gate, and containerd 2.1+).
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
   name: extensions-imagevolume
-  labels:
-    requires: imagevolume
 spec:
   timeouts:
     assert: 10m

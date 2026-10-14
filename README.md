@@ -84,16 +84,26 @@ can bump or mirror images with `helm upgrade`, or set `extensionCatalog.create=f
 `sql-version.extensions.openeverest.io/<major>.<name>` annotations), without upgrading the
 provider. A new image restarts the instances that use it.
 
-| Extension | Toggle | Status | Notes |
-|---|---|---|---|
-| pgvector | `pgvector` | ✅ | PG 14–18, bundled in the `standard` images: no image change or restart; can be enabled on a running instance but not disabled. See [examples/instance-pgvector.yaml](examples/instance-pgvector.yaml) |
-| pgAudit | `pgaudit` | ✅ | PG 14–18, bundled; sets `pgaudit.log: "ddl, role"` unless a value is set in `postgresql.parameters`, and the operator then preloads it and creates it in every database. Can be disabled (the operator drops it). Restarts the instances |
-| TimescaleDB OSS | `timescaledb` | ✅ | Image volume; cannot be disabled once enabled. See [examples/instance-timescaledb.yaml](examples/instance-timescaledb.yaml) |
-| PostGIS | `postgis` | ✅ | Image volume; cannot be disabled once enabled |
-| pgRouting | `pgrouting` | ✅ | Image volume; requires `postgis`; cannot be disabled once enabled |
-| pg_ivm | `pgivm` | ✅ | Image volume, preloaded; cannot be disabled once enabled |
-| wal2json | `wal2json` | ✅ | Image volume; a logical decoding output plugin (no `CREATE EXTENSION`), so it can be disabled — drop the replication slots that use it first |
-| Apache AGE | `age` | ✅ | Image volume from [solanicaio/postgresql-extensions](https://github.com/solanicaio/postgresql-extensions), preloaded; only at creation (the application owner gets `USAGE` on `ag_catalog` through bootstrap default privileges); cannot be disabled once enabled. Run `SET search_path = ag_catalog, "$user", public` before using it |
+| Extension | Toggle | Status | Enable on a running instance | Disable | Notes |
+|---|---|---|---|---|---|
+| pgvector | `pgvector` | ✅ | ✅ no restart | ❌ | PG 14–18, bundled in the `standard` images: no image change. See [examples/instance-pgvector.yaml](examples/instance-pgvector.yaml) |
+| pgAudit | `pgaudit` | ✅ | ✅ restarts | ✅ the operator drops it | PG 14–18, bundled; sets `pgaudit.log: "ddl, role"` unless a value is set in `postgresql.parameters`, and the operator then preloads it and creates it in every database |
+| TimescaleDB OSS | `timescaledb` | ✅ | ❌ creation only ¹ | ❌ | Image volume, preloaded. See [examples/instance-timescaledb.yaml](examples/instance-timescaledb.yaml) |
+| PostGIS | `postgis` | ✅ | ✅ restarts | ❌ | Image volume |
+| pgRouting | `pgrouting` | ✅ | ✅ restarts | ❌ | Image volume; requires `postgis` |
+| pg_ivm | `pgivm` | ✅ | ❌ creation only ¹ | ❌ | Image volume, preloaded |
+| wal2json | `wal2json` | ✅ | ✅ restarts | ✅ restarts | Image volume; a logical decoding output plugin (no `CREATE EXTENSION`) — drop the replication slots that use it before disabling |
+| Apache AGE | `age` | ✅ | ❌ creation only ² | ❌ | Image volume from [solanicaio/postgresql-extensions](https://github.com/solanicaio/postgresql-extensions), preloaded. Run `SET search_path = ag_catalog, "$user", public` before using it |
+
+Extensions that are created in the database (everything but pgAudit and wal2json) cannot be
+disabled: dropping them would fail or destroy data, so the provider rejects it.
+
+¹ The UI offers them only at creation: CloudNativePG advises against rolling out a new extension
+image and a `shared_preload_libraries` change together, and enabling them through the API on a
+running instance does exactly that.
+
+² Enforced by the provider: the application owner gets `USAGE` on `ag_catalog` through default
+privileges set in `postInitApplicationSQL`, which only runs at bootstrap.
 
 Stateful workloads additionally report:
 
@@ -312,9 +322,9 @@ code generation, and the backup/restore interfaces are documented once for all p
   Individual suites are also exposed as make targets (`make test-integration-core`,
   `make test-integration-core-replicaset`, `make test-integration-extensions`, …).
   The extension suites run a one-instance PostgreSQL and use each extension through `psql`.
-  `extensions/imagevolume` needs Kubernetes ImageVolume (1.35+ with containerd 2.1+), so
-  `make test-integration` skips it; run it with `make test-integration-imagevolume` (e.g. on
-  a k3d cluster created with `--image rancher/k3s:v1.35.9-k3s1`).
+  `extensions/imagevolume` needs Kubernetes ImageVolume (1.35+ with containerd 2.1+); the dev
+  and CI k3d cluster ([dev/k3d_config.yaml](dev/k3d_config.yaml)) runs k3s 1.36, so
+  `make test-integration` covers it (alone: `make test-integration-imagevolume`).
 - **CI** — [.github/workflows/build.yaml](.github/workflows/build.yaml) runs lint, build, unit
   tests, generated-file verification, and Helm lint;
   [.github/workflows/test.yaml](.github/workflows/test.yaml) runs the integration suites.

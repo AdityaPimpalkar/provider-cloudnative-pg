@@ -1243,7 +1243,7 @@ spec:
             pgivm:
               fieldParams:
                 defaultValue: false
-                helperText: Incrementally maintained materialized views. PostgreSQL 18 only; cannot be disabled once enabled.
+                helperText: Incrementally maintained materialized views. PostgreSQL 18 only; preloaded, so only at creation (CloudNativePG advises against adding an extension image and a preload library in one rollout); cannot be disabled.
                 label: pg_ivm
                 modes:
                   edit:
@@ -1259,11 +1259,9 @@ spec:
             pgrouting:
               fieldParams:
                 defaultValue: false
-                helperText: Routing on PostGIS geometries. PostgreSQL 18 only; requires PostGIS; cannot be disabled once enabled.
+                helperText: Routing on PostGIS geometries. PostgreSQL 18 only; requires PostGIS; enabling it restarts the instances; cannot be disabled once enabled.
                 label: pgRouting
                 modes:
-                  edit:
-                    disabled: true
                   restore:
                     disabled: true
               path: spec.components.engine.parameters.extensions.pgrouting.enabled
@@ -1274,6 +1272,11 @@ spec:
                     message: pgRouting requires PostgreSQL 18. Select a 18.x database version to enable it.
                   - celExpr: '!(has(spec.components.engine.parameters.extensions.pgrouting.enabled) && spec.components.engine.parameters.extensions.pgrouting.enabled) || (has(spec.components.engine.parameters.extensions.postgis.enabled) && spec.components.engine.parameters.extensions.postgis.enabled)'
                     message: pgRouting requires PostGIS. Enable PostGIS too.
+                modes:
+                  edit:
+                    celExpressions:
+                      - celExpr: '!(has(original.spec.components.engine.parameters.extensions.pgrouting.enabled) && original.spec.components.engine.parameters.extensions.pgrouting.enabled) || (has(spec.components.engine.parameters.extensions.pgrouting.enabled) && spec.components.engine.parameters.extensions.pgrouting.enabled)'
+                        message: pgRouting cannot be disabled once enabled
             pgvector:
               fieldParams:
                 defaultValue: false
@@ -1290,11 +1293,9 @@ spec:
             postgis:
               fieldParams:
                 defaultValue: false
-                helperText: Spatial types and functions. PostgreSQL 18 only; cannot be disabled once enabled.
+                helperText: Spatial types and functions. PostgreSQL 18 only; enabling it restarts the instances; cannot be disabled once enabled.
                 label: PostGIS
                 modes:
-                  edit:
-                    disabled: true
                   restore:
                     disabled: true
               path: spec.components.engine.parameters.extensions.postgis.enabled
@@ -1303,9 +1304,15 @@ spec:
                 celExpressions:
                   - celExpr: '!(has(spec.components.engine.parameters.extensions.postgis.enabled) && spec.components.engine.parameters.extensions.postgis.enabled) || (spec.version >= "18." && spec.version < "19.")'
                     message: PostGIS requires PostgreSQL 18. Select a 18.x database version to enable it.
+                modes:
+                  edit:
+                    celExpressions:
+                      - celExpr: '!(has(original.spec.components.engine.parameters.extensions.postgis.enabled) && original.spec.components.engine.parameters.extensions.postgis.enabled) || (has(spec.components.engine.parameters.extensions.postgis.enabled) && spec.components.engine.parameters.extensions.postgis.enabled)'
+                        message: PostGIS cannot be disabled once enabled
             timescaledb:
               fieldParams:
                 defaultValue: false
+                helperText: Time-series hypertables. PostgreSQL 18 only; preloaded, so only at creation (CloudNativePG advises against adding an extension image and a preload library in one rollout); cannot be disabled.
                 label: TimescaleDB (Apache-2.0)
                 modes:
                   edit:
@@ -1321,11 +1328,9 @@ spec:
             wal2json:
               fieldParams:
                 defaultValue: false
-                helperText: JSON output plugin for logical decoding (change data capture). PostgreSQL 18 only.
+                helperText: JSON output plugin for logical decoding (change data capture). PostgreSQL 18 only; enabling or disabling it restarts the instances; drop the replication slots that use it before disabling.
                 label: wal2json
                 modes:
-                  edit:
-                    disabled: true
                   restore:
                     disabled: true
               path: spec.components.engine.parameters.extensions.wal2json.enabled
