@@ -1051,8 +1051,6 @@ spec:
         backupAgent:
           optional: true
         engine: {}
-        monitoring:
-          optional: true
       parametersSchema:
         openAPIV3Schema:
           properties:
@@ -1312,6 +1310,7 @@ spec:
         - databaseVersion
         - bootstrap
         - extensions
+        - monitoring
         - resources
         - advanced
   versions:

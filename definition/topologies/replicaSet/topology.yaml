@@ -16,8 +16,6 @@ config:
         replicas: 3
     backupAgent:
       optional: true
-    monitoring:
-      optional: true
 ui:
   sections:
     databaseVersion:
@@ -261,5 +259,6 @@ ui:
     - databaseVersion
     - bootstrap
     - extensions
+    - monitoring
     - resources
     - advanced

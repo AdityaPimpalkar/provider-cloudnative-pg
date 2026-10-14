@@ -200,7 +200,8 @@ scrape every pod twice; the provider rejects that combination.
 |---|---|---|
 | `replicaSet` | ✅ | A CloudNativePG primary + standby cluster built from the `engine` component (default 3 instances) |
 
-The `backupAgent` and `monitoring` components are optional.
+The `backupAgent` component is optional. Prometheus scraping is a topology
+parameter (`spec.topology.parameters.monitoring.prometheus`), not a component.
 
 ## Versions
 
