@@ -3,11 +3,13 @@ package cnpg
 import (
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 
 	cnpgv1 "github.com/cloudnative-pg/cloudnative-pg/api/v1"
 	"github.com/openeverest/openeverest/v2/provider-runtime/controller"
 	corev1 "k8s.io/api/core/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/adityapimpalkar/provider-cloudnative-pg/definition/components"
 	"github.com/adityapimpalkar/provider-cloudnative-pg/internal/common"
@@ -16,40 +18,40 @@ import (
 // Image volumes need extension_control_path, added in PostgreSQL 18.
 const imageVolumePostgresMajor = "18"
 
-// extension is a first-class toggle under parameters.extensions.
-//
-// Images are the trixie builds (matching the standard-trixie operand images)
-// from the official catalog image-catalogs-extensions/catalog-minimal-trixie.yaml
-// in https://github.com/cloudnative-pg/artifacts; SQL names, versions, preload
-// libraries, paths and env follow each image's metadata.hcl in
-// https://github.com/cloudnative-pg/postgres-extensions-containers.
+// SQLVersionAnnotationPrefix keys, on the extensions ClusterImageCatalog, the
+// CREATE EXTENSION version of each image as <prefix><major>.<extension name>;
+// ExtensionConfiguration has no field for it.
+const SQLVersionAnnotationPrefix = "sql-version.extensions.openeverest.io/"
+
+// extension is a first-class toggle under parameters.extensions. Image-volume
+// extensions are resolved by name from the extensions ClusterImageCatalog
+// rendered by the Helm chart (values extensionCatalog), so admins can change
+// or mirror images without upgrading the provider.
 type extension struct {
 	field  string
 	toggle func(*components.ExtensionsSpec) *components.ExtensionToggle
-	// image is nil when the standard operand images already ship the extension.
-	image *cnpgv1.ExtensionConfiguration
+	// imageName is the catalog extension entry; empty when the standard operand
+	// images already ship the extension.
+	imageName string
 	// sqlName is created in the application database; empty when there is no
 	// CREATE EXTENSION or the operator manages it.
-	sqlName string
-	// sqlVersion is empty to install the version shipped in the image.
-	sqlVersion       string
+	sqlName          string
 	preloadLibraries []string
 	// defaultParameters apply unless set in parameters.postgresql.parameters.
 	defaultParameters map[string]string
 	requires          []string
+	// bootstrapSQL runs as the superuser in the application database at initdb,
+	// so such extensions can only be enabled when the instance is created.
+	bootstrapSQL func(owner string) string
 }
 
 // Ordered so that dependencies are created first (postgis before pgrouting).
 var firstClassExtensions = []extension{
 	{
-		field:  "timescaledb",
-		toggle: func(e *components.ExtensionsSpec) *components.ExtensionToggle { return e.TimescaleDB },
-		image: &cnpgv1.ExtensionConfiguration{
-			Name:              "timescaledb-oss",
-			ImageVolumeSource: corev1.ImageVolumeSource{Reference: "ghcr.io/cloudnative-pg/timescaledb-oss:2.30.1-18-trixie"},
-		},
+		field:            "timescaledb",
+		toggle:           func(e *components.ExtensionsSpec) *components.ExtensionToggle { return e.TimescaleDB },
+		imageName:        "timescaledb-oss",
 		sqlName:          "timescaledb",
-		sqlVersion:       "2.30.1",
 		preloadLibraries: []string{"timescaledb"},
 		// From the upstream timescaledb-oss Cluster example.
 		defaultParameters: map[string]string{
@@ -58,30 +60,17 @@ var firstClassExtensions = []extension{
 		},
 	},
 	{
-		field:  "postgis",
-		toggle: func(e *components.ExtensionsSpec) *components.ExtensionToggle { return e.PostGIS },
-		image: &cnpgv1.ExtensionConfiguration{
-			Name:              "postgis",
-			ImageVolumeSource: corev1.ImageVolumeSource{Reference: "ghcr.io/cloudnative-pg/postgis-extension:3.6.4-202610110422-18-trixie@sha256:84a8e286d79aaec6fe824a792179d11252745a0d2b139d88692424fa61494df0"},
-			LdLibraryPath:     []string{"system"},
-			Env: []cnpgv1.ExtensionEnvVar{
-				{Name: "GDAL_DATA", Value: "${image_root}/share/gdal"},
-				{Name: "PROJ_DATA", Value: "${image_root}/share/proj"},
-			},
-		},
-		sqlName:    "postgis",
-		sqlVersion: "3.6.4",
+		field:     "postgis",
+		toggle:    func(e *components.ExtensionsSpec) *components.ExtensionToggle { return e.PostGIS },
+		imageName: "postgis",
+		sqlName:   "postgis",
 	},
 	{
-		field:  "pgrouting",
-		toggle: func(e *components.ExtensionsSpec) *components.ExtensionToggle { return e.PgRouting },
-		image: &cnpgv1.ExtensionConfiguration{
-			Name:              "pgrouting",
-			ImageVolumeSource: corev1.ImageVolumeSource{Reference: "ghcr.io/cloudnative-pg/pgrouting:4.0.1-202610110422-18-trixie@sha256:a9e9f2b786c213bebcb3baffe09d04de844c16bf8420c7bdbd98122c2aa704a1"},
-		},
-		sqlName:    "pgrouting",
-		sqlVersion: "4.0.1",
-		requires:   []string{"postgis"},
+		field:     "pgrouting",
+		toggle:    func(e *components.ExtensionsSpec) *components.ExtensionToggle { return e.PgRouting },
+		imageName: "pgrouting",
+		sqlName:   "pgrouting",
+		requires:  []string{"postgis"},
 	},
 	{
 		field:   "pgvector",
@@ -89,14 +78,10 @@ var firstClassExtensions = []extension{
 		sqlName: "vector",
 	},
 	{
-		field:  "pgivm",
-		toggle: func(e *components.ExtensionsSpec) *components.ExtensionToggle { return e.PgIVM },
-		image: &cnpgv1.ExtensionConfiguration{
-			Name:              "pg-ivm",
-			ImageVolumeSource: corev1.ImageVolumeSource{Reference: "ghcr.io/cloudnative-pg/pg-ivm:1.15-202610110422-18-trixie@sha256:3f6d327ec3f8cdc4212789f0cfc95be81b723e51f869639d526de6236ecae874"},
-		},
+		field:            "pgivm",
+		toggle:           func(e *components.ExtensionsSpec) *components.ExtensionToggle { return e.PgIVM },
+		imageName:        "pg-ivm",
 		sqlName:          "pg_ivm",
-		sqlVersion:       "1.15",
 		preloadLibraries: []string{"pg_ivm"},
 	},
 	{
@@ -108,11 +93,21 @@ var firstClassExtensions = []extension{
 		defaultParameters: map[string]string{"pgaudit.log": "ddl, role"},
 	},
 	{
-		field:  "wal2json",
-		toggle: func(e *components.ExtensionsSpec) *components.ExtensionToggle { return e.Wal2JSON },
-		image: &cnpgv1.ExtensionConfiguration{
-			Name:              "wal2json",
-			ImageVolumeSource: corev1.ImageVolumeSource{Reference: "ghcr.io/cloudnative-pg/wal2json:2.6-202610110422-18-trixie@sha256:298e20b7e9a75553a7b0070237ff09af9122d5cae2689255c8203283aaf430d0"},
+		field:     "wal2json",
+		toggle:    func(e *components.ExtensionsSpec) *components.ExtensionToggle { return e.Wal2JSON },
+		imageName: "wal2json",
+	},
+	{
+		field:     "age",
+		toggle:    func(e *components.ExtensionsSpec) *components.ExtensionToggle { return e.AGE },
+		imageName: "age",
+		sqlName:   "age",
+		// Non-superusers cannot LOAD it from an image volume (only $libdir/plugins).
+		preloadLibraries: []string{"age"},
+		// CREATE EXTENSION creates ag_catalog as the superuser, and AGE refuses a
+		// pre-created one, so grant the owner USAGE on schemas created later.
+		bootstrapSQL: func(owner string) string {
+			return "ALTER DEFAULT PRIVILEGES FOR ROLE postgres GRANT USAGE ON SCHEMAS TO " + quoteIdentifier(owner)
 		},
 	},
 }
@@ -143,7 +138,7 @@ func ValidateExtensions(custom *components.CNPGCustomSpec, engineVersion, instan
 	major := postgresMajor(engineVersion, instanceVersion)
 	enabled := enabledExtensions(custom)
 	for _, ext := range enabled {
-		if ext.image != nil && major != imageVolumePostgresMajor {
+		if ext.imageName != "" && major != imageVolumePostgresMajor {
 			return fmt.Errorf(
 				"extensions.%s requires PostgreSQL 18 (got major %q); set spec.version to a 18.x release (e.g. \"18.4\"); also requires Kubernetes ImageVolume (1.35+, or 1.33/1.34 with the ImageVolume feature gate)",
 				ext.field, major,
@@ -173,14 +168,66 @@ func postgresMajor(engineVersion, instanceVersion string) string {
 	return major
 }
 
+// ExtensionImage is a catalog extension entry and its CREATE EXTENSION version.
+type ExtensionImage struct {
+	Config     cnpgv1.ExtensionConfiguration
+	SQLVersion string
+}
+
+// ExtensionImages holds the resolved images of the enabled extensions by entry name.
+type ExtensionImages map[string]ExtensionImage
+
+// ResolveExtensionImages looks up the enabled image-volume extensions in the
+// named ClusterImageCatalog, for the instance's PostgreSQL major. The catalog is
+// only read when such an extension is enabled.
+func ResolveExtensionImages(
+	c *controller.Context, catalogName string, custom *components.CNPGCustomSpec, engineVersion, instanceVersion string,
+) (ExtensionImages, error) {
+	var wanted []extension
+	for _, ext := range enabledExtensions(custom) {
+		if ext.imageName != "" {
+			wanted = append(wanted, ext)
+		}
+	}
+	if len(wanted) == 0 {
+		return nil, nil
+	}
+
+	major := postgresMajor(engineVersion, instanceVersion)
+	majorNumber, err := strconv.Atoi(major)
+	if err != nil {
+		return nil, fmt.Errorf("invalid PostgreSQL major %q: %w", major, err)
+	}
+
+	catalog := &cnpgv1.ClusterImageCatalog{}
+	if err := c.Client().Get(c.Context(), client.ObjectKey{Name: catalogName}, catalog); err != nil {
+		return nil, fmt.Errorf("get the extensions ClusterImageCatalog %q: %w", catalogName, err)
+	}
+
+	entries, _ := catalog.Spec.FindExtensionsForMajor(majorNumber)
+	images := ExtensionImages{}
+	for _, ext := range wanted {
+		i := slices.IndexFunc(entries, func(e cnpgv1.ExtensionConfiguration) bool { return e.Name == ext.imageName })
+		if i < 0 {
+			return nil, fmt.Errorf("extensions.%s: ClusterImageCatalog %q has no %q extension for PostgreSQL %d",
+				ext.field, catalogName, ext.imageName, majorNumber)
+		}
+		images[ext.imageName] = ExtensionImage{
+			Config:     entries[i],
+			SQLVersion: catalog.Annotations[SQLVersionAnnotationPrefix+major+"."+ext.imageName],
+		}
+	}
+	return images, nil
+}
+
 // ApplyExtensions mounts the extension images of the enabled extensions and
-// sets their shared_preload_libraries and default parameters on the Cluster.
-// Entries the user already set in parameters.postgresql win.
-func ApplyExtensions(pg *cnpgv1.Cluster, custom *components.CNPGCustomSpec) {
+// sets their shared_preload_libraries, default parameters and bootstrap SQL on
+// the Cluster. Entries the user already set in parameters.postgresql win.
+func ApplyExtensions(pg *cnpgv1.Cluster, custom *components.CNPGCustomSpec, images ExtensionImages) {
 	cfg := &pg.Spec.PostgresConfiguration
 	for _, ext := range enabledExtensions(custom) {
-		if ext.image != nil && !slices.ContainsFunc(cfg.Extensions, func(e cnpgv1.ExtensionConfiguration) bool { return e.Name == ext.image.Name }) {
-			cfg.Extensions = append(cfg.Extensions, *ext.image.DeepCopy())
+		if image, ok := images[ext.imageName]; ok && !slices.ContainsFunc(cfg.Extensions, func(e cnpgv1.ExtensionConfiguration) bool { return e.Name == ext.imageName }) {
+			cfg.Extensions = append(cfg.Extensions, *image.Config.DeepCopy())
 		}
 
 		for _, library := range ext.preloadLibraries {
@@ -197,7 +244,50 @@ func ApplyExtensions(pg *cnpgv1.Cluster, custom *components.CNPGCustomSpec) {
 				cfg.Parameters[name] = value
 			}
 		}
+
+		if ext.bootstrapSQL != nil {
+			_, owner := applicationDatabaseIdentity(custom)
+			statement := ext.bootstrapSQL(owner)
+			if pg.Spec.Bootstrap == nil {
+				pg.Spec.Bootstrap = &cnpgv1.BootstrapConfiguration{}
+			}
+			// Copy: InitDB may point into the decoded Instance parameters.
+			initDB := &cnpgv1.BootstrapInitDB{}
+			if pg.Spec.Bootstrap.InitDB != nil {
+				initDB = pg.Spec.Bootstrap.InitDB.DeepCopy()
+			}
+			if !slices.Contains(initDB.PostInitApplicationSQL, statement) {
+				initDB.PostInitApplicationSQL = append(initDB.PostInitApplicationSQL, statement)
+			}
+			pg.Spec.Bootstrap.InitDB = initDB
+		}
 	}
+}
+
+// ValidateExtensionsAtCreation rejects enabling an extension that needs
+// bootstrap SQL on a Cluster that was created without it.
+func ValidateExtensionsAtCreation(c *controller.Context, custom *components.CNPGCustomSpec) error {
+	pg := &cnpgv1.Cluster{}
+	if err := c.Get(pg, c.Name()); err != nil {
+		if controller.IsNotFound(err) {
+			return nil
+		}
+		return fmt.Errorf("get Cluster: %w", err)
+	}
+
+	for _, ext := range enabledExtensions(custom) {
+		if ext.bootstrapSQL == nil {
+			continue
+		}
+		if !slices.ContainsFunc(pg.Spec.PostgresConfiguration.Extensions, func(e cnpgv1.ExtensionConfiguration) bool { return e.Name == ext.imageName }) {
+			return fmt.Errorf("extensions.%s can only be enabled when the instance is created", ext.field)
+		}
+	}
+	return nil
+}
+
+func quoteIdentifier(name string) string {
+	return `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
 }
 
 // ExtensionsDatabaseName is the owned Database object that installs every
@@ -218,7 +308,7 @@ func createdExtensions(custom *components.CNPGCustomSpec) []extension {
 
 // BuildExtensionsDatabase builds the CNPG Database CR that runs CREATE EXTENSION
 // for the enabled extensions in the application database, or nil if none need it.
-func BuildExtensionsDatabase(clusterName string, custom *components.CNPGCustomSpec) *cnpgv1.Database {
+func BuildExtensionsDatabase(clusterName string, custom *components.CNPGCustomSpec, images ExtensionImages) *cnpgv1.Database {
 	created := createdExtensions(custom)
 	if len(created) == 0 {
 		return nil
@@ -231,7 +321,8 @@ func BuildExtensionsDatabase(clusterName string, custom *components.CNPGCustomSp
 				Name:   ext.sqlName,
 				Ensure: cnpgv1.EnsurePresent,
 			},
-			Version: ext.sqlVersion,
+			// Empty installs the default version of the extension's control file.
+			Version: images[ext.imageName].SQLVersion,
 		})
 	}
 
@@ -252,8 +343,8 @@ func BuildExtensionsDatabase(clusterName string, custom *components.CNPGCustomSp
 
 // SyncExtensionsDatabase applies the owned extensions Database CR. Disabling an
 // installed extension is rejected by Validate, so nothing is removed here.
-func SyncExtensionsDatabase(c *controller.Context, custom *components.CNPGCustomSpec) error {
-	db := BuildExtensionsDatabase(c.Name(), custom)
+func SyncExtensionsDatabase(c *controller.Context, custom *components.CNPGCustomSpec, images ExtensionImages) error {
+	db := BuildExtensionsDatabase(c.Name(), custom, images)
 	if db == nil {
 		return nil
 	}

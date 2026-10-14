@@ -3,6 +3,7 @@ package provider
 import (
 	"fmt"
 	"net/url"
+	"os"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -33,11 +34,19 @@ var _ controller.ProviderInterface = (*Provider)(nil)
 // Provider implements controller.ProviderInterface for the provider-cloudnative-pg provider.
 type Provider struct {
 	controller.BaseProvider
+
+	// extensionCatalog is the ClusterImageCatalog with the extension images.
+	extensionCatalog string
 }
 
 // New creates a new Provider instance.
 func New() *Provider {
+	extensionCatalog := os.Getenv("EXTENSION_CATALOG")
+	if extensionCatalog == "" {
+		extensionCatalog = common.DefaultExtensionCatalog
+	}
 	return &Provider{
+		extensionCatalog: extensionCatalog,
 		BaseProvider: controller.BaseProvider{
 			ProviderName: common.ProviderName,
 			WatchConfigs: []controller.WatchConfig{
@@ -103,7 +112,15 @@ func (p *Provider) Validate(c *controller.Context) error {
 		return err
 	}
 
+	if _, err := cnpg.ResolveExtensionImages(c, p.extensionCatalog, &custom, engine.Version, c.Instance().Spec.Version); err != nil {
+		return err
+	}
+
 	if err := cnpg.ValidateExtensionsNotDisabled(c, &custom); err != nil {
+		return err
+	}
+
+	if err := cnpg.ValidateExtensionsAtCreation(c, &custom); err != nil {
 		return err
 	}
 
@@ -193,7 +210,11 @@ func (p *Provider) Sync(c *controller.Context) error {
 		Labels: c.PodLabels(common.ComponentEngine),
 	}
 
-	cnpg.ApplyExtensions(pg, &custom)
+	extensionImages, err := cnpg.ResolveExtensionImages(c, p.extensionCatalog, &custom, engine.Version, c.Instance().Spec.Version)
+	if err != nil {
+		return err
+	}
+	cnpg.ApplyExtensions(pg, &custom, extensionImages)
 
 	if c.Instance().Spec.DataSource != nil {
 		recovery, externalCluster, err := barman.BuildRecoveryConfig(c, custom)
@@ -229,7 +250,7 @@ func (p *Provider) Sync(c *controller.Context) error {
 		return nil
 	}
 
-	if err := cnpg.SyncExtensionsDatabase(c, &custom); err != nil {
+	if err := cnpg.SyncExtensionsDatabase(c, &custom, extensionImages); err != nil {
 		return err
 	}
 

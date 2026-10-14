@@ -72,9 +72,17 @@ provider itself is covered under [Installation](#installation).
 First-class toggles under `spec.components.engine.parameters.extensions.<name>.enabled`. The
 provider runs `CREATE EXTENSION` for each enabled one in the application database through a
 single CNPG `Database` resource (`<instance>-extensions`). Extensions not in the `standard`
-operand images are mounted from the official CloudNativePG extension images (trixie builds,
-pinned by digest): these need PostgreSQL **18** and Kubernetes ImageVolume (1.35+, or
-1.33/1.34 + feature gate), and adding one restarts the instances.
+operand images are mounted as image volumes: these need PostgreSQL **18** and Kubernetes
+ImageVolume (1.35+, or 1.33/1.34 + feature gate), and adding one restarts the instances.
+
+The image-volume images come from a CloudNativePG `ClusterImageCatalog` that the chart renders
+from `extensionCatalog` in its values (default: the official CloudNativePG trixie builds plus
+AGE, pinned by digest). The provider copies the catalog entry of each enabled extension (image,
+paths, env) into the Cluster and passes the `sqlVersion` value to `CREATE EXTENSION`, so admins
+can bump or mirror images with `helm upgrade`, or set `extensionCatalog.create=false` and point
+`extensionCatalog.name` at a catalog they manage (the SQL versions go in
+`sql-version.extensions.openeverest.io/<major>.<name>` annotations), without upgrading the
+provider. A new image restarts the instances that use it.
 
 | Extension | Toggle | Status | Notes |
 |---|---|---|---|
@@ -85,6 +93,7 @@ pinned by digest): these need PostgreSQL **18** and Kubernetes ImageVolume (1.35
 | pgRouting | `pgrouting` | ✅ | Image volume; requires `postgis`; cannot be disabled once enabled |
 | pg_ivm | `pgivm` | ✅ | Image volume, preloaded; cannot be disabled once enabled |
 | wal2json | `wal2json` | ✅ | Image volume; a logical decoding output plugin (no `CREATE EXTENSION`), so it can be disabled — drop the replication slots that use it first |
+| Apache AGE | `age` | ✅ | Image volume from [solanicaio/postgresql-extensions](https://github.com/solanicaio/postgresql-extensions), preloaded; only at creation (the application owner gets `USAGE` on `ag_catalog` through bootstrap default privileges); cannot be disabled once enabled. Run `SET search_path = ag_catalog, "$user", public` before using it |
 
 Stateful workloads additionally report:
 

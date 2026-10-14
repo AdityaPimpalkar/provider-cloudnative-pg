@@ -1,0 +1,31 @@
+{{- if .Values.extensionCatalog.create }}
+apiVersion: postgresql.cnpg.io/v1
+kind: ClusterImageCatalog
+metadata:
+  name: {{ .Values.extensionCatalog.name }}
+  labels:
+    {{- include "provider-cloudnative-pg.labels" . | nindent 4 }}
+  annotations:
+    # A hook, so the bundled CloudNativePG CRDs exist before it is created.
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-delete-policy: before-hook-creation
+    {{- range $entry := .Values.extensionCatalog.images }}
+    {{- range $extension := $entry.extensions }}
+    {{- with $extension.sqlVersion }}
+    sql-version.extensions.openeverest.io/{{ $entry.major }}.{{ $extension.name }}: {{ . | quote }}
+    {{- end }}
+    {{- end }}
+    {{- end }}
+spec:
+  images:
+    {{- range $entry := .Values.extensionCatalog.images }}
+    - major: {{ $entry.major }}
+      image: {{ $entry.image }}
+      {{- with $entry.extensions }}
+      extensions:
+        {{- range $extension := . }}
+        {{- toYaml (list (omit $extension "sqlVersion")) | nindent 8 }}
+        {{- end }}
+      {{- end }}
+    {{- end }}
+{{- end }}

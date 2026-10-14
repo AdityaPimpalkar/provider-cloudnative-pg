@@ -39,7 +39,7 @@ spec:
               q() { kubectl exec -n "$NAMESPACE" ext-images-1 -c postgres -- psql -v ON_ERROR_STOP=1 -d app -tAc "$1"; }
               expect() { got="$(q "$1")"; [ "$got" = "$2" ] || { echo "query: $1"; echo "got: $got, want: $2"; exit 1; }; }
 
-              expect "SELECT count(*) FROM pg_extension WHERE extname IN ('timescaledb', 'postgis', 'pgrouting', 'pg_ivm')" "4"
+              expect "SELECT count(*) FROM pg_extension WHERE extname IN ('timescaledb', 'postgis', 'pgrouting', 'pg_ivm', 'age')" "5"
 
               # TimescaleDB
               q "CREATE TABLE metrics (t timestamptz NOT NULL, v double precision)"
@@ -66,3 +66,14 @@ spec:
               q "INSERT INTO ivm_base VALUES (3)"
               expect "SELECT count(*) > 0 FROM pg_logical_slot_get_changes('w2j', NULL, NULL) WHERE data LIKE '%ivm_base%'" "t"
               q "SELECT pg_drop_replication_slot('w2j')"
+
+              # Apache AGE as the application owner (SET ROLE drops superuser rights)
+              friend="$(kubectl exec -i -n "$NAMESPACE" ext-images-1 -c postgres -- psql -v ON_ERROR_STOP=1 -d app -tAq <<'SQL' | tail -n1
+              SET ROLE app;
+              SET search_path = ag_catalog, "$user", public;
+              SELECT create_graph('social');
+              SELECT * FROM cypher('social', $$ CREATE (:Person {name: 'Alice'})-[:KNOWS]->(:Person {name: 'Bob'}) $$) AS (v agtype);
+              SELECT * FROM cypher('social', $$ MATCH (:Person {name: 'Alice'})-[:KNOWS]->(b:Person) RETURN b.name $$) AS (friend agtype);
+              SQL
+              )"
+              [ "$friend" = '"Bob"' ] || { echo "AGE query returned: $friend"; exit 1; }

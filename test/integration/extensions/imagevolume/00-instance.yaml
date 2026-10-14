@@ -31,3 +31,5 @@ spec:
             enabled: true
           wal2json:
             enabled: true
+          age:
+            enabled: true

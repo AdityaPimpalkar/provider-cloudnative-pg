@@ -1,7 +1,9 @@
 package cnpg
 
 import (
+	"cmp"
 	"context"
+	"reflect"
 	"slices"
 	"testing"
 
@@ -9,6 +11,7 @@ import (
 	cnpgv1 "github.com/cloudnative-pg/cloudnative-pg/api/v1"
 	corev1alpha1 "github.com/openeverest/openeverest/v2/api/core/v1alpha1"
 	"github.com/openeverest/openeverest/v2/provider-runtime/controller"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -91,21 +94,26 @@ func TestApplyExtensions(t *testing.T) {
 	pg.Spec.PostgresConfiguration.Parameters = map[string]string{"max_locks_per_transaction": "512"}
 	pg.Spec.PostgresConfiguration.AdditionalLibraries = []string{"pg_stat_statements"}
 
+	postgis := cnpgv1.ExtensionConfiguration{Name: "postgis", LdLibraryPath: []string{"system"}}
+	images := ExtensionImages{
+		"timescaledb-oss": {Config: cnpgv1.ExtensionConfiguration{Name: "timescaledb-oss"}},
+		"postgis":         {Config: postgis},
+		"pg-ivm":          {Config: cnpgv1.ExtensionConfiguration{Name: "pg-ivm"}},
+	}
 	ApplyExtensions(pg, withExtensions(components.ExtensionsSpec{
 		TimescaleDB: on, PostGIS: on, PgIVM: on, PgVector: on, PgAudit: on,
-	}))
+	}), images)
 
 	cfg := pg.Spec.PostgresConfiguration
-	var images []string
+	var names []string
 	for _, e := range cfg.Extensions {
-		images = append(images, e.Name)
+		names = append(names, e.Name)
 	}
-	if want := []string{"timescaledb-oss", "postgis", "pg-ivm"}; !slices.Equal(images, want) {
-		t.Errorf("extension images = %v, want %v", images, want)
+	if want := []string{"timescaledb-oss", "postgis", "pg-ivm"}; !slices.Equal(names, want) {
+		t.Errorf("extension images = %v, want %v", names, want)
 	}
-	postgis := cfg.Extensions[1]
-	if len(postgis.LdLibraryPath) != 1 || postgis.LdLibraryPath[0] != "system" || len(postgis.Env) != 2 {
-		t.Errorf("postgis ld_library_path/env = %v/%v", postgis.LdLibraryPath, postgis.Env)
+	if !slices.Equal(cfg.Extensions[1].LdLibraryPath, postgis.LdLibraryPath) {
+		t.Errorf("postgis ld_library_path = %v, want the catalog entry", cfg.Extensions[1].LdLibraryPath)
 	}
 	if want := []string{"pg_stat_statements", "timescaledb", "pg_ivm"}; !slices.Equal(cfg.AdditionalLibraries, want) {
 		t.Errorf("shared_preload_libraries = %v, want %v", cfg.AdditionalLibraries, want)
@@ -121,20 +129,142 @@ func TestApplyExtensions(t *testing.T) {
 	}
 
 	untouched := &cnpgv1.Cluster{}
-	ApplyExtensions(untouched, nil)
+	ApplyExtensions(untouched, nil, nil)
 	if cfg := untouched.Spec.PostgresConfiguration; cfg.Extensions != nil || cfg.AdditionalLibraries != nil || cfg.Parameters != nil {
 		t.Errorf("expected no changes without extensions, got %+v", cfg)
+	}
+	if untouched.Spec.Bootstrap != nil {
+		t.Errorf("expected no bootstrap without extensions, got %+v", untouched.Spec.Bootstrap)
+	}
+}
+
+func TestApplyExtensionsBootstrapSQL(t *testing.T) {
+	ages := ExtensionImages{"age": {Config: cnpgv1.ExtensionConfiguration{Name: "age"}}}
+	pg := &cnpgv1.Cluster{}
+	ApplyExtensions(pg, withExtensions(components.ExtensionsSpec{AGE: on}), ages)
+	if pg.Spec.Bootstrap == nil || pg.Spec.Bootstrap.InitDB == nil {
+		t.Fatalf("expected initdb bootstrap, got %+v", pg.Spec.Bootstrap)
+	}
+	if want := []string{`ALTER DEFAULT PRIVILEGES FOR ROLE postgres GRANT USAGE ON SCHEMAS TO "app"`}; !slices.Equal(pg.Spec.Bootstrap.InitDB.PostInitApplicationSQL, want) {
+		t.Errorf("postInitApplicationSQL = %q, want %q", pg.Spec.Bootstrap.InitDB.PostInitApplicationSQL, want)
+	}
+
+	custom := withExtensions(components.ExtensionsSpec{AGE: on})
+	userInitDB := &cnpgv1.BootstrapInitDB{Database: "graphs", Owner: "graph\"er", PostInitApplicationSQL: []string{"SELECT 1"}}
+	custom.Bootstrap = &components.BootstrapConfiguration{InitDB: userInitDB}
+	pg = &cnpgv1.Cluster{}
+	pg.Spec.Bootstrap = &cnpgv1.BootstrapConfiguration{InitDB: userInitDB}
+	ApplyExtensions(pg, custom, ages)
+	ApplyExtensions(pg, custom, ages)
+	want := []string{"SELECT 1", `ALTER DEFAULT PRIVILEGES FOR ROLE postgres GRANT USAGE ON SCHEMAS TO "graph""er"`}
+	if got := pg.Spec.Bootstrap.InitDB.PostInitApplicationSQL; !slices.Equal(got, want) {
+		t.Errorf("postInitApplicationSQL = %q, want %q", got, want)
+	}
+	if len(userInitDB.PostInitApplicationSQL) != 1 {
+		t.Errorf("user initdb mutated: %q", userInitDB.PostInitApplicationSQL)
+	}
+}
+
+func TestValidateExtensionsAtCreation(t *testing.T) {
+	age := withExtensions(components.ExtensionsSpec{AGE: on})
+	clusterWith := func(images ...string) *cnpgv1.Cluster {
+		pg := &cnpgv1.Cluster{ObjectMeta: metav1.ObjectMeta{Name: "pg", Namespace: "ns"}}
+		for _, image := range images {
+			pg.Spec.PostgresConfiguration.Extensions = append(pg.Spec.PostgresConfiguration.Extensions, cnpgv1.ExtensionConfiguration{Name: image})
+		}
+		return pg
+	}
+	tests := []struct {
+		name       string
+		custom     *components.CNPGCustomSpec
+		cluster    *cnpgv1.Cluster
+		wantReject bool
+	}{
+		{name: "new instance", custom: age},
+		{name: "created with age", custom: age, cluster: clusterWith("age")},
+		{name: "enabled on an existing instance", custom: age, cluster: clusterWith("pg-ivm"), wantReject: true},
+		{name: "other extensions on an existing instance", custom: withExtensions(components.ExtensionsSpec{PgIVM: on}), cluster: clusterWith()},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var objects []client.Object
+			if tt.cluster != nil {
+				objects = append(objects, tt.cluster)
+			}
+			c, _ := newExtensionsTestContext(t, objects...)
+			err := ValidateExtensionsAtCreation(c, tt.custom)
+			if gotReject := err != nil; gotReject != tt.wantReject {
+				t.Fatalf("rejected = %t, want %t (err: %v)", gotReject, tt.wantReject, err)
+			}
+		})
+	}
+}
+
+func TestResolveExtensionImages(t *testing.T) {
+	catalog := &cnpgv1.ClusterImageCatalog{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        "extensions",
+			Annotations: map[string]string{SQLVersionAnnotationPrefix + "18.age": "1.8.0"},
+		},
+		Spec: cnpgv1.ImageCatalogSpec{Images: []cnpgv1.CatalogImage{
+			{Major: 17, Image: "pg:17", Extensions: []cnpgv1.ExtensionConfiguration{{Name: "pg-ivm"}}},
+			{Major: 18, Image: "pg:18", Extensions: []cnpgv1.ExtensionConfiguration{
+				{Name: "age", ImageVolumeSource: corev1.ImageVolumeSource{Reference: "registry.example/age:1.8.0"}},
+				{Name: "wal2json"},
+			}},
+		}},
+	}
+	tests := []struct {
+		name       string
+		custom     *components.CNPGCustomSpec
+		catalog    string
+		want       ExtensionImages
+		wantErr    bool
+		noCatalogs bool
+	}{
+		{name: "no image extensions need no catalog", custom: withExtensions(components.ExtensionsSpec{PgVector: on}), noCatalogs: true},
+		{
+			name:   "entries and SQL versions",
+			custom: withExtensions(components.ExtensionsSpec{AGE: on, Wal2JSON: on, PgVector: on}),
+			want: ExtensionImages{
+				"age":      {Config: catalog.Spec.Images[1].Extensions[0], SQLVersion: "1.8.0"},
+				"wal2json": {Config: catalog.Spec.Images[1].Extensions[1]},
+			},
+		},
+		{name: "missing for the major", custom: withExtensions(components.ExtensionsSpec{PgIVM: on}), wantErr: true},
+		{name: "missing catalog", custom: withExtensions(components.ExtensionsSpec{AGE: on}), catalog: "other", wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var objects []client.Object
+			if !tt.noCatalogs {
+				objects = append(objects, catalog.DeepCopy())
+			}
+			c, _ := newExtensionsTestContext(t, objects...)
+			name := cmp.Or(tt.catalog, "extensions")
+			got, err := ResolveExtensionImages(c, name, tt.custom, "18.4", "")
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("ResolveExtensionImages() error = %v, wantErr %t", err, tt.wantErr)
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("ResolveExtensionImages() = %+v, want %+v", got, tt.want)
+			}
+		})
 	}
 }
 
 func TestBuildExtensionsDatabase(t *testing.T) {
-	if db := BuildExtensionsDatabase("my-pg", withExtensions(components.ExtensionsSpec{PgAudit: on, Wal2JSON: on})); db != nil {
+	if db := BuildExtensionsDatabase("my-pg", withExtensions(components.ExtensionsSpec{PgAudit: on, Wal2JSON: on}), nil); db != nil {
 		t.Fatalf("expected no Database for extensions without CREATE EXTENSION, got %+v", db)
 	}
 
+	images := ExtensionImages{
+		"postgis":   {SQLVersion: "3.6.4"},
+		"pgrouting": {SQLVersion: "4.0.1"},
+	}
 	db := BuildExtensionsDatabase("my-pg", withExtensions(components.ExtensionsSpec{
 		PgRouting: on, PostGIS: on, PgVector: on, PgAudit: on,
-	}))
+	}), images)
 	if db.Spec.Name != "app" || db.Spec.Owner != "app" || db.Spec.ClusterRef.Name != "my-pg" {
 		t.Fatalf("unexpected identity: name=%q owner=%q cluster=%q", db.Spec.Name, db.Spec.Owner, db.Spec.ClusterRef.Name)
 	}
@@ -159,7 +289,7 @@ func TestBuildExtensionsDatabase(t *testing.T) {
 	custom.Bootstrap = &components.BootstrapConfiguration{
 		InitDB: &cnpgv1.BootstrapInitDB{Database: "embeddings", Owner: "ml"},
 	}
-	db = BuildExtensionsDatabase("my-pg", custom)
+	db = BuildExtensionsDatabase("my-pg", custom, nil)
 	if db.Spec.Name != "embeddings" || db.Spec.Owner != "ml" {
 		t.Fatalf("unexpected identity: name=%q owner=%q", db.Spec.Name, db.Spec.Owner)
 	}
@@ -167,7 +297,7 @@ func TestBuildExtensionsDatabase(t *testing.T) {
 
 func TestSyncExtensionsDatabase(t *testing.T) {
 	c, cl := newExtensionsTestContext(t)
-	if err := SyncExtensionsDatabase(c, withExtensions(components.ExtensionsSpec{PgVector: on})); err != nil {
+	if err := SyncExtensionsDatabase(c, withExtensions(components.ExtensionsSpec{PgVector: on}), nil); err != nil {
 		t.Fatalf("SyncExtensionsDatabase: %v", err)
 	}
 
@@ -183,7 +313,7 @@ func TestSyncExtensionsDatabase(t *testing.T) {
 	}
 
 	c, cl = newExtensionsTestContext(t)
-	if err := SyncExtensionsDatabase(c, nil); err != nil {
+	if err := SyncExtensionsDatabase(c, nil, nil); err != nil {
 		t.Fatalf("SyncExtensionsDatabase without extensions: %v", err)
 	}
 	if err := cl.Get(context.Background(), client.ObjectKey{Namespace: "ns", Name: "pg-extensions"}, db); err == nil {

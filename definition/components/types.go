@@ -38,8 +38,8 @@ type CNPGCustomSpec struct {
 }
 
 // ExtensionsSpec lists optional extensions the provider can install and enable.
-// Image-volume extensions come from the CloudNativePG extension images
-// (https://github.com/cloudnative-pg/postgres-extensions-containers) and need
+// Image-volume extensions are mounted from the images in the provider's
+// extensions ClusterImageCatalog (Helm values extensionCatalog) and need
 // PostgreSQL 18 plus Kubernetes ImageVolume support (1.35+, or 1.33/1.34 with
 // the ImageVolume feature gate); adding one rolls the instance pods.
 type ExtensionsSpec struct {
@@ -72,6 +72,11 @@ type ExtensionsSpec struct {
 	// Wal2JSON (image volume) makes the wal2json logical decoding output plugin
 	// available to replication slots. There is no CREATE EXTENSION.
 	Wal2JSON *ExtensionToggle `json:"wal2json,omitempty"`
+
+	// AGE (image volume, Apache AGE graph database) preloads age, runs CREATE
+	// EXTENSION age in the application database and grants its owner USAGE on
+	// ag_catalog. Can only be enabled at creation; cannot be turned off.
+	AGE *ExtensionToggle `json:"age,omitempty"`
 }
 
 // ExtensionToggle switches a first-class extension on.

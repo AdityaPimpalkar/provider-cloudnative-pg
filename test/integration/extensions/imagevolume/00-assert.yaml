@@ -18,5 +18,6 @@ spec:
     - name: postgis
     - name: pgrouting
     - name: pg_ivm
+    - name: age
 status:
   applied: true

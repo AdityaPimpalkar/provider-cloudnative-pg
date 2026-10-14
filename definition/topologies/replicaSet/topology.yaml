@@ -200,6 +200,22 @@ ui:
             celExpressions:
               - celExpr: '!(has(spec.components.engine.parameters.extensions.wal2json.enabled) && spec.components.engine.parameters.extensions.wal2json.enabled) || (spec.version >= "18." && spec.version < "19.")'
                 message: "wal2json requires PostgreSQL 18. Select a 18.x database version to enable it."
+        age:
+          uiType: toggle
+          path: spec.components.engine.parameters.extensions.age.enabled
+          fieldParams:
+            label: "Apache AGE"
+            helperText: "Graph database with openCypher queries. PostgreSQL 18 only; can only be enabled at creation and cannot be disabled. Run SET search_path = ag_catalog, \"$user\", public before using it."
+            defaultValue: false
+            modes:
+              edit:
+                disabled: true
+              restore:
+                disabled: true
+          validation:
+            celExpressions:
+              - celExpr: '!(has(spec.components.engine.parameters.extensions.age.enabled) && spec.components.engine.parameters.extensions.age.enabled) || (spec.version >= "18." && spec.version < "19.")'
+                message: "Apache AGE requires PostgreSQL 18. Select a 18.x database version to enable it."
       componentsOrder:
         - pgvector
         - pgaudit
@@ -208,6 +224,7 @@ ui:
         - pgrouting
         - pgivm
         - wal2json
+        - age
     monitoring:
       label: "Monitoring"
       description: "Collect PostgreSQL metrics with Prometheus."

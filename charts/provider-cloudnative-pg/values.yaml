@@ -101,6 +101,58 @@ provider:
   # -- The name to register for the Provider custom resource
   name: provider-cloudnative-pg
 
+# Images of the first-class image-volume extensions (PostgreSQL 18+), as a
+# CloudNativePG ClusterImageCatalog. The provider copies the entry of each
+# enabled extension into the Cluster, so images can be bumped or mirrored here
+# without upgrading the provider; changing one restarts the instances using it.
+extensionCatalog:
+  # -- Render the ClusterImageCatalog; set to false to manage it yourself
+  create: true
+  # -- Name of the ClusterImageCatalog the provider reads
+  name: provider-cloudnative-pg-extensions
+  # -- Entries per PostgreSQL major. `image` is required by CloudNativePG but
+  # unused: the provider picks the PostgreSQL image from the Instance version.
+  # Extension entries are CloudNativePG ExtensionConfigurations plus
+  # `sqlVersion`, the CREATE EXTENSION version (empty for the image default).
+  images:
+    # Trixie builds from the upstream catalog
+    # image-catalogs-extensions/catalog-minimal-trixie.yaml in
+    # https://github.com/cloudnative-pg/artifacts; AGE from
+    # https://github.com/solanicaio/postgresql-extensions.
+    - major: 18
+      image: ghcr.io/cloudnative-pg/postgresql:18.4-standard-trixie
+      extensions:
+        - name: timescaledb-oss
+          sqlVersion: "2.30.1"
+          image:
+            reference: ghcr.io/cloudnative-pg/timescaledb-oss:2.30.1-18-trixie
+        - name: postgis
+          sqlVersion: "3.6.4"
+          image:
+            reference: ghcr.io/cloudnative-pg/postgis-extension:3.6.4-202610110422-18-trixie@sha256:84a8e286d79aaec6fe824a792179d11252745a0d2b139d88692424fa61494df0
+          ld_library_path:
+            - system
+          env:
+            - name: GDAL_DATA
+              value: ${image_root}/share/gdal
+            - name: PROJ_DATA
+              value: ${image_root}/share/proj
+        - name: pgrouting
+          sqlVersion: "4.0.1"
+          image:
+            reference: ghcr.io/cloudnative-pg/pgrouting:4.0.1-202610110422-18-trixie@sha256:a9e9f2b786c213bebcb3baffe09d04de844c16bf8420c7bdbd98122c2aa704a1
+        - name: pg-ivm
+          sqlVersion: "1.15"
+          image:
+            reference: ghcr.io/cloudnative-pg/pg-ivm:1.15-202610110422-18-trixie@sha256:3f6d327ec3f8cdc4212789f0cfc95be81b723e51f869639d526de6236ecae874
+        - name: wal2json
+          image:
+            reference: ghcr.io/cloudnative-pg/wal2json:2.6-202610110422-18-trixie@sha256:298e20b7e9a75553a7b0070237ff09af9122d5cae2689255c8203283aaf430d0
+        - name: age
+          sqlVersion: "1.8.0"
+          image:
+            reference: ghcr.io/solanicaio/age:1.8.0-202610141050-18-trixie@sha256:2fb13aed71690dc127fb8ecb0eb1145c2acf8d4fe8fe25467818f484570f3601
+
 # -- Additional environment variables to set on the provider container
 extraEnv: []
 # - name: MY_VAR

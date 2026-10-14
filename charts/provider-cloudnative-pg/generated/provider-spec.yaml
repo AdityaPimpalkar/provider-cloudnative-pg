@@ -571,6 +571,11 @@ spec:
               type: object
             extensions:
               properties:
+                age:
+                  properties:
+                    enabled:
+                      type: boolean
+                  type: object
                 pgaudit:
                   properties:
                     enabled:
@@ -1212,6 +1217,22 @@ spec:
           label: Database version
         extensions:
           components:
+            age:
+              fieldParams:
+                defaultValue: false
+                helperText: Graph database with openCypher queries. PostgreSQL 18 only; can only be enabled at creation and cannot be disabled. Run SET search_path = ag_catalog, "$user", public before using it.
+                label: Apache AGE
+                modes:
+                  edit:
+                    disabled: true
+                  restore:
+                    disabled: true
+              path: spec.components.engine.parameters.extensions.age.enabled
+              uiType: toggle
+              validation:
+                celExpressions:
+                  - celExpr: '!(has(spec.components.engine.parameters.extensions.age.enabled) && spec.components.engine.parameters.extensions.age.enabled) || (spec.version >= "18." && spec.version < "19.")'
+                    message: Apache AGE requires PostgreSQL 18. Select a 18.x database version to enable it.
             pgaudit:
               fieldParams:
                 defaultValue: false
@@ -1321,6 +1342,7 @@ spec:
             - pgrouting
             - pgivm
             - wal2json
+            - age
           description: Optional PostgreSQL extensions to install and enable on this instance.
           label: Extensions
         monitoring:
