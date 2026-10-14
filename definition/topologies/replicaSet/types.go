@@ -1,21 +1,26 @@
 // Package replicaset contains custom spec types for the replicaSet topology.
 //
-// Add fields to ReplicaSetTopologyConfig and reference it via configSchema in
-// topology.yaml when this topology needs custom configuration.
-//
 // +k8s:openapi-gen=true
 package replicaset
 
-// ReplicaSetTopologyConfig defines configuration for the replicaSet topology.
-// Add fields here when the replicaSet topology needs custom configuration
-// beyond what the base Instance spec provides.
-//
-// Example:
-//   type ReplicaSetTopologyConfig struct {
-//       NumShards int32 `json:"numShards,omitempty"`
-//   }
-//
-// Then reference it in topology.yaml:
-//   config:
-//     configSchema: ReplicaSetTopologyConfig
-type ReplicaSetTopologyConfig struct{}
+// ReplicaSetTopologyParameters is validated against spec.topology.parameters.
+type ReplicaSetTopologyParameters struct {
+	Monitoring *MonitoringParameters `json:"monitoring,omitempty"`
+}
+
+// MonitoringParameters configures how the instance's metrics are collected.
+type MonitoringParameters struct {
+	Prometheus *PrometheusParameters `json:"prometheus,omitempty"`
+}
+
+// PrometheusParameters configures scraping of the CloudNativePG metrics
+// exporter (port "metrics" on every instance pod) by the Prometheus Operator.
+type PrometheusParameters struct {
+	// Enabled creates a PodMonitor named <instance>-metrics; disabling it
+	// removes the PodMonitor.
+	Enabled bool `json:"enabled,omitempty"`
+
+	// PodMonitorLabels are added to the PodMonitor so that a Prometheus
+	// podMonitorSelector picks it up, e.g. release: kube-prometheus-stack.
+	PodMonitorLabels map[string]string `json:"podMonitorLabels,omitempty"`
+}
