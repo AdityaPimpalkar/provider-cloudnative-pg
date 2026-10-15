@@ -10,6 +10,7 @@ import (
 	commonv1alpha1 "github.com/openeverest/openeverest/v2/api/common/v1alpha1"
 	corev1alpha1 "github.com/openeverest/openeverest/v2/api/core/v1alpha1"
 	"github.com/openeverest/openeverest/v2/provider-runtime/controller"
+	batchv1 "k8s.io/api/batch/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -19,6 +20,42 @@ import (
 )
 
 const testNamespace = "ns"
+
+func TestCleanupBackupAfterNativeRetention(t *testing.T) {
+	scheme := runtime.NewScheme()
+	for _, add := range []func(*runtime.Scheme) error{
+		cnpgv1.AddToScheme, corev1alpha1.AddToScheme, backupv1alpha1.AddToScheme, batchv1.AddToScheme,
+	} {
+		if err := add(scheme); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, completed := range []bool{true, false} {
+		instance := instanceWithStorage(true, "s3")
+		instance.Namespace = testNamespace
+		backup := &backupv1alpha1.Backup{
+			ObjectMeta: metav1.ObjectMeta{Name: "expired", Namespace: testNamespace},
+			Status: backupv1alpha1.BackupStatus{
+				OperatorBackupRef: &commonv1alpha1.TypedObjectRef{
+					Group: cnpgv1.SchemeGroupVersion.Group, Kind: "Backup", Name: "expired",
+				},
+			},
+		}
+		if completed {
+			now := metav1.Now()
+			backup.Status.CompletedAt = &now
+		}
+		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(instance, backup).Build()
+		c := controller.NewContext(context.Background(), cl, instance, "provider-cloudnative-pg")
+		done, err := (&Provider{}).CleanupBackup(c, backup)
+		if completed && (err != nil || !done) {
+			t.Fatalf("native cleanup should finish: done=%t err=%v", done, err)
+		}
+		if !completed && (err == nil || done) {
+			t.Fatalf("missing unfinished backup should not claim data cleanup: done=%t err=%v", done, err)
+		}
+	}
+}
 
 func instanceWithStorage(enabled bool, storages ...string) *corev1alpha1.Instance {
 	backup := &corev1alpha1.InstanceBackupSpec{Enabled: enabled}
@@ -114,14 +151,23 @@ func TestSyncBackupStorageChecks(t *testing.T) {
 	}
 
 	tests := []struct {
-		name             string
-		instanceStorage  string
-		clusterArchiveTo string
-		backupStorage    string
-		cnpgBackupExists bool
-		wantState        backupv1alpha1.BackupState
-		wantCNPGBackup   bool
+		name               string
+		instanceStorage    string
+		clusterArchiveTo   string
+		backupStorage      string
+		cnpgBackupExists   bool
+		previouslyObserved bool
+		wantState          backupv1alpha1.BackupState
+		wantCNPGBackup     bool
 	}{
+		{
+			name:               "native retention removed an observed operator backup",
+			instanceStorage:    "s3",
+			clusterArchiveTo:   "s3",
+			backupStorage:      "s3",
+			previouslyObserved: true,
+			wantState:          backupv1alpha1.BackupStateFailed,
+		},
 		{
 			name:             "storage not configured on the instance",
 			instanceStorage:  "s3",
@@ -168,6 +214,11 @@ func TestSyncBackupStorageChecks(t *testing.T) {
 				Spec: backupv1alpha1.BackupSpec{
 					StorageRef: commonv1alpha1.ObjectRef{Name: tt.backupStorage},
 				},
+			}
+			if tt.previouslyObserved {
+				backup.Status.OperatorBackupRef = &commonv1alpha1.TypedObjectRef{
+					Group: cnpgv1.SchemeGroupVersion.Group, Kind: "Backup", Name: backup.Name,
+				}
 			}
 
 			objects := []client.Object{instance, cluster, backup}

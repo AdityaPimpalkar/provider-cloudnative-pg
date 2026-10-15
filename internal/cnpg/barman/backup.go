@@ -71,6 +71,11 @@ func SyncBackupInfrastructure(c *controller.Context) ([]cnpgv1.PluginConfigurati
 		}
 
 		objStore := buildObjectStore(c, strg.StorageRef.Name, bg, endpointCA)
+		retention, err := storageRetentionPolicy(strg)
+		if err != nil {
+			return nil, &controller.BackupConfigError{Reason: "InvalidBackupRetention", Message: err.Error()}
+		}
+		objStore.Spec.RetentionPolicy = retention
 		if err := c.Apply(objStore); err != nil {
 			return nil, fmt.Errorf("apply ObjectStore %q: %w", strg.StorageRef.Name, err)
 		}
