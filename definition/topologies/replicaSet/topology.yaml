@@ -104,6 +104,7 @@ ui:
           path: spec.components.engine.parameters.extensions.timescaledb.enabled
           fieldParams:
             label: "TimescaleDB (Apache-2.0)"
+            helperText: "Time-series hypertables. PostgreSQL 18 only; preloaded, so only at creation (CloudNativePG advises against adding an extension image and a preload library in one rollout); cannot be disabled."
             defaultValue: false
             modes:
               edit:
@@ -114,6 +115,121 @@ ui:
             celExpressions:
               - celExpr: '!(has(spec.components.engine.parameters.extensions.timescaledb.enabled) && spec.components.engine.parameters.extensions.timescaledb.enabled) || (spec.version >= "18." && spec.version < "19.")'
                 message: "TimescaleDB requires PostgreSQL 18. Select a 18.x database version to enable it."
+        pgvector:
+          uiType: toggle
+          path: spec.components.engine.parameters.extensions.pgvector.enabled
+          fieldParams:
+            label: "pgvector"
+            helperText: "Vector similarity search. Installed in the application database; cannot be disabled once enabled."
+            defaultValue: false
+          validation:
+            modes:
+              edit:
+                celExpressions:
+                  - celExpr: '!(has(original.spec.components.engine.parameters.extensions.pgvector.enabled) && original.spec.components.engine.parameters.extensions.pgvector.enabled) || (has(spec.components.engine.parameters.extensions.pgvector.enabled) && spec.components.engine.parameters.extensions.pgvector.enabled)'
+                    message: "pgvector cannot be disabled once enabled"
+        pgaudit:
+          uiType: toggle
+          path: spec.components.engine.parameters.extensions.pgaudit.enabled
+          fieldParams:
+            label: "pgAudit"
+            helperText: "Audit logging of DDL and role changes (pgaudit.log = 'ddl, role'); set pgaudit.* PostgreSQL parameters to change it. Restarts the instances."
+            defaultValue: false
+        postgis:
+          uiType: toggle
+          path: spec.components.engine.parameters.extensions.postgis.enabled
+          fieldParams:
+            label: "PostGIS"
+            helperText: "Spatial types and functions. PostgreSQL 18 only; enabling it restarts the instances; cannot be disabled once enabled."
+            defaultValue: false
+            modes:
+              restore:
+                disabled: true
+          validation:
+            celExpressions:
+              - celExpr: '!(has(spec.components.engine.parameters.extensions.postgis.enabled) && spec.components.engine.parameters.extensions.postgis.enabled) || (spec.version >= "18." && spec.version < "19.")'
+                message: "PostGIS requires PostgreSQL 18. Select a 18.x database version to enable it."
+            modes:
+              edit:
+                celExpressions:
+                  - celExpr: '!(has(original.spec.components.engine.parameters.extensions.postgis.enabled) && original.spec.components.engine.parameters.extensions.postgis.enabled) || (has(spec.components.engine.parameters.extensions.postgis.enabled) && spec.components.engine.parameters.extensions.postgis.enabled)'
+                    message: "PostGIS cannot be disabled once enabled"
+        pgrouting:
+          uiType: toggle
+          path: spec.components.engine.parameters.extensions.pgrouting.enabled
+          fieldParams:
+            label: "pgRouting"
+            helperText: "Routing on PostGIS geometries. PostgreSQL 18 only; requires PostGIS; enabling it restarts the instances; cannot be disabled once enabled."
+            defaultValue: false
+            modes:
+              restore:
+                disabled: true
+          validation:
+            celExpressions:
+              - celExpr: '!(has(spec.components.engine.parameters.extensions.pgrouting.enabled) && spec.components.engine.parameters.extensions.pgrouting.enabled) || (spec.version >= "18." && spec.version < "19.")'
+                message: "pgRouting requires PostgreSQL 18. Select a 18.x database version to enable it."
+              - celExpr: '!(has(spec.components.engine.parameters.extensions.pgrouting.enabled) && spec.components.engine.parameters.extensions.pgrouting.enabled) || (has(spec.components.engine.parameters.extensions.postgis.enabled) && spec.components.engine.parameters.extensions.postgis.enabled)'
+                message: "pgRouting requires PostGIS. Enable PostGIS too."
+            modes:
+              edit:
+                celExpressions:
+                  - celExpr: '!(has(original.spec.components.engine.parameters.extensions.pgrouting.enabled) && original.spec.components.engine.parameters.extensions.pgrouting.enabled) || (has(spec.components.engine.parameters.extensions.pgrouting.enabled) && spec.components.engine.parameters.extensions.pgrouting.enabled)'
+                    message: "pgRouting cannot be disabled once enabled"
+        pgivm:
+          uiType: toggle
+          path: spec.components.engine.parameters.extensions.pgivm.enabled
+          fieldParams:
+            label: "pg_ivm"
+            helperText: "Incrementally maintained materialized views. PostgreSQL 18 only; preloaded, so only at creation (CloudNativePG advises against adding an extension image and a preload library in one rollout); cannot be disabled."
+            defaultValue: false
+            modes:
+              edit:
+                disabled: true
+              restore:
+                disabled: true
+          validation:
+            celExpressions:
+              - celExpr: '!(has(spec.components.engine.parameters.extensions.pgivm.enabled) && spec.components.engine.parameters.extensions.pgivm.enabled) || (spec.version >= "18." && spec.version < "19.")'
+                message: "pg_ivm requires PostgreSQL 18. Select a 18.x database version to enable it."
+        wal2json:
+          uiType: toggle
+          path: spec.components.engine.parameters.extensions.wal2json.enabled
+          fieldParams:
+            label: "wal2json"
+            helperText: "JSON output plugin for logical decoding (change data capture). PostgreSQL 18 only; enabling or disabling it restarts the instances; drop the replication slots that use it before disabling."
+            defaultValue: false
+            modes:
+              restore:
+                disabled: true
+          validation:
+            celExpressions:
+              - celExpr: '!(has(spec.components.engine.parameters.extensions.wal2json.enabled) && spec.components.engine.parameters.extensions.wal2json.enabled) || (spec.version >= "18." && spec.version < "19.")'
+                message: "wal2json requires PostgreSQL 18. Select a 18.x database version to enable it."
+        age:
+          uiType: toggle
+          path: spec.components.engine.parameters.extensions.age.enabled
+          fieldParams:
+            label: "Apache AGE"
+            helperText: "Graph database with openCypher queries. PostgreSQL 18 only; can only be enabled at creation and cannot be disabled. Run SET search_path = ag_catalog, \"$user\", public before using it."
+            defaultValue: false
+            modes:
+              edit:
+                disabled: true
+              restore:
+                disabled: true
+          validation:
+            celExpressions:
+              - celExpr: '!(has(spec.components.engine.parameters.extensions.age.enabled) && spec.components.engine.parameters.extensions.age.enabled) || (spec.version >= "18." && spec.version < "19.")'
+                message: "Apache AGE requires PostgreSQL 18. Select a 18.x database version to enable it."
+      componentsOrder:
+        - pgvector
+        - pgaudit
+        - timescaledb
+        - postgis
+        - pgrouting
+        - pgivm
+        - wal2json
+        - age
     monitoring:
       label: "Monitoring"
       description: "Collect PostgreSQL metrics with Prometheus."

@@ -38,20 +38,49 @@ type CNPGCustomSpec struct {
 }
 
 // ExtensionsSpec lists optional extensions the provider can install and enable.
+// Image-volume extensions are mounted from the images in the provider's
+// extensions ClusterImageCatalog (Helm values extensionCatalog) and need
+// PostgreSQL 18 plus Kubernetes ImageVolume support (1.35+, or 1.33/1.34 with
+// the ImageVolume feature gate); adding one rolls the instance pods.
 type ExtensionsSpec struct {
-	// TimescaleDB installs the Apache-2.0 timescaledb-oss image volume and enables
-	// CREATE EXTENSION timescaledb in the application database.
-	// Requires PostgreSQL 18 and Kubernetes ImageVolume support (1.35+, or 1.33/1.34
-	// with the ImageVolume feature gate). See:
-	// https://github.com/cloudnative-pg/postgres-extensions-containers/tree/main/timescaledb-oss
-	TimescaleDB *TimescaleDBSpec `json:"timescaledb,omitempty"`
+	// TimescaleDB (image volume, Apache-2.0 edition) runs CREATE EXTENSION
+	// timescaledb in the application database. Cannot be turned off once enabled.
+	TimescaleDB *ExtensionToggle `json:"timescaledb,omitempty"`
+
+	// PgVector runs CREATE EXTENSION vector in the application database. It ships
+	// in the CloudNativePG standard images (PostgreSQL 14+), so no image change or
+	// restart is needed. Cannot be turned off once enabled.
+	PgVector *ExtensionToggle `json:"pgvector,omitempty"`
+
+	// PgAudit enables audit logging. It ships in the standard images; the operator
+	// preloads and creates it in every database while a pgaudit.* parameter is
+	// set, so the provider defaults pgaudit.log to "ddl, role". Can be turned off.
+	PgAudit *ExtensionToggle `json:"pgaudit,omitempty"`
+
+	// PostGIS (image volume) runs CREATE EXTENSION postgis in the application
+	// database. Cannot be turned off once enabled.
+	PostGIS *ExtensionToggle `json:"postgis,omitempty"`
+
+	// PgRouting (image volume) runs CREATE EXTENSION pgrouting in the application
+	// database. Requires postgis. Cannot be turned off once enabled.
+	PgRouting *ExtensionToggle `json:"pgrouting,omitempty"`
+
+	// PgIVM (image volume) preloads pg_ivm and runs CREATE EXTENSION pg_ivm in the
+	// application database. Cannot be turned off once enabled.
+	PgIVM *ExtensionToggle `json:"pgivm,omitempty"`
+
+	// Wal2JSON (image volume) makes the wal2json logical decoding output plugin
+	// available to replication slots. There is no CREATE EXTENSION.
+	Wal2JSON *ExtensionToggle `json:"wal2json,omitempty"`
+
+	// AGE (image volume, Apache AGE graph database) preloads age, runs CREATE
+	// EXTENSION age in the application database and grants its owner USAGE on
+	// ag_catalog. Can only be enabled at creation; cannot be turned off.
+	AGE *ExtensionToggle `json:"age,omitempty"`
 }
 
-// TimescaleDBSpec enables the TimescaleDB OSS extension.
-type TimescaleDBSpec struct {
-	// Enabled installs the extension image on the Cluster and creates a CNPG
-	// Database resource that runs CREATE EXTENSION timescaledb. Cannot be turned
-	// off once enabled.
+// ExtensionToggle switches a first-class extension on.
+type ExtensionToggle struct {
 	Enabled bool `json:"enabled"`
 }
 

@@ -1,0 +1,27 @@
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: ext-bundled
+spec:
+  providerRef:
+    name: provider-cloudnative-pg
+  version: "17.10"
+  components:
+    engine:
+      type: postgresql
+      replicas: 1
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          cpu: 500m
+          memory: 512Mi
+      storage:
+        size: 1Gi
+      parameters:
+        extensions:
+          pgvector:
+            enabled: true
+          pgaudit:
+            enabled: true

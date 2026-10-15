@@ -141,7 +141,7 @@ helm-lint: helm-deps ## Lint the Helm chart.
 ##@ Testing
 
 .PHONY: test-integration
-test-integration: ## Run all integration tests (chainsaw) against a running cluster.
+test-integration: ## Run all integration tests (chainsaw) against a running cluster (image-volume extensions need Kubernetes 1.35+).
 	. ./test/vars.sh && chainsaw test --config ./test/integration/.chainsaw.yaml ./test/integration
 
 .PHONY: test-integration-core
@@ -151,6 +151,14 @@ test-integration-core: ## Run core integration tests (chainsaw).
 .PHONY: test-integration-core-replicaset
 test-integration-core-replicaset: ## Run core replicaset integration tests (chainsaw).
 	. ./test/vars.sh && chainsaw test --config ./test/integration/.chainsaw.yaml ./test/integration/core/replicaset
+
+.PHONY: test-integration-extensions
+test-integration-extensions: ## Run the extensions integration test for extensions bundled in the operand images (chainsaw).
+	. ./test/vars.sh && chainsaw test --config ./test/integration/.chainsaw.yaml ./test/integration/extensions/bundled
+
+.PHONY: test-integration-imagevolume
+test-integration-imagevolume: ## Run the image-volume extensions integration test (needs PostgreSQL 18 images and Kubernetes ImageVolume).
+	. ./test/vars.sh && chainsaw test --config ./test/integration/.chainsaw.yaml ./test/integration/extensions/imagevolume
 
 .PHONY: load-image
 load-image: ## Import the provider image (IMG) into the k3d cluster.

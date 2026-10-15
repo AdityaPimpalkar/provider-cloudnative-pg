@@ -69,14 +69,43 @@ provider itself is covered under [Installation](#installation).
 
 ### Extensions
 
-First-class toggles under `spec.components.engine.parameters.extensions` (CNPG extension
-images + `CREATE EXTENSION`).
+First-class toggles under `spec.components.engine.parameters.extensions.<name>.enabled`. The
+provider runs `CREATE EXTENSION` for each enabled one in the application database through a
+single CNPG `Database` resource (`<instance>-extensions`). Extensions not in the `standard`
+operand images are mounted as image volumes: these need PostgreSQL **18** and Kubernetes
+ImageVolume (1.35+, or 1.33/1.34 + feature gate), and adding one restarts the instances.
 
-| Extension | Status | Notes |
-|---|---|---|
-| TimescaleDB OSS | ✅ | `extensions.timescaledb.enabled` — PG **18** only; cannot be disabled once enabled; needs Kubernetes ImageVolume (1.35+, or 1.33/1.34 + feature gate). See [examples/instance-timescaledb.yaml](examples/instance-timescaledb.yaml) |
-| pgvector | 🚧 | planned |
-| pgAudit | 🚧 | planned |
+The image-volume images come from a CloudNativePG `ClusterImageCatalog` that the chart renders
+from `extensionCatalog` in its values (default: the official CloudNativePG trixie builds plus
+AGE, pinned by digest). The provider copies the catalog entry of each enabled extension (image,
+paths, env) into the Cluster and passes the `sqlVersion` value to `CREATE EXTENSION`, so admins
+can bump or mirror images with `helm upgrade`, or set `extensionCatalog.create=false` and point
+`extensionCatalog.name` at a catalog they manage (the SQL versions go in
+`sql-version.extensions.openeverest.io/<major>.<name>` annotations), without upgrading the
+provider. A new image restarts the instances that use it.
+
+| Extension | Toggle | Status | Enable on a running instance | Disable | Notes |
+|---|---|---|---|---|---|
+| pgvector | `pgvector` | ✅ | ✅ no restart | ❌ | PG 14–18, bundled in the `standard` images: no image change. See [examples/instance-pgvector.yaml](examples/instance-pgvector.yaml) |
+| pgAudit | `pgaudit` | ✅ | ✅ restarts | ✅ the operator drops it | PG 14–18, bundled; sets `pgaudit.log: "ddl, role"` unless a value is set in `postgresql.parameters`, and the operator then preloads it and creates it in every database |
+| TimescaleDB OSS | `timescaledb` | ✅ | ❌ creation only ¹ | ❌ | Image volume, preloaded. See [examples/instance-timescaledb.yaml](examples/instance-timescaledb.yaml) |
+| PostGIS | `postgis` | ✅ | ✅ restarts | ❌ | Image volume |
+| pgRouting | `pgrouting` | ✅ | ✅ restarts | ❌ | Image volume; requires `postgis` |
+| pg_ivm | `pgivm` | ✅ | ❌ creation only ¹ | ❌ | Image volume, preloaded |
+| wal2json | `wal2json` | ✅ | ✅ restarts | ✅ restarts | Image volume; a logical decoding output plugin (no `CREATE EXTENSION`) — drop the replication slots that use it before disabling |
+| Apache AGE | `age` | ✅ | ❌ creation only ² | ❌ | Image volume from [solanicaio/postgresql-extensions](https://github.com/solanicaio/postgresql-extensions), preloaded. Run `SET search_path = ag_catalog, "$user", public` before using it |
+
+Extensions that are created in the database (everything but pgAudit and wal2json) cannot be
+disabled: dropping them would fail or destroy data, so the provider rejects it.
+
+¹ Enforced by the provider: CloudNativePG advises against rolling out a new extension image and a
+`shared_preload_libraries` change together, and enabling them on a running instance does exactly
+that.
+
+² Enforced by the provider: the application owner gets `USAGE` on `ag_catalog` through default
+privileges set in `postInitApplicationSQL`, which only runs at bootstrap. Default privileges on
+schemas cannot be limited to one schema, so the owner also gets `USAGE` on any other schema the
+`postgres` superuser creates later in the application database.
 
 Stateful workloads additionally report:
 
@@ -156,7 +185,7 @@ spec:
 Component names are defined by this provider — see [definition/provider.yaml](definition/provider.yaml).
 `spec.version` and `spec.topology` are optional; the provider defaults apply.
 More examples live in [examples/](examples/), including
-[TimescaleDB](examples/instance-timescaledb.yaml).
+[TimescaleDB](examples/instance-timescaledb.yaml) and [pgvector](examples/instance-pgvector.yaml).
 
 Watch it come up and read the connection details:
 
@@ -233,7 +262,7 @@ The technology-specific knobs worth knowing about:
 |---|---|---|
 | `bootstrap.initdb` | `engine` | Initial database name, owner, and optional credentials Secret |
 | `postgresql` | `engine` | Full CloudNativePG `PostgresConfiguration` (GUCs, sync replicas, …) |
-| `extensions.timescaledb` | `engine` | Install + enable TimescaleDB OSS (image volume + `CREATE EXTENSION`); PG 18 + ImageVolume required. Defaults `timescaledb.telemetry_level=off` and `max_locks_per_transaction=128` unless set in `postgresql.parameters` |
+| `extensions.*` | `engine` | First-class extensions; see [Extensions](#extensions). TimescaleDB also defaults `timescaledb.telemetry_level=off` and `max_locks_per_transaction=128` unless set in `postgresql.parameters` |
 | `affinity` | `engine` | CloudNativePG `AffinityConfiguration`; rejected together with `schedulingPolicy` `affinity`, `nodeSelector` or `tolerations` |
 | `managed` | `engine` | Managed PostgreSQL roles |
 | `resizeInUseVolumes` | `engine` | Allow PVC expansion on running instances |
@@ -282,7 +311,7 @@ code generation, and the backup/restore interfaces are documented once for all p
 | `definition/` | Provider identity, component types, versions, topologies, backup classes |
 | `charts/provider-cloudnative-pg/` | Helm chart (`generated/` is produced by `make generate`) |
 | `config/rbac/role.yaml` | Generated `ClusterRole` — do not edit |
-| `test/integration/` | Chainsaw suites: `core/replicaset` |
+| `test/integration/` | Chainsaw suites: `core/replicaset`, `extensions/bundled`, `extensions/imagevolume` |
 | `test/vars.sh` | Pinned versions used by tests |
 | `examples/` | Example `Instance` resources |
 | `dev/` | Tilt dev environment, `.env` configuration, k3d cluster config |
@@ -293,7 +322,11 @@ code generation, and the backup/restore interfaces are documented once for all p
 - **Unit tests** — `make test`.
 - **Integration tests** — chainsaw suites under [test/integration/](test/integration/).
   Individual suites are also exposed as make targets (`make test-integration-core`,
-  `make test-integration-core-replicaset`, …).
+  `make test-integration-core-replicaset`, `make test-integration-extensions`, …).
+  The extension suites run a one-instance PostgreSQL and use each extension through `psql`.
+  `extensions/imagevolume` needs Kubernetes ImageVolume (1.35+ with containerd 2.1+); the dev
+  and CI k3d cluster ([dev/k3d_config.yaml](dev/k3d_config.yaml)) runs k3s 1.36, so
+  `make test-integration` covers it (alone: `make test-integration-imagevolume`).
 - **CI** — [.github/workflows/build.yaml](.github/workflows/build.yaml) runs lint, build, unit
   tests, generated-file verification, and Helm lint;
   [.github/workflows/test.yaml](.github/workflows/test.yaml) runs the integration suites.

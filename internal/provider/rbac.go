@@ -30,9 +30,12 @@ package provider
 // +kubebuilder:rbac:groups=postgresql.cnpg.io,resources=clusters,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=postgresql.cnpg.io,resources=clusters/status,verbs=get
 
-// CloudNativePG Database CRs (declarative CREATE EXTENSION for TimescaleDB, etc.):
+// CloudNativePG Database CRs (declarative CREATE EXTENSION for first-class extensions):
 // +kubebuilder:rbac:groups=postgresql.cnpg.io,resources=databases,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=postgresql.cnpg.io,resources=databases/status,verbs=get
+
+// CloudNativePG ClusterImageCatalogs (extension images of the first-class extensions):
+// +kubebuilder:rbac:groups=postgresql.cnpg.io,resources=clusterimagecatalogs,verbs=get;list;watch
 
 // CloudNativePG Backup CRs (ProviderManaged backup/restore via Barman Cloud Plugin):
 // +kubebuilder:rbac:groups=postgresql.cnpg.io,resources=backups,verbs=get;list;watch;create;update;patch;delete

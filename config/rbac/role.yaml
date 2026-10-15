@@ -158,3 +158,11 @@ rules:
   - databases/status
   verbs:
   - get
+- apiGroups:
+  - postgresql.cnpg.io
+  resources:
+  - clusterimagecatalogs
+  verbs:
+  - get
+  - list
+  - watch

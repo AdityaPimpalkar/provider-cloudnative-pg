@@ -1,0 +1,30 @@
+# Instance with pgvector enabled.
+#
+# pgvector ships in the CloudNativePG standard images used by this provider
+# (PostgreSQL 14-18), so no extension image or ImageVolume support is needed.
+# The provider runs CREATE EXTENSION vector in the application database.
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: my-pgvector
+spec:
+  providerRef:
+    name: provider-cloudnative-pg
+  version: "17.10"
+  components:
+    engine:
+      type: postgresql
+      replicas: 1
+      resources:
+        requests:
+          cpu: "1"
+          memory: 1Gi
+        limits:
+          cpu: "1"
+          memory: 1Gi
+      storage:
+        size: 5Gi
+      parameters:
+        extensions:
+          pgvector:
+            enabled: true
