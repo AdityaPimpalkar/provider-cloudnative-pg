@@ -183,7 +183,10 @@ func TestValidateExtensionsAtCreation(t *testing.T) {
 		{name: "new instance", custom: age},
 		{name: "created with age", custom: age, cluster: clusterWith("age")},
 		{name: "enabled on an existing instance", custom: age, cluster: clusterWith("pg-ivm"), wantReject: true},
-		{name: "other extensions on an existing instance", custom: withExtensions(components.ExtensionsSpec{PgIVM: on}), cluster: clusterWith()},
+		{name: "pg_ivm enabled on an existing instance", custom: withExtensions(components.ExtensionsSpec{PgIVM: on}), cluster: clusterWith(), wantReject: true},
+		{name: "timescaledb enabled on an existing instance", custom: withExtensions(components.ExtensionsSpec{TimescaleDB: on}), cluster: clusterWith("postgis"), wantReject: true},
+		{name: "created with timescaledb and pg_ivm", custom: withExtensions(components.ExtensionsSpec{TimescaleDB: on, PgIVM: on}), cluster: clusterWith("timescaledb-oss", "pg-ivm")},
+		{name: "other extensions on an existing instance", custom: withExtensions(components.ExtensionsSpec{PostGIS: on, PgRouting: on, Wal2JSON: on, PgVector: on, PgAudit: on}), cluster: clusterWith()},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -380,4 +383,3 @@ func TestExtensionsStatus(t *testing.T) {
 		})
 	}
 }
-

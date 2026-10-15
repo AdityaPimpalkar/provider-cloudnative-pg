@@ -98,12 +98,14 @@ provider. A new image restarts the instances that use it.
 Extensions that are created in the database (everything but pgAudit and wal2json) cannot be
 disabled: dropping them would fail or destroy data, so the provider rejects it.
 
-¹ The UI offers them only at creation: CloudNativePG advises against rolling out a new extension
-image and a `shared_preload_libraries` change together, and enabling them through the API on a
-running instance does exactly that.
+¹ Enforced by the provider: CloudNativePG advises against rolling out a new extension image and a
+`shared_preload_libraries` change together, and enabling them on a running instance does exactly
+that.
 
 ² Enforced by the provider: the application owner gets `USAGE` on `ag_catalog` through default
-privileges set in `postInitApplicationSQL`, which only runs at bootstrap.
+privileges set in `postInitApplicationSQL`, which only runs at bootstrap. Default privileges on
+schemas cannot be limited to one schema, so the owner also gets `USAGE` on any other schema the
+`postgres` superuser creates later in the application database.
 
 Stateful workloads additionally report:
 

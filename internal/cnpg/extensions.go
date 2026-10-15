@@ -23,6 +23,10 @@ const imageVolumePostgresMajor = "18"
 // ExtensionConfiguration has no field for it.
 const SQLVersionAnnotationPrefix = "sql-version.extensions.openeverest.io/"
 
+// postgresSuperuser is the superuser CloudNativePG runs initdb and the Database
+// controller as (not configurable), so it owns the schemas CREATE EXTENSION makes.
+const postgresSuperuser = "postgres"
+
 // extension is a first-class toggle under parameters.extensions. Image-volume
 // extensions are resolved by name from the extensions ClusterImageCatalog
 // rendered by the Helm chart (values extensionCatalog), so admins can change
@@ -30,12 +34,14 @@ const SQLVersionAnnotationPrefix = "sql-version.extensions.openeverest.io/"
 type extension struct {
 	field  string
 	toggle func(*components.ExtensionsSpec) *components.ExtensionToggle
-	// imageName is the catalog extension entry; empty when the standard operand
-	// images already ship the extension.
-	imageName string
-	// sqlName is created in the application database; empty when there is no
-	// CREATE EXTENSION or the operator manages it.
-	sqlName          string
+	// catalogEntry names the image-volume entry in the extensions catalog (e.g.
+	// timescaledb-oss); empty when the standard operand images already ship the
+	// extension.
+	catalogEntry string
+	// sqlExtension is the CREATE EXTENSION name in the application database (e.g.
+	// timescaledb); empty when there is no CREATE EXTENSION or the operator
+	// manages it.
+	sqlExtension     string
 	preloadLibraries []string
 	// defaultParameters apply unless set in parameters.postgresql.parameters.
 	defaultParameters map[string]string
@@ -50,8 +56,8 @@ var firstClassExtensions = []extension{
 	{
 		field:            "timescaledb",
 		toggle:           func(e *components.ExtensionsSpec) *components.ExtensionToggle { return e.TimescaleDB },
-		imageName:        "timescaledb-oss",
-		sqlName:          "timescaledb",
+		catalogEntry:     "timescaledb-oss",
+		sqlExtension:     "timescaledb",
 		preloadLibraries: []string{"timescaledb"},
 		// From the upstream timescaledb-oss Cluster example.
 		defaultParameters: map[string]string{
@@ -60,28 +66,28 @@ var firstClassExtensions = []extension{
 		},
 	},
 	{
-		field:     "postgis",
-		toggle:    func(e *components.ExtensionsSpec) *components.ExtensionToggle { return e.PostGIS },
-		imageName: "postgis",
-		sqlName:   "postgis",
+		field:        "postgis",
+		toggle:       func(e *components.ExtensionsSpec) *components.ExtensionToggle { return e.PostGIS },
+		catalogEntry: "postgis",
+		sqlExtension: "postgis",
 	},
 	{
-		field:     "pgrouting",
-		toggle:    func(e *components.ExtensionsSpec) *components.ExtensionToggle { return e.PgRouting },
-		imageName: "pgrouting",
-		sqlName:   "pgrouting",
-		requires:  []string{"postgis"},
+		field:        "pgrouting",
+		toggle:       func(e *components.ExtensionsSpec) *components.ExtensionToggle { return e.PgRouting },
+		catalogEntry: "pgrouting",
+		sqlExtension: "pgrouting",
+		requires:     []string{"postgis"},
 	},
 	{
-		field:   "pgvector",
-		toggle:  func(e *components.ExtensionsSpec) *components.ExtensionToggle { return e.PgVector },
-		sqlName: "vector",
+		field:        "pgvector",
+		toggle:       func(e *components.ExtensionsSpec) *components.ExtensionToggle { return e.PgVector },
+		sqlExtension: "vector",
 	},
 	{
 		field:            "pgivm",
 		toggle:           func(e *components.ExtensionsSpec) *components.ExtensionToggle { return e.PgIVM },
-		imageName:        "pg-ivm",
-		sqlName:          "pg_ivm",
+		catalogEntry:     "pg-ivm",
+		sqlExtension:     "pg_ivm",
 		preloadLibraries: []string{"pg_ivm"},
 	},
 	{
@@ -93,21 +99,24 @@ var firstClassExtensions = []extension{
 		defaultParameters: map[string]string{"pgaudit.log": "ddl, role"},
 	},
 	{
-		field:     "wal2json",
-		toggle:    func(e *components.ExtensionsSpec) *components.ExtensionToggle { return e.Wal2JSON },
-		imageName: "wal2json",
+		field:        "wal2json",
+		toggle:       func(e *components.ExtensionsSpec) *components.ExtensionToggle { return e.Wal2JSON },
+		catalogEntry: "wal2json",
 	},
 	{
-		field:     "age",
-		toggle:    func(e *components.ExtensionsSpec) *components.ExtensionToggle { return e.AGE },
-		imageName: "age",
-		sqlName:   "age",
+		field:        "age",
+		toggle:       func(e *components.ExtensionsSpec) *components.ExtensionToggle { return e.AGE },
+		catalogEntry: "age",
+		sqlExtension: "age",
 		// Non-superusers cannot LOAD it from an image volume (only $libdir/plugins).
 		preloadLibraries: []string{"age"},
 		// CREATE EXTENSION creates ag_catalog as the superuser, and AGE refuses a
 		// pre-created one, so grant the owner USAGE on schemas created later.
+		// Default privileges on schemas cannot be narrowed to one schema, so this
+		// covers every schema the superuser creates in the application database.
+		// It runs only at initdb: changing it does not reach existing clusters.
 		bootstrapSQL: func(owner string) string {
-			return "ALTER DEFAULT PRIVILEGES FOR ROLE postgres GRANT USAGE ON SCHEMAS TO " + quoteIdentifier(owner)
+			return "ALTER DEFAULT PRIVILEGES FOR ROLE " + postgresSuperuser + " GRANT USAGE ON SCHEMAS TO " + quoteIdentifier(owner)
 		},
 	},
 }
@@ -118,6 +127,13 @@ func (e extension) enabled(custom *components.CNPGCustomSpec) bool {
 	}
 	toggle := e.toggle(custom.Extensions)
 	return toggle != nil && toggle.Enabled
+}
+
+// creationOnly reports whether the extension can only be enabled when the
+// instance is created: bootstrap SQL only runs at initdb, and CloudNativePG
+// advises against adding an extension image and a preload library in one rollout.
+func (e extension) creationOnly() bool {
+	return e.bootstrapSQL != nil || (e.catalogEntry != "" && len(e.preloadLibraries) > 0)
 }
 
 func enabledExtensions(custom *components.CNPGCustomSpec) []extension {
@@ -138,7 +154,7 @@ func ValidateExtensions(custom *components.CNPGCustomSpec, engineVersion, instan
 	major := postgresMajor(engineVersion, instanceVersion)
 	enabled := enabledExtensions(custom)
 	for _, ext := range enabled {
-		if ext.imageName != "" && major != imageVolumePostgresMajor {
+		if ext.catalogEntry != "" && major != imageVolumePostgresMajor {
 			return fmt.Errorf(
 				"extensions.%s requires PostgreSQL 18 (got major %q); set spec.version to a 18.x release (e.g. \"18.4\"); also requires Kubernetes ImageVolume (1.35+, or 1.33/1.34 with the ImageVolume feature gate)",
 				ext.field, major,
@@ -185,7 +201,7 @@ func ResolveExtensionImages(
 ) (ExtensionImages, error) {
 	var wanted []extension
 	for _, ext := range enabledExtensions(custom) {
-		if ext.imageName != "" {
+		if ext.catalogEntry != "" {
 			wanted = append(wanted, ext)
 		}
 	}
@@ -207,14 +223,14 @@ func ResolveExtensionImages(
 	entries, _ := catalog.Spec.FindExtensionsForMajor(majorNumber)
 	images := ExtensionImages{}
 	for _, ext := range wanted {
-		i := slices.IndexFunc(entries, func(e cnpgv1.ExtensionConfiguration) bool { return e.Name == ext.imageName })
+		i := slices.IndexFunc(entries, func(e cnpgv1.ExtensionConfiguration) bool { return e.Name == ext.catalogEntry })
 		if i < 0 {
 			return nil, fmt.Errorf("extensions.%s: ClusterImageCatalog %q has no %q extension for PostgreSQL %d",
-				ext.field, catalogName, ext.imageName, majorNumber)
+				ext.field, catalogName, ext.catalogEntry, majorNumber)
 		}
-		images[ext.imageName] = ExtensionImage{
+		images[ext.catalogEntry] = ExtensionImage{
 			Config:     entries[i],
-			SQLVersion: catalog.Annotations[SQLVersionAnnotationPrefix+major+"."+ext.imageName],
+			SQLVersion: catalog.Annotations[SQLVersionAnnotationPrefix+major+"."+ext.catalogEntry],
 		}
 	}
 	return images, nil
@@ -226,7 +242,7 @@ func ResolveExtensionImages(
 func ApplyExtensions(pg *cnpgv1.Cluster, custom *components.CNPGCustomSpec, images ExtensionImages) {
 	cfg := &pg.Spec.PostgresConfiguration
 	for _, ext := range enabledExtensions(custom) {
-		if image, ok := images[ext.imageName]; ok && !slices.ContainsFunc(cfg.Extensions, func(e cnpgv1.ExtensionConfiguration) bool { return e.Name == ext.imageName }) {
+		if image, ok := images[ext.catalogEntry]; ok && !slices.ContainsFunc(cfg.Extensions, func(e cnpgv1.ExtensionConfiguration) bool { return e.Name == ext.catalogEntry }) {
 			cfg.Extensions = append(cfg.Extensions, *image.Config.DeepCopy())
 		}
 
@@ -264,8 +280,9 @@ func ApplyExtensions(pg *cnpgv1.Cluster, custom *components.CNPGCustomSpec, imag
 	}
 }
 
-// ValidateExtensionsAtCreation rejects enabling an extension that needs
-// bootstrap SQL on a Cluster that was created without it.
+// ValidateExtensionsAtCreation rejects enabling a creation-only extension on a
+// Cluster that was created without it. The UI disables these toggles on edit;
+// this enforces it for API and GitOps clients too.
 func ValidateExtensionsAtCreation(c *controller.Context, custom *components.CNPGCustomSpec) error {
 	pg := &cnpgv1.Cluster{}
 	if err := c.Get(pg, c.Name()); err != nil {
@@ -276,10 +293,10 @@ func ValidateExtensionsAtCreation(c *controller.Context, custom *components.CNPG
 	}
 
 	for _, ext := range enabledExtensions(custom) {
-		if ext.bootstrapSQL == nil {
+		if !ext.creationOnly() {
 			continue
 		}
-		if !slices.ContainsFunc(pg.Spec.PostgresConfiguration.Extensions, func(e cnpgv1.ExtensionConfiguration) bool { return e.Name == ext.imageName }) {
+		if !slices.ContainsFunc(pg.Spec.PostgresConfiguration.Extensions, func(e cnpgv1.ExtensionConfiguration) bool { return e.Name == ext.catalogEntry }) {
 			return fmt.Errorf("extensions.%s can only be enabled when the instance is created", ext.field)
 		}
 	}
@@ -299,7 +316,7 @@ func ExtensionsDatabaseName(instanceName string) string {
 func createdExtensions(custom *components.CNPGCustomSpec) []extension {
 	var created []extension
 	for _, ext := range enabledExtensions(custom) {
-		if ext.sqlName != "" {
+		if ext.sqlExtension != "" {
 			created = append(created, ext)
 		}
 	}
@@ -318,11 +335,11 @@ func BuildExtensionsDatabase(clusterName string, custom *components.CNPGCustomSp
 	for _, ext := range created {
 		specs = append(specs, cnpgv1.ExtensionSpec{
 			DatabaseObjectSpec: cnpgv1.DatabaseObjectSpec{
-				Name:   ext.sqlName,
+				Name:   ext.sqlExtension,
 				Ensure: cnpgv1.EnsurePresent,
 			},
 			// Empty installs the default version of the extension's control file.
-			Version: images[ext.imageName].SQLVersion,
+			Version: images[ext.catalogEntry].SQLVersion,
 		})
 	}
 
@@ -369,10 +386,10 @@ func ValidateExtensionsNotDisabled(c *controller.Context, custom *components.CNP
 	}
 
 	for _, ext := range firstClassExtensions {
-		if ext.sqlName == "" || ext.enabled(custom) {
+		if ext.sqlExtension == "" || ext.enabled(custom) {
 			continue
 		}
-		if slices.ContainsFunc(db.Spec.Extensions, func(e cnpgv1.ExtensionSpec) bool { return e.Name == ext.sqlName }) {
+		if slices.ContainsFunc(db.Spec.Extensions, func(e cnpgv1.ExtensionSpec) bool { return e.Name == ext.sqlExtension }) {
 			return fmt.Errorf("extensions.%s cannot be disabled once enabled", ext.field)
 		}
 	}
@@ -409,10 +426,10 @@ func ExtensionsStatus(c *controller.Context, custom *components.CNPGCustomSpec) 
 
 	for _, ext := range created {
 		for _, status := range db.Status.Extensions {
-			if status.Name == ext.sqlName && !status.Applied {
+			if status.Name == ext.sqlExtension && !status.Applied {
 				msg := status.Message
 				if msg == "" {
-					msg = fmt.Sprintf("waiting for extension %s to be created", ext.sqlName)
+					msg = fmt.Sprintf("waiting for extension %s to be created", ext.sqlExtension)
 				}
 				return controller.Provisioning(msg), true
 			}
