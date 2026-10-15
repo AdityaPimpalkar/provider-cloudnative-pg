@@ -154,6 +154,10 @@ test-integration: ## Run all integration tests (chainsaw) against a running clus
 test-integration-core: ## Run core integration tests (chainsaw).
 	. ./test/vars.sh && chainsaw test --config ./test/integration/.chainsaw.yaml ./test/integration/core
 
+.PHONY: test-integration-backup
+test-integration-backup: ## Run backup integration tests (requires CNPG, the Barman plugin, and BackupClasses).
+	. ./test/vars.sh && chainsaw test --config ./test/integration/.chainsaw.yaml ./test/integration/backup
+
 .PHONY: test-integration-core-replicaset
 test-integration-core-replicaset: ## Run core replicaset integration tests (chainsaw).
 	. ./test/vars.sh && chainsaw test --config ./test/integration/.chainsaw.yaml ./test/integration/core/replicaset

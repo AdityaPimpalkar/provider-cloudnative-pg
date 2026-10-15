@@ -1,0 +1,9 @@
+apiVersion: backup.openeverest.io/v1alpha1
+kind: Backup
+metadata:
+  name: on-demand-backup
+status:
+  state: Succeeded
+  operatorBackupRef:
+    kind: Backup
+    name: on-demand-backup

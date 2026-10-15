@@ -9,6 +9,7 @@ import (
 	commonv1alpha1 "github.com/openeverest/openeverest/v2/api/common/v1alpha1"
 	corev1alpha1 "github.com/openeverest/openeverest/v2/api/core/v1alpha1"
 	"github.com/openeverest/openeverest/v2/provider-runtime/controller"
+	batchv1 "k8s.io/api/batch/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -17,9 +18,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-// TODO: If your operator supports backups and restores, implement the backup interfaces
-// to enable OpenEverest's backup management. All backup interfaces are optional.
-//
 // Compile-time interface checks.
 var _ controller.BackupProvider = (*Provider)(nil)
 var _ controller.BackupWatcher = (*Provider)(nil)
@@ -48,6 +46,12 @@ func (p *Provider) SyncBackup(c *controller.Context, backup *backupv1alpha1.Back
 		return controller.BackupExecutionStatus{}, fmt.Errorf("get CloudNativePG backup: %w", err)
 	}
 	if !exists {
+		if backup.Status.OperatorBackupRef != nil {
+			return controller.BackupExecutionStatus{
+				State:   backupv1alpha1.BackupStateFailed,
+				Message: "CloudNativePG backup is no longer available; it may have expired under Barman retention",
+			}, nil
+		}
 		if blocked := backupStorageBlocker(c.Instance(), cluster, backup.Spec.StorageRef.Name); blocked != nil {
 			return *blocked, nil
 		}
@@ -198,9 +202,9 @@ func (p *Provider) SyncRestore(c *controller.Context, restore *backupv1alpha1.Re
 	return exec, nil
 }
 
-// CleanupBackup deletes the operator backup resource. For DeletionPolicy: Retain,
-// remove storage-protection finalizers before deletion to preserve backup data.
-// Return true only when fully deleted, false to requeue.
+// CleanupBackup removes Barman backup data first for DeletionPolicy: Delete, then
+// deletes the CNPG Backup resource. Retain only removes that resource.
+// Return true only when cleanup is complete, false to requeue.
 func (p *Provider) CleanupBackup(c *controller.Context, backup *backupv1alpha1.Backup) (bool, error) {
 	l := log.FromContext(c.Context())
 	l.Info("Cleaning up backup", "name", backup.Name)
@@ -208,9 +212,33 @@ func (p *Provider) CleanupBackup(c *controller.Context, backup *backupv1alpha1.B
 	cnpgBackup := &cnpgv1.Backup{}
 	if err := c.Get(cnpgBackup, backup.Name); err != nil {
 		if apierrors.IsNotFound(err) {
+			if backup.Spec.DeletionPolicy != backupv1alpha1.BackupDeletionPolicyRetain {
+				job := &batchv1.Job{}
+				if jobErr := c.Get(job, backupDeletionJobName(backup.Name)); jobErr != nil {
+					// Native retention removes completed backups without a provider deletion Job.
+					if apierrors.IsNotFound(jobErr) && backup.Status.CompletedAt != nil && backup.Status.OperatorBackupRef != nil {
+						l.Info("Completed CNPG backup is already absent; allowing backup record cleanup", "name", backup.Name)
+						return true, nil
+					}
+					return false, fmt.Errorf("CloudNativePG backup %q is missing before data deletion completed: %w", backup.Name, jobErr)
+				}
+				if !jobComplete(job) {
+					return false, fmt.Errorf("CloudNativePG backup %q is missing while its data deletion job is incomplete", backup.Name)
+				}
+			}
 			return true, nil
 		}
 		return false, fmt.Errorf("get CloudNativePG backup: %w", err)
+	}
+
+	if backup.Spec.DeletionPolicy != backupv1alpha1.BackupDeletionPolicyRetain {
+		done, err := p.deleteBackupData(c, backup, cnpgBackup)
+		if err != nil {
+			return false, err
+		}
+		if !done {
+			return false, nil
+		}
 	}
 
 	if cnpgBackup.DeletionTimestamp.IsZero() {
@@ -256,6 +284,7 @@ func (p *Provider) CleanupRestore(c *controller.Context, restore *backupv1alpha1
 func (p *Provider) BackupWatches() []controller.WatchConfig {
 	return []controller.WatchConfig{
 		controller.WatchOwned(&cnpgv1.Backup{}),
+		controller.WatchOwned(&batchv1.Job{}),
 	}
 }
 

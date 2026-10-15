@@ -74,6 +74,15 @@
   verbs:
     - get
 - apiGroups:
+    - batch
+  resources:
+    - jobs
+  verbs:
+    - create
+    - get
+    - list
+    - watch
+- apiGroups:
     - coordination.k8s.io
   resources:
     - leases

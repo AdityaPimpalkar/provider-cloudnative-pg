@@ -5,6 +5,7 @@ import (
 	"net/url"
 	"os"
 
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -59,6 +60,7 @@ func New() *Provider {
 				cnpgv1.SchemeBuilder.AddToScheme,
 				addBarmanCloudScheme,
 				monitoringv1.AddToScheme,
+				batchv1.AddToScheme,
 			},
 		},
 	}

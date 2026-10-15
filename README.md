@@ -118,7 +118,29 @@ Stateful workloads additionally report:
 | Backups (on demand) | ✅ | operator-native (`executionMode: ProviderManaged`) via the Barman Cloud Plugin; one backup storage per Instance (CNPG supports a single WAL archive) |
 | Restore | ✅ | from a succeeded Backup via Barman |
 | Scheduled backups | ✅ | `spec.backup.storages[].schedules` → CNPG `ScheduledBackup`; mirrored as OpenEverest `Backup` CRs |
+| Schedule retention | ✅ | time-based recovery windows are delegated to CNPG/Barman via ObjectStore retentionPolicy; count-based retention is rejected |
+| Backup deletion | ✅ | `deletionPolicy: Delete` removes the Barman base backup; `Retain` removes only the CNPG Backup resource |
 | PITR | ✅ | restore to a point in time via `spec.dataSource` |
+
+CNPG retention uses the Barman Cloud Plugin's native recovery window:
+
+```yaml
+retention:
+  type: time
+  duration: 30d
+```
+
+All schedules targeting the same storage, including disabled schedules, must
+specify the same duration or all omit retention (keep all). The window applies
+to that cluster's entire Barman archive, including on-demand backups and WAL,
+not independently to each schedule. Barman preserves the base backup needed to
+recover from the beginning of the window. Count retention is not supported.
+`deletionPolicy: Retain` skips explicit data deletion; it does not exempt a
+backup from Barman's archive-wide retention policy.
+If CNPG removes a backup resource during native catalog cleanup, its Everest
+record is reported as unavailable rather than starting a replacement backup.
+The backup integration suite checks native policy configuration, not the
+passage of a multi-day recovery window.
 
 ## Installation
 
@@ -311,6 +333,7 @@ make generate           # RBAC, provider spec, Helm chart sync
 make run                # run the provider locally against the cluster
 make test               # unit tests
 make test-integration   # chainsaw suites under test/integration/
+make test-integration-backup # backup integration suite against S3Mock
 make dev-down
 ```
 
@@ -340,7 +363,7 @@ code generation, and the backup/restore interfaces are documented once for all p
 | `definition/` | Provider identity, component types, versions, topologies, backup classes |
 | `charts/provider-cloudnative-pg/` | Helm chart (`generated/` is produced by `make generate`) |
 | `config/rbac/role.yaml` | Generated `ClusterRole` — do not edit |
-| `test/integration/` | Chainsaw suites: `core/replicaset`, `extensions/bundled`, `extensions/imagevolume`, `tls-only` |
+| `test/integration/` | Chainsaw suites: `core/replicaset`, `backup`, `extensions/bundled`, `extensions/imagevolume`, `tls-only` |
 | `test/e2e-cluster/` | Chainsaw e2e suites on the full OpenEverest platform: `backup-restore` |
 | `test/e2e/` | Playwright UI tests against the OpenEverest UI |
 | `test/vars.sh` | Pinned versions used by tests |
@@ -353,7 +376,7 @@ code generation, and the backup/restore interfaces are documented once for all p
 - **Unit tests** — `make test`.
 - **Integration tests** — chainsaw suites under [test/integration/](test/integration/).
   Individual suites are also exposed as make targets (`make test-integration-core`,
-  `make test-integration-core-replicaset`, `make test-integration-extensions`, …).
+  `make test-integration-backup`, `make test-integration-core-replicaset`, `make test-integration-extensions`, …).
   The extension suites run a one-instance PostgreSQL and use each extension through `psql`.
   `extensions/imagevolume` needs Kubernetes ImageVolume (1.35+ with containerd 2.1+); the dev
   and CI k3d cluster ([dev/k3d_config.yaml](dev/k3d_config.yaml)) runs k3s 1.36, so

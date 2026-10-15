@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"regexp"
 	"strings"
 
 	cnpgv1 "github.com/cloudnative-pg/cloudnative-pg/api/v1"
@@ -18,6 +19,8 @@ import (
 const maxScheduledBackupNameLength = validation.LabelValueMaxLength
 
 const scheduledBackupNameHashLength = 8
+
+var retentionDurationPattern = regexp.MustCompile(`^[1-9][0-9]*[dwm]$`)
 
 // Descriptors accepted by both standard cron and CNPG's robfig/cron parser.
 var cronDescriptors = map[string]bool{
@@ -37,6 +40,9 @@ func ValidateSchedules(backup *corev1alpha1.InstanceBackupSpec) error {
 		return nil
 	}
 	for _, storage := range backup.Storages {
+		if _, err := storageRetentionPolicy(storage); err != nil {
+			return err
+		}
 		for _, schedule := range storage.Schedules {
 			if errs := validation.IsDNS1123Label(schedule.Name); len(errs) > 0 {
 				return fmt.Errorf("backup schedule name %q is invalid: %s", schedule.Name, strings.Join(errs, "; "))
@@ -50,6 +56,28 @@ func ValidateSchedules(backup *corev1alpha1.InstanceBackupSpec) error {
 		}
 	}
 	return nil
+}
+
+// Barman retention covers the cluster's whole archive, not an individual schedule.
+func storageRetentionPolicy(storage corev1alpha1.InstanceBackupStorage) (string, error) {
+	var policy string
+	for i, schedule := range storage.Schedules {
+		duration := ""
+		if schedule.Retention != nil {
+			if schedule.Retention.Type != corev1alpha1.BackupScheduleRetentionTypeTime {
+				return "", fmt.Errorf("schedule %q: CNPG supports only time retention; use type time with a duration such as 30d", schedule.Name)
+			}
+			duration = schedule.Retention.Duration
+			if !retentionDurationPattern.MatchString(duration) {
+				return "", fmt.Errorf("schedule %q: invalid retention duration %q; use a positive number followed by d, w, or m", schedule.Name, duration)
+			}
+		}
+		if i > 0 && duration != policy {
+			return "", fmt.Errorf("storage %q: all schedules must specify the same time retention or all omit retention; Barman retention applies to the cluster's entire archive, including on-demand backups", storage.StorageRef.Name)
+		}
+		policy = duration
+	}
+	return policy, nil
 }
 
 // SyncScheduledBackups reconciles one CNPG ScheduledBackup per enabled
