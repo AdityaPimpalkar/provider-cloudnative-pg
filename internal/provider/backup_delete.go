@@ -92,7 +92,7 @@ func buildBackupDeletionJob(
 		return nil, fmt.Errorf("BackupStorage %q is not S3; cannot delete Barman backup data", backup.Spec.StorageRef.Name)
 	}
 	config := objectStore.Spec.Configuration
-	aws := config.BarmanCredentials.AWS
+	aws := config.AWS
 	if aws == nil || aws.AccessKeyIDReference == nil || aws.SecretAccessKeyReference == nil {
 		return nil, fmt.Errorf("ObjectStore %q has incomplete S3 credentials; cannot delete Barman backup data", objectStore.Name)
 	}
@@ -152,7 +152,7 @@ func buildBackupDeletionJob(
 			Name: "endpoint-ca",
 			VolumeSource: corev1.VolumeSource{
 				Secret: &corev1.SecretVolumeSource{
-					SecretName: config.EndpointCA.LocalObjectReference.Name,
+					SecretName: config.EndpointCA.Name,
 					Items: []corev1.KeyToPath{{
 						Key:  config.EndpointCA.Key,
 						Path: "backup-ca.crt",
@@ -205,7 +205,7 @@ func secretEnv(name string, ref *machineryapi.SecretKeySelector) corev1.EnvVar {
 		Name: name,
 		ValueFrom: &corev1.EnvVarSource{
 			SecretKeyRef: &corev1.SecretKeySelector{
-				LocalObjectReference: corev1.LocalObjectReference{Name: ref.LocalObjectReference.Name},
+				LocalObjectReference: corev1.LocalObjectReference{Name: ref.Name},
 				Key:                  ref.Key,
 			},
 		},
