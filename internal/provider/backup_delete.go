@@ -17,8 +17,10 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 const backupCAPath = "/etc/barman-cloud/backup-ca.crt"
@@ -33,13 +35,16 @@ func (p *Provider) deleteBackupData(
 	backup *backupv1alpha1.Backup,
 	cnpgBackup *cnpgv1.Backup,
 ) (bool, error) {
-	if cnpgBackup.Status.Phase == cnpgv1.BackupPhaseRunning ||
-		cnpgBackup.Status.Phase == cnpgv1.BackupPhaseStarted ||
-		cnpgBackup.Status.Phase == cnpgv1.BackupPhasePending {
+	switch cnpgBackup.Status.Phase {
+	case cnpgv1.BackupPhasePending, cnpgv1.BackupPhaseStarted,
+		cnpgv1.BackupPhaseRunning, cnpgv1.BackupPhaseFinalizing:
 		return false, nil
 	}
+	// Not started, or failed before Barman assigned an ID: nothing is addressable.
 	if cnpgBackup.Status.BackupID == "" {
-		return false, fmt.Errorf("CloudNativePG backup %q has no Barman backup ID; cannot safely delete its data", cnpgBackup.Name)
+		log.FromContext(c.Context()).Info("CloudNativePG backup has no Barman backup ID; skipping data deletion",
+			"name", cnpgBackup.Name, "phase", cnpgBackup.Status.Phase)
+		return true, nil
 	}
 
 	objectStore := &barmancloudv1.ObjectStore{}
@@ -76,8 +81,12 @@ func (p *Provider) deleteBackupData(
 	if !metav1.IsControlledBy(job, backup) {
 		return false, fmt.Errorf("backup data deletion Job %q is not owned by Backup %q", jobName, backup.Name)
 	}
+	return deletionJobDone(job)
+}
+
+func deletionJobDone(job *batchv1.Job) (bool, error) {
 	if jobFailed(job) {
-		return false, fmt.Errorf("backup data deletion Job %q failed", jobName)
+		return false, fmt.Errorf("backup data deletion Job %q failed; inspect its logs, then delete the Job to retry", job.Name)
 	}
 	return jobComplete(job), nil
 }
@@ -185,7 +194,12 @@ func buildBackupDeletionJob(
 				Spec: corev1.PodSpec{
 					RestartPolicy:                corev1.RestartPolicyNever,
 					AutomountServiceAccountToken: boolPtr(false),
-					Volumes:                      volumes,
+					// Compliant with the "restricted" Pod Security Standard; the image runs as UID 26.
+					SecurityContext: &corev1.PodSecurityContext{
+						RunAsNonRoot:   boolPtr(true),
+						SeccompProfile: &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeRuntimeDefault},
+					},
+					Volumes: volumes,
 					Containers: []corev1.Container{{
 						Name:         "delete-backup-data",
 						Image:        barman.BackupDeletionImage,
@@ -193,6 +207,20 @@ func buildBackupDeletionJob(
 						Args:         args,
 						Env:          env,
 						VolumeMounts: mounts,
+						SecurityContext: &corev1.SecurityContext{
+							AllowPrivilegeEscalation: boolPtr(false),
+							Capabilities:             &corev1.Capabilities{Drop: []corev1.Capability{"ALL"}},
+						},
+						Resources: corev1.ResourceRequirements{
+							Requests: corev1.ResourceList{
+								corev1.ResourceCPU:    resource.MustParse("50m"),
+								corev1.ResourceMemory: resource.MustParse("64Mi"),
+							},
+							Limits: corev1.ResourceList{
+								corev1.ResourceCPU:    resource.MustParse("500m"),
+								corev1.ResourceMemory: resource.MustParse("256Mi"),
+							},
+						},
 					}},
 				},
 			},
