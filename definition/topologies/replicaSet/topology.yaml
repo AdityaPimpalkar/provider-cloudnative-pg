@@ -356,6 +356,13 @@ ui:
             required: true
           dataSource:
             provider: storageClasses
+        requireTLS:
+          uiType: toggle
+          path: spec.components.engine.parameters.requireTLS
+          fieldParams:
+            label: "Require TLS for client connections"
+            helperText: "Rejects unencrypted connections. Clients must connect with TLS; libpq's default sslmode=prefer does, sslmode=disable is refused. Applied without a restart."
+            defaultValue: true
         configuration:
           uiType: text
           path: spec.components.engine.parameters.postgresql.parameters
@@ -370,6 +377,7 @@ ui:
             maxRows: 8
       componentsOrder:
         - storageClass
+        - requireTLS
         - configuration
   sectionsOrder:
     - databaseVersion

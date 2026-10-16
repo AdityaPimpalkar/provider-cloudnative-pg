@@ -17,6 +17,12 @@ import (
 // Add fields here when the postgresql component type needs custom configuration
 // beyond what the base Instance spec provides.
 type CNPGCustomSpec struct {
+	// RequireTLS rejects client connections that do not use TLS by placing a
+	// "hostnossl all all all reject" rule before the user's pg_hba rules.
+	// Unset or false keeps CNPG's default, which also accepts unencrypted
+	// connections. Applied by CNPG with a configuration reload, no restart.
+	RequireTLS *bool `json:"requireTLS,omitempty"`
+
 	ResizeInUseVolumes *bool `json:"resizeInUseVolumes,omitempty"`
 
 	PersistentVolumeClaimTemplate *corev1.PersistentVolumeClaimSpec `json:"pvcTemplate,omitempty"`
