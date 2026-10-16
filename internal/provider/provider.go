@@ -104,6 +104,10 @@ func (p *Provider) Validate(c *controller.Context) error {
 		return err
 	}
 
+	if err := cnpg.ValidateSynchronous(engine, &custom); err != nil {
+		return err
+	}
+
 	if err := cnpg.ValidateScheduling(engine.SchedulingPolicy, &custom); err != nil {
 		return err
 	}

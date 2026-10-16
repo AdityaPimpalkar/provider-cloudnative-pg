@@ -101,3 +101,21 @@ func ValidateScheduling(policy *commonv1alpha1.SchedulingPolicy, custom *compone
 	}
 	return nil
 }
+
+// ValidateSynchronous mirrors the CloudNativePG webhook so an invalid
+// synchronous replication setting is reported before the Cluster is applied.
+func ValidateSynchronous(engine corev1alpha1.ComponentSpec, custom *components.CNPGCustomSpec) error {
+	if custom.PostgresConfiguration == nil || custom.PostgresConfiguration.Synchronous == nil || engine.Replicas == nil {
+		return nil
+	}
+	sync := custom.PostgresConfiguration.Synchronous
+	if sync.Number < 1 {
+		return fmt.Errorf("postgresql.synchronous.number must be at least 1")
+	}
+	candidates := int(*engine.Replicas) + len(sync.StandbyNamesPre) + len(sync.StandbyNamesPost)
+	if sync.Number >= candidates {
+		return fmt.Errorf("postgresql.synchronous.number (%d) must be lower than the number of replicas (%d) plus listed standby names",
+			sync.Number, *engine.Replicas)
+	}
+	return nil
+}
