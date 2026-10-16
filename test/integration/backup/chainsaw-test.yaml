@@ -1,0 +1,82 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/kyverno/chainsaw/main/.schemas/json/test-chainsaw-v1alpha1.json
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: backup
+spec:
+  steps:
+    - name: start-s3mock
+      try:
+        - apply:
+            file: 00-s3mock.yaml
+        - script:
+            timeout: 120s
+            content: |
+              kubectl wait --for=condition=Available deployment/s3mock -n "$NAMESPACE" --timeout=90s
+
+    - name: create-instance
+      try:
+        - apply:
+            file: 10-create-instance.yaml
+        - script:
+            timeout: 600s
+            content: |
+              kubectl wait --for=condition=Ready cluster/backup-test -n "$NAMESPACE" --timeout=540s
+              kubectl wait --for=jsonpath='{.status.phase}'=Ready instance/backup-test -n "$NAMESPACE" --timeout=60s
+      catch:
+        - script:
+            content: kubectl get instance,cluster,scheduledbackup,pod -n "$NAMESPACE" -o wide
+        - script:
+            content: kubectl describe cluster/backup-test -n "$NAMESPACE"
+
+    - name: on-demand-backup-and-delete
+      try:
+        - apply:
+            file: 20-create-backup.yaml
+        - script:
+            timeout: 360s
+            content: |
+              kubectl wait --for=jsonpath='{.status.state}'=Succeeded backup/on-demand-backup -n "$NAMESPACE" --timeout=330s
+        - assert:
+            timeout: 30s
+            file: 20-assert-backup.yaml
+        - script:
+            timeout: 240s
+            content: |
+              kubectl delete backup/on-demand-backup -n "$NAMESPACE" --wait=false
+              kubectl wait --for=condition=Complete job/delete-backup-on-demand-backup -n "$NAMESPACE" --timeout=210s
+              kubectl wait --for=delete backup/on-demand-backup -n "$NAMESPACE" --timeout=30s
+      catch:
+        - script:
+            content: kubectl get backup,cluster,job,pod -n "$NAMESPACE" -o wide
+        - script:
+            content: kubectl describe backup/on-demand-backup -n "$NAMESPACE"
+
+    - name: native-retention-configuration
+      try:
+        - script:
+            timeout: 60s
+            content: |
+              set -eu
+              kubectl wait --for=jsonpath='{.spec.retentionPolicy}'=30d objectstore/s3mock-s3 -n "$NAMESPACE" --timeout=30s
+              deletion_jobs="$(kubectl get jobs -n "$NAMESPACE" -l backup.openeverest.io/schedule-name=integration-retention -o name)"
+              if [ -n "$deletion_jobs" ]; then
+                echo "unexpected provider-managed retention deletion Jobs: $deletion_jobs"
+                exit 1
+              fi
+      catch:
+        - script:
+            content: kubectl get backup,cluster,scheduledbackup,job,pod -n "$NAMESPACE" -o wide
+        - script:
+            content: kubectl get objectstore/s3mock-s3 -n "$NAMESPACE" -o yaml
+
+    - name: cleanup-cluster
+      try:
+        - script:
+            timeout: 360s
+            content: |
+              set -eu
+              kubectl patch instance/backup-test -n "$NAMESPACE" --type=json -p='[{"op":"replace","path":"/spec/backup/storages/0/schedules","value":[]}]'
+              kubectl wait --for=delete scheduledbackup/backup-test-integration-retention -n "$NAMESPACE" --timeout=60s
+              kubectl delete backups.backup.openeverest.io --all -n "$NAMESPACE" --wait=true --timeout=210s
+              kubectl delete instance/backup-test -n "$NAMESPACE" --wait=true --timeout=60s

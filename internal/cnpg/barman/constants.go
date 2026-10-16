@@ -22,4 +22,8 @@ const (
 
 	// EndpointCAKey is the Secret data key that must hold the S3 endpoint CA PEM.
 	EndpointCAKey = "ca.crt"
+
+	// BackupDeletionImage contains the Barman Cloud CLI version pinned by this
+	// provider's plugin-barman-cloud dependency.
+	BackupDeletionImage = "ghcr.io/cloudnative-pg/plugin-barman-cloud-sidecar:v0.15.0"
 )

@@ -3,8 +3,13 @@ package barman
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
+	cnpgv1 "github.com/cloudnative-pg/cloudnative-pg/api/v1"
+	barmancloudv1 "github.com/cloudnative-pg/plugin-barman-cloud/api/v1"
+	backupv1alpha1 "github.com/openeverest/openeverest/v2/api/backup/v1alpha1"
+	commonv1alpha1 "github.com/openeverest/openeverest/v2/api/common/v1alpha1"
 	corev1alpha1 "github.com/openeverest/openeverest/v2/api/core/v1alpha1"
 	"github.com/openeverest/openeverest/v2/provider-runtime/controller"
 	corev1 "k8s.io/api/core/v1"
@@ -13,6 +18,117 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
+
+func TestNativeRetention(t *testing.T) {
+	timePolicy := func(duration string) *corev1alpha1.BackupScheduleRetention {
+		return &corev1alpha1.BackupScheduleRetention{
+			Type: corev1alpha1.BackupScheduleRetentionTypeTime, Duration: duration,
+		}
+	}
+	withRetention := func(name string, policy *corev1alpha1.BackupScheduleRetention) corev1alpha1.InstanceBackupSchedule {
+		s := schedule(name, "0 2 * * *", true)
+		s.Retention = policy
+		return s
+	}
+	disabled := withRetention("paused", timePolicy("7d"))
+	disabled.Enabled = false
+	tests := []struct {
+		name      string
+		schedules []corev1alpha1.InstanceBackupSchedule
+		want      string
+		wantErr   string
+	}{
+		{name: "no schedules"},
+		{name: "keep all", schedules: []corev1alpha1.InstanceBackupSchedule{withRetention("daily", nil)}},
+		{name: "days", schedules: []corev1alpha1.InstanceBackupSchedule{withRetention("daily", timePolicy("30d"))}, want: "30d"},
+		{name: "weeks", schedules: []corev1alpha1.InstanceBackupSchedule{withRetention("daily", timePolicy("4w"))}, want: "4w"},
+		{name: "months", schedules: []corev1alpha1.InstanceBackupSchedule{withRetention("daily", timePolicy("2m"))}, want: "2m"},
+		{name: "matching schedules", schedules: []corev1alpha1.InstanceBackupSchedule{
+			withRetention("daily", timePolicy("30d")), withRetention("weekly", timePolicy("30d")),
+		}, want: "30d"},
+		{name: "conflicting schedules", schedules: []corev1alpha1.InstanceBackupSchedule{
+			withRetention("daily", timePolicy("30d")), withRetention("weekly", timePolicy("7d")),
+		}, wantErr: "same time retention"},
+		{name: "keep all conflicts", schedules: []corev1alpha1.InstanceBackupSchedule{
+			withRetention("daily", nil), withRetention("weekly", timePolicy("7d")),
+		}, wantErr: "same time retention"},
+		{name: "disabled schedule conflicts", schedules: []corev1alpha1.InstanceBackupSchedule{
+			withRetention("daily", timePolicy("30d")), disabled,
+		}, wantErr: "same time retention"},
+		{name: "count rejected", schedules: []corev1alpha1.InstanceBackupSchedule{
+			withRetention("daily", &corev1alpha1.BackupScheduleRetention{Type: corev1alpha1.BackupScheduleRetentionTypeCount}),
+		}, wantErr: "only time retention"},
+		{name: "invalid duration", schedules: []corev1alpha1.InstanceBackupSchedule{withRetention("daily", timePolicy("0d"))}, wantErr: "invalid retention duration"},
+		{name: "empty duration", schedules: []corev1alpha1.InstanceBackupSchedule{withRetention("daily", timePolicy(""))}, wantErr: "invalid retention duration"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			storage := storageWithSchedules("s3", tt.schedules...)
+			cfg := &corev1alpha1.InstanceBackupSpec{
+				Enabled: true, Storages: []corev1alpha1.InstanceBackupStorage{storage},
+			}
+			err := ValidateSchedules(cfg)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("ValidateSchedules error = %v, want %q", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			scheme := runtime.NewScheme()
+			barmancloudv1.AddKnownTypes(scheme)
+			for _, add := range []func(*runtime.Scheme) error{
+				corev1.AddToScheme, corev1alpha1.AddToScheme,
+				backupv1alpha1.AddToScheme, cnpgv1.AddToScheme,
+			} {
+				if err := add(scheme); err != nil {
+					t.Fatal(err)
+				}
+			}
+			instance := &corev1alpha1.Instance{
+				ObjectMeta: metav1.ObjectMeta{Name: "pg", Namespace: testNamespace},
+				Spec:       corev1alpha1.InstanceSpec{Backup: cfg},
+			}
+			bg := &backupv1alpha1.BackupStorage{
+				ObjectMeta: metav1.ObjectMeta{Name: "s3", Namespace: testNamespace},
+				Spec: backupv1alpha1.BackupStorageSpec{S3: &backupv1alpha1.BackupStorageS3Spec{
+					Bucket: "backups", CredentialsSecretRef: commonv1alpha1.SecretRef{Name: "credentials"},
+				}},
+			}
+			secret := &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "credentials", Namespace: testNamespace},
+				Data:       map[string][]byte{"AWS_ACCESS_KEY_ID": []byte("test"), "AWS_SECRET_ACCESS_KEY": []byte("test")},
+			}
+			cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(instance, bg, secret).Build()
+			ctx := controller.NewContext(context.Background(), cl, instance, "provider-cloudnative-pg")
+			if _, err := SyncBackupInfrastructure(ctx); err != nil {
+				t.Fatal(err)
+			}
+			got := &barmancloudv1.ObjectStore{}
+			key := client.ObjectKey{Namespace: testNamespace, Name: "s3"}
+			if err := cl.Get(context.Background(), key, got); err != nil {
+				t.Fatal(err)
+			}
+			if got.Spec.RetentionPolicy != tt.want {
+				t.Fatalf("ObjectStore retention = %q, want %q", got.Spec.RetentionPolicy, tt.want)
+			}
+			for i := range cfg.Storages[0].Schedules {
+				cfg.Storages[0].Schedules[i].Retention = nil
+			}
+			if _, err := SyncBackupInfrastructure(ctx); err != nil {
+				t.Fatal(err)
+			}
+			if err := cl.Get(context.Background(), key, got); err != nil {
+				t.Fatal(err)
+			}
+			if got.Spec.RetentionPolicy != "" {
+				t.Fatalf("removed retention is still configured: %q", got.Spec.RetentionPolicy)
+			}
+		})
+	}
+}
 
 func TestEndpointCARef(t *testing.T) {
 	scheme := runtime.NewScheme()

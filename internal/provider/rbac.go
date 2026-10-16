@@ -46,6 +46,9 @@ package provider
 // +kubebuilder:rbac:groups=barmancloud.cnpg.io,resources=objectstores,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=barmancloud.cnpg.io,resources=objectstores/status,verbs=get
 
+// Jobs used to delete individual Barman Cloud backups:
+// +kubebuilder:rbac:groups=batch,resources=jobs,verbs=get;list;watch;create
+
 // Secrets (CNPG credentials in Status(), connection secret in provider-runtime):
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create;update;patch
 
