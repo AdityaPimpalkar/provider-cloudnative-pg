@@ -19,3 +19,18 @@ export function kubectlJsonPath(
     { encoding: "utf8" },
   ).trim();
 }
+
+/**
+ * Deletes an Instance without waiting, ignoring one that is already gone. A
+ * no-op when kubectl checks are disabled (E2E_SKIP_KUBECTL=true).
+ */
+export function kubectlDeleteInstance(namespace: string, name: string): void {
+  if (process.env.E2E_SKIP_KUBECTL === "true") {
+    return;
+  }
+  execFileSync(
+    "kubectl",
+    ["delete", "instance", name, "-n", namespace, "--ignore-not-found", "--wait=false"],
+    { encoding: "utf8" },
+  );
+}

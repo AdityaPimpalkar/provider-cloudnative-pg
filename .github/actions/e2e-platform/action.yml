@@ -95,11 +95,7 @@ runs:
         kubectl get backupclass cnpg-barman-plugin
         # Deployments report Available before a crash loop starts; let them
         # settle, then require every OpenEverest container to be running clean.
+        # The workflows check again after their tests, since a controller that
+        # fails at startup can take minutes to restart.
         sleep 45
-        kubectl get pods -n everest-system
-        restarts="$(kubectl get pods -n everest-system -o jsonpath='{range .items[*]}{range .status.containerStatuses[*]}{.restartCount}{"\n"}{end}{end}' | awk '{s+=$1} END {print s+0}')"
-        if [ "$restarts" -gt 0 ]; then
-          kubectl logs -n everest-system deploy/everest-controller --previous --tail=50 || true
-          echo "OpenEverest containers restarted $restarts time(s)"
-          exit 1
-        fi
+        make check-openeverest-restarts

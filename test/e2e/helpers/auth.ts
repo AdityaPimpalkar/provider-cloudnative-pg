@@ -1,4 +1,4 @@
-import { type Page, type BrowserContext } from "@playwright/test";
+import { type Page } from "@playwright/test";
 import { LoginPage } from "../pages/login.page";
 import path from "node:path";
 import fs from "node:fs";
@@ -51,12 +51,4 @@ export async function dismissWelcomeDialog(page: Page): Promise<void> {
   } catch {
     // Not shown, e.g. already dismissed for this browser state.
   }
-}
-
-/**
- * Check whether a valid storage-state file already exists, allowing us to
- * skip re-authentication when running tests locally in rapid succession.
- */
-export function hasStorageState(): boolean {
-  return fs.existsSync(STORAGE_STATE_PATH);
 }

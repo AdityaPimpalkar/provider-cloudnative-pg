@@ -3,7 +3,7 @@
 # provider built from source, on a k3d cluster.
 #
 # Runs on manual dispatch, nightly on main, and on pull requests labelled
-# "test/e2e" (on labelling and on new pushes while the label is present).
+# "test/e2e" (when that label is added and on new pushes while it is present).
 name: E2E UI Tests
 
 on:
@@ -30,7 +30,8 @@ jobs:
     timeout-minutes: 60
     if: >-
       github.event_name != 'pull_request' ||
-      contains(github.event.pull_request.labels.*.name, 'test/e2e')
+      (contains(github.event.pull_request.labels.*.name, 'test/e2e') &&
+       (github.event.action != 'labeled' || github.event.label.name == 'test/e2e'))
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -47,7 +48,8 @@ jobs:
         run: |
           kubectl patch svc -n everest-system everest --type=merge \
             -p '{"spec":{"type":"NodePort","ports":[{"name":"http","port":8080,"protocol":"TCP","targetPort":8080,"nodePort":30080}]}}'
-          node_ip="$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' k3d-provider-cloudnative-pg-dev-server-0)"
+          server="$(k3d node list --no-headers | awk '$2 == "server" {print $1; exit}')"
+          node_ip="$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$server")"
           echo "EVEREST_URL=http://${node_ip}:30080" >> "$GITHUB_ENV"
           for _ in $(seq 1 30); do
             curl -sf -o /dev/null "http://${node_ip}:30080" && exit 0
@@ -73,6 +75,9 @@ jobs:
         env:
           CI: "true"
         run: npx playwright test
+
+      - name: Check OpenEverest stayed healthy
+        run: make check-openeverest-restarts
 
       - name: Upload Playwright report
         if: always()

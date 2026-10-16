@@ -176,7 +176,17 @@ test-e2e-cluster-backup-restore: ## Run the restore-into-a-new-Instance e2e-clus
 
 .PHONY: test-e2e
 test-e2e: ## Run Playwright UI tests against a running OpenEverest UI (EVEREST_URL, default http://localhost:8080).
-	cd test/e2e && npm ci && npx playwright test
+	cd test/e2e && npm ci && npx playwright install chromium && npx playwright test
+
+.PHONY: check-openeverest-restarts
+check-openeverest-restarts: ## Fail if any OpenEverest core container has restarted (e.g. a crash-looping controller).
+	@kubectl get pods -n $(EVEREST_NAMESPACE)
+	@restarts="$$(kubectl get pods -n $(EVEREST_NAMESPACE) -o jsonpath='{range .items[*]}{range .status.containerStatuses[*]}{.restartCount}{"\n"}{end}{end}' | awk '{s+=$$1} END {print s+0}')"; \
+	if [ "$$restarts" -gt 0 ]; then \
+	  kubectl logs -n $(EVEREST_NAMESPACE) deploy/everest-controller --previous --tail=50 || true; \
+	  echo "OpenEverest containers restarted $$restarts time(s)"; \
+	  exit 1; \
+	fi
 
 .PHONY: load-image
 load-image: ## Import the provider image (IMG) into the k3d cluster.

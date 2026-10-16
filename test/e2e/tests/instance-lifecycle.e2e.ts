@@ -1,12 +1,23 @@
 import { expect, test } from "@playwright/test";
 import { dismissWelcomeDialog, getCredentials } from "../helpers/auth";
-import { kubectlJsonPath } from "../helpers/kube";
+import { kubectlDeleteInstance, kubectlJsonPath } from "../helpers/kube";
 import { DatabaseFormPage } from "../pages/database-form.page";
 import { DatabasesPage } from "../pages/databases.page";
 import { LoginPage } from "../pages/login.page";
 
 // Namespace prepared for databases before the run (see .github/workflows/e2e.yaml).
 const namespace = process.env.E2E_NAMESPACE ?? "e2e-ui";
+
+// Instance created by the running test; removed if the test fails before its
+// own UI delete, so runs against a shared cluster leave nothing behind.
+let createdInstance: string | undefined;
+
+test.afterEach(() => {
+  if (createdInstance) {
+    kubectlDeleteInstance(namespace, createdInstance);
+    createdInstance = undefined;
+  }
+});
 
 test.beforeEach(async ({ page }) => {
   // Safety net if the welcome dialog shows up despite the saved session.
@@ -33,6 +44,7 @@ test("create a PostgreSQL instance through the UI, wait for Ready, delete it", a
   await test.step("create through the generated form", async () => {
     await form.open();
     await form.fillBasics(name, namespace);
+    createdInstance = name;
     // Whole cores: the UI sends fractional CPU as a JSON number, which the API
     // rejects (#99).
     await form.configureAndCreate({ nodes: 1, cpu: 1, memoryGi: 1, diskGi: 1 });
@@ -52,5 +64,6 @@ test("create a PostgreSQL instance through the UI, wait for Ready, delete it", a
 
   await test.step("delete through the UI", async () => {
     await databases.delete(name);
+    createdInstance = undefined;
   });
 });

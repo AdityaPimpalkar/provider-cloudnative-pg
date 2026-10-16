@@ -41,6 +41,9 @@ jobs:
       - name: Run e2e-cluster tests
         run: make test-e2e-cluster
 
+      - name: Check OpenEverest stayed healthy
+        run: make check-openeverest-restarts
+
       - name: Debug cluster on failure
         if: failure()
         run: |
