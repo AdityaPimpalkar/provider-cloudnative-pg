@@ -1073,6 +1073,8 @@ spec:
                 volumeName:
                   type: string
               type: object
+            requireTLS:
+              type: boolean
             resizeInUseVolumes:
               type: boolean
           type: object
@@ -1119,6 +1121,13 @@ spec:
                     slowOpThresholdMs: 200
               path: spec.components.engine.parameters.postgresql.parameters
               uiType: text
+            requireTLS:
+              fieldParams:
+                defaultValue: true
+                helperText: Rejects unencrypted connections. Clients must connect with TLS; libpq's default sslmode=prefer does, sslmode=disable is refused. Applied without a restart.
+                label: Require TLS for client connections
+              path: spec.components.engine.parameters.requireTLS
+              uiType: toggle
             storageClass:
               dataSource:
                 provider: storageClasses
@@ -1135,6 +1144,7 @@ spec:
                 required: true
           componentsOrder:
             - storageClass
+            - requireTLS
             - configuration
           description: Configure advanced settings for your database
           label: Advanced configuration

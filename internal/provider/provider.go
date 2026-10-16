@@ -160,6 +160,7 @@ func (p *Provider) Sync(c *controller.Context) error {
 	if custom.PostgresConfiguration != nil {
 		pg.Spec.PostgresConfiguration = *custom.PostgresConfiguration
 	}
+	cnpg.ApplyRequireTLS(pg, &custom)
 
 	if custom.Managed != nil {
 		pg.Spec.Managed = custom.Managed
