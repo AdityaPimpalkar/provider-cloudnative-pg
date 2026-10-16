@@ -30,12 +30,27 @@ export async function authenticateAndSave(page: Page): Promise<void> {
   const { username, password } = getCredentials();
   const loginPage = new LoginPage(page);
   await loginPage.login(username, password);
+  await dismissWelcomeDialog(page);
 
   // Ensure the auth directory exists.
   fs.mkdirSync(AUTH_DIR, { recursive: true });
 
   // Save the full browser storage state (cookies + localStorage).
   await page.context().storageState({ path: STORAGE_STATE_PATH });
+}
+
+/**
+ * Close the first-login welcome dialog. The UI remembers this in localStorage,
+ * so dismissing it before saving the storage state keeps it out of every test.
+ */
+export async function dismissWelcomeDialog(page: Page): Promise<void> {
+  const letsGo = page.getByTestId("lets-go-button");
+  try {
+    await letsGo.click({ timeout: 15_000 });
+    await letsGo.waitFor({ state: "hidden" });
+  } catch {
+    // Not shown, e.g. already dismissed for this browser state.
+  }
 }
 
 /**

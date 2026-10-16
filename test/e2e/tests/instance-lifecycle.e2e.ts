@@ -6,6 +6,13 @@ import { DatabasesPage } from "../pages/databases.page";
 // Namespace prepared for databases before the run (see .github/workflows/e2e.yaml).
 const namespace = process.env.E2E_NAMESPACE ?? "e2e-ui";
 
+test.beforeEach(async ({ page }) => {
+  // Safety net if the welcome dialog shows up despite the saved session.
+  await page.addLocatorHandler(page.getByTestId("lets-go-button"), async (button) => {
+    await button.click();
+  });
+});
+
 test("create a PostgreSQL instance through the UI, wait for Ready, delete it", async ({
   page,
 }) => {
