@@ -57,7 +57,15 @@ export class DatabaseFormPage {
       }
       if (await submit.isVisible()) {
         await expect(submit).toBeEnabled();
+        // Surface an API rejection now rather than as a missing list row later.
+        const created = this.page.waitForResponse(
+          (r) => r.request().method() === "POST" && /\/instances$/.test(new URL(r.url()).pathname),
+        );
         await submit.click();
+        const response = await created;
+        if (!response.ok()) {
+          throw new Error(`create instance: HTTP ${response.status()} ${await response.text()}`);
+        }
         return;
       }
       await expect(next).toBeEnabled();
