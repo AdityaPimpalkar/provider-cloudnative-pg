@@ -42,13 +42,17 @@ jobs:
         run: kubectl create namespace "$E2E_NAMESPACE"
 
       - name: Expose the OpenEverest UI
+        # A NodePort on the k3d server container is steadier than kubectl
+        # port-forward, which can drop connections mid-run.
         run: |
-          kubectl -n everest-system port-forward svc/everest 8080:8080 > /tmp/port-forward.log 2>&1 &
+          kubectl patch svc -n everest-system everest --type=merge \
+            -p '{"spec":{"type":"NodePort","ports":[{"name":"http","port":8080,"protocol":"TCP","targetPort":8080,"nodePort":30080}]}}'
+          node_ip="$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' k3d-provider-cloudnative-pg-dev-server-0)"
+          echo "EVEREST_URL=http://${node_ip}:30080" >> "$GITHUB_ENV"
           for _ in $(seq 1 30); do
-            curl -sf -o /dev/null http://localhost:8080 && exit 0
+            curl -sf -o /dev/null "http://${node_ip}:30080" && exit 0
             sleep 2
           done
-          cat /tmp/port-forward.log
           exit 1
 
       - name: Set up Node.js
@@ -68,7 +72,6 @@ jobs:
         working-directory: test/e2e
         env:
           CI: "true"
-          EVEREST_URL: http://localhost:8080
         run: npx playwright test
 
       - name: Upload Playwright report
