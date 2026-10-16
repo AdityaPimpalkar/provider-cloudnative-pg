@@ -17,6 +17,10 @@ import (
 // Add fields here when the postgresql component type needs custom configuration
 // beyond what the base Instance spec provides.
 type CNPGCustomSpec struct {
+	// WALStorage provisions a separate WAL PVC per PostgreSQL instance using
+	// CNPG's native storage configuration. Once enabled it cannot be removed.
+	WALStorage *cnpgv1.StorageConfiguration `json:"walStorage,omitempty"`
+
 	ResizeInUseVolumes *bool `json:"resizeInUseVolumes,omitempty"`
 
 	PersistentVolumeClaimTemplate *corev1.PersistentVolumeClaimSpec `json:"pvcTemplate,omitempty"`
