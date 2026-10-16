@@ -51,7 +51,21 @@ runs:
 
     - name: Import provider image into k3d
       shell: bash
-      run: make load-image IMG=${{ inputs.image }}
+      # k3d image import can fail on some nodes yet exit 0 (its shared tarball
+      # disappears); the provider uses pullPolicy Never, so retry until every
+      # node has the image.
+      run: |
+        ref="docker.io/library/${{ inputs.image }}"
+        for attempt in 1 2 3; do
+          make load-image IMG=${{ inputs.image }} || true
+          missing=""
+          for node in $(k3d node list --no-headers | awk '$2 == "server" || $2 == "agent" {print $1}'); do
+            docker exec "$node" crictl inspecti "$ref" >/dev/null 2>&1 || missing="$missing $node"
+          done
+          [ -z "$missing" ] && exit 0
+          echo "attempt $attempt: image missing on$missing"
+        done
+        exit 1
 
     - name: Install OpenEverest core
       shell: bash
