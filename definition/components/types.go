@@ -17,6 +17,10 @@ import (
 // Add fields here when the postgresql component type needs custom configuration
 // beyond what the base Instance spec provides.
 type CNPGCustomSpec struct {
+	// PriorityClassName sets the Kubernetes PriorityClass of the instance pods.
+	// The PriorityClass must exist; changing it rolls the instance pods.
+	PriorityClassName string `json:"priorityClassName,omitempty"`
+
 	ResizeInUseVolumes *bool `json:"resizeInUseVolumes,omitempty"`
 
 	PersistentVolumeClaimTemplate *corev1.PersistentVolumeClaimSpec `json:"pvcTemplate,omitempty"`
