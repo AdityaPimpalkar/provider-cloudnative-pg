@@ -135,10 +135,21 @@ specify the same duration or all omit retention (keep all). The window applies
 to that cluster's entire Barman archive, including on-demand backups and WAL,
 not independently to each schedule. Barman preserves the base backup needed to
 recover from the beginning of the window. Count retention is not supported.
+The OpenEverest dev.4 schedule form edits only count retention ("retention
+copies"), which this provider rejects. Leave copies at 0 and set time retention
+through the API or CLI.
 `deletionPolicy: Retain` skips explicit data deletion; it does not exempt a
 backup from Barman's archive-wide retention policy.
 If CNPG removes a backup resource during native catalog cleanup, its Everest
-record is reported as unavailable rather than starting a replacement backup.
+record is reported as failed/unavailable rather than starting a replacement backup.
+
+`deletionPolicy: Delete` runs a one-off `barman-cloud-backup-delete` Job
+(`delete-backup-<name>`) for the backup's Barman ID. The Job meets the
+restricted Pod Security Standard. Backups that never received a Barman ID
+(not started, or failed early) have no data to delete. If the Job fails, inspect
+its logs and delete the Job to retry. Data deletion runs only while the source
+Instance exists; delete Backups before deleting their Instance.
+
 The backup integration suite checks native policy configuration, not the
 passage of a multi-day recovery window.
 

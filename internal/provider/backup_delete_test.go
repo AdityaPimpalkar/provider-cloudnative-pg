@@ -84,6 +84,19 @@ func TestBuildBackupDeletionJob(t *testing.T) {
 	if job.Spec.BackoffLimit == nil || *job.Spec.BackoffLimit != 0 {
 		t.Errorf("backoffLimit = %v, want 0", job.Spec.BackoffLimit)
 	}
+	pod := job.Spec.Template.Spec
+	if pod.SecurityContext == nil || pod.SecurityContext.RunAsNonRoot == nil || !*pod.SecurityContext.RunAsNonRoot ||
+		pod.SecurityContext.SeccompProfile == nil || pod.SecurityContext.SeccompProfile.Type != corev1.SeccompProfileTypeRuntimeDefault {
+		t.Errorf("pod security context is not restricted: %+v", pod.SecurityContext)
+	}
+	sc := container.SecurityContext
+	if sc == nil || sc.AllowPrivilegeEscalation == nil || *sc.AllowPrivilegeEscalation ||
+		sc.Capabilities == nil || len(sc.Capabilities.Drop) != 1 || sc.Capabilities.Drop[0] != "ALL" {
+		t.Errorf("container security context is not restricted: %+v", sc)
+	}
+	if container.Resources.Limits.Memory().IsZero() || container.Resources.Requests.Cpu().IsZero() {
+		t.Errorf("resources are not set: %+v", container.Resources)
+	}
 }
 
 func TestBackupDeletionJobNameLength(t *testing.T) {

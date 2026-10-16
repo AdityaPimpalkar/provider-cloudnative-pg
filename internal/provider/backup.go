@@ -212,21 +212,21 @@ func (p *Provider) CleanupBackup(c *controller.Context, backup *backupv1alpha1.B
 	cnpgBackup := &cnpgv1.Backup{}
 	if err := c.Get(cnpgBackup, backup.Name); err != nil {
 		if apierrors.IsNotFound(err) {
-			if backup.Spec.DeletionPolicy != backupv1alpha1.BackupDeletionPolicyRetain {
-				job := &batchv1.Job{}
-				if jobErr := c.Get(job, backupDeletionJobName(backup.Name)); jobErr != nil {
-					// Native retention removes completed backups without a provider deletion Job.
-					if apierrors.IsNotFound(jobErr) && backup.Status.CompletedAt != nil && backup.Status.OperatorBackupRef != nil {
-						l.Info("Completed CNPG backup is already absent; allowing backup record cleanup", "name", backup.Name)
-						return true, nil
-					}
-					return false, fmt.Errorf("CloudNativePG backup %q is missing before data deletion completed: %w", backup.Name, jobErr)
-				}
-				if !jobComplete(job) {
-					return false, fmt.Errorf("CloudNativePG backup %q is missing while its data deletion job is incomplete", backup.Name)
-				}
+			if backup.Spec.DeletionPolicy == backupv1alpha1.BackupDeletionPolicyRetain {
+				return true, nil
 			}
-			return true, nil
+			job := &batchv1.Job{}
+			if jobErr := c.Get(job, backupDeletionJobName(backup.Name)); jobErr != nil {
+				if !apierrors.IsNotFound(jobErr) {
+					return false, fmt.Errorf("get backup data deletion Job: %w", jobErr)
+				}
+				// Without the CNPG Backup there is no Barman backup ID to delete:
+				// it never started, or native retention already removed it.
+				l.Info("CloudNativePG backup is absent; no Barman backup to delete",
+					"name", backup.Name, "observed", backup.Status.OperatorBackupRef != nil)
+				return true, nil
+			}
+			return deletionJobDone(job)
 		}
 		return false, fmt.Errorf("get CloudNativePG backup: %w", err)
 	}
