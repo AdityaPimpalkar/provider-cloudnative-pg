@@ -258,6 +258,9 @@ ui:
                 required: true
                 min: 1
                 int: true
+                celExpressions:
+                  - celExpr: "!has(spec.components.engine.parameters.postgresql.synchronous.number) || spec.components.engine.replicas > spec.components.engine.parameters.postgresql.synchronous.number"
+                    message: "Keep more nodes than synchronous standbys, or lower the synchronous standbys first"
                 modes:
                   edit:
                     celExpressions:
@@ -338,6 +341,60 @@ ui:
           componentsOrder:
             - numberOfnodes
             - resources-limits
+        synchronousReplication:
+          uiType: group
+          groupType: toggleable
+          label: "Synchronous replication"
+          description: "Commit only after standbys flush the WAL to durable storage. Off means asynchronous replication. Needs at least two nodes."
+          components:
+            number:
+              path: spec.components.engine.parameters.postgresql.synchronous.number
+              uiType: number
+              fieldParams:
+                label: "Synchronous standbys"
+                helperText: "How many standbys must confirm each commit."
+                defaultValue: 1
+              validation:
+                required: true
+                min: 1
+                int: true
+                celExpressions:
+                  - celExpr: "spec.components.engine.parameters.postgresql.synchronous.number < spec.components.engine.replicas"
+                    message: "Must be lower than the number of nodes"
+            method:
+              uiType: select
+              path: spec.components.engine.parameters.postgresql.synchronous.method
+              fieldParams:
+                label: "Standby selection"
+                defaultValue: any
+                options:
+                  - label: "Any standbys (quorum)"
+                    value: any
+                  - label: "First standbys (priority)"
+                    value: first
+              validation:
+                required: true
+            dataDurability:
+              uiType: select
+              path: spec.components.engine.parameters.postgresql.synchronous.dataDurability
+              fieldParams:
+                label: "When too few standbys are available"
+                helperText: "Stop writes keeps the durability guarantee. Fall back keeps accepting writes asynchronously until standbys return."
+                defaultValue: required
+                options:
+                  - label: "Stop writes"
+                    value: required
+                  - label: "Fall back to asynchronous"
+                    value: preferred
+              validation:
+                required: true
+          componentsOrder:
+            - number
+            - method
+            - dataDurability
+      componentsOrder:
+        - nodes
+        - synchronousReplication
     advanced:
       label: "Advanced configuration"
       description: "Configure advanced settings for your database"
