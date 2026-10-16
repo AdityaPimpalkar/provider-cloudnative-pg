@@ -1384,23 +1384,27 @@ spec:
                   components:
                     cpu-limits:
                       fieldParams:
-                        defaultValue: 1
+                        defaultValue: "1"
                         label: CPU limits
-                        step: 1
+                        placeholder: e.g. 0.5 or 500m
                       path: spec.components.engine.resources.limits.cpu
-                      uiType: number
+                      uiType: text
                       validation:
-                        min: 0.1
+                        regex:
+                          message: Enter cores (e.g. 0.5, 2) or millicores (e.g. 500m), greater than zero
+                          pattern: ^([1-9][0-9]*(\.[0-9]{1,3})?|0?\.([1-9][0-9]{0,2}|0[1-9][0-9]?|00[1-9])|[1-9][0-9]*m)$
                         required: true
                     cpu-requests:
                       fieldParams:
-                        defaultValue: 1
+                        defaultValue: "1"
                         label: CPU requests
-                        step: 1
+                        placeholder: e.g. 0.5 or 500m
                       path: spec.components.engine.resources.requests.cpu
-                      uiType: number
+                      uiType: text
                       validation:
-                        min: 0.1
+                        regex:
+                          message: Enter cores (e.g. 0.5, 2) or millicores (e.g. 500m), greater than zero
+                          pattern: ^([1-9][0-9]*(\.[0-9]{1,3})?|0?\.([1-9][0-9]{0,2}|0[1-9][0-9]?|00[1-9])|[1-9][0-9]*m)$
                         required: true
                     disk:
                       fieldParams:
