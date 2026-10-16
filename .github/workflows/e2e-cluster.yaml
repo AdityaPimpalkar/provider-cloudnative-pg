@@ -1,0 +1,62 @@
+# E2E cluster tests: chainsaw suites under test/e2e-cluster run against the
+# released OpenEverest core (server and controller, version from go.mod) and
+# this provider built from source, on a k3d cluster.
+name: E2E Cluster Tests
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  e2e-cluster:
+    name: E2E Cluster Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up platform
+        uses: ./.github/actions/e2e-platform
+
+      - name: Install chainsaw
+        env:
+          CHAINSAW_VERSION: v0.2.15
+        run: |
+          curl -sLo /tmp/chainsaw.tar.gz "https://github.com/kyverno/chainsaw/releases/download/${CHAINSAW_VERSION}/chainsaw_linux_amd64.tar.gz"
+          tar -xzf /tmp/chainsaw.tar.gz -C /tmp
+          sudo install -m 0755 /tmp/chainsaw /usr/local/bin/chainsaw
+
+      - name: Run e2e-cluster tests
+        run: make test-e2e-cluster
+
+      - name: Debug cluster on failure
+        if: failure()
+        run: |
+          kubectl get provider,instance,cluster,backups.backup.openeverest.io,restores.backup.openeverest.io,pod -A || true
+          kubectl logs -n everest-system --all-containers --tail=200 -l app.kubernetes.io/name=everest-controller || true
+          kubectl logs -n provider-system --all-containers --tail=300 -l app.kubernetes.io/name=provider-cloudnative-pg || true
+
+      - name: Upload chainsaw report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chainsaw-report-e2e-cluster-${{ github.run_id }}
+          path: /tmp/chainsaw-report-e2e-cluster.xml
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Cleanup
+        if: always()
+        run: make k3d-cluster-down

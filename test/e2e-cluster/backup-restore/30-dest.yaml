@@ -1,0 +1,33 @@
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: pg-dest
+spec:
+  providerRef:
+    name: provider-cloudnative-pg
+  version: "17.10"
+  dataSource:
+    type: Backup
+    backup:
+      backupRef:
+        name: pg-src-backup
+  components:
+    engine:
+      type: postgresql
+      replicas: 1
+      resources:
+        requests:
+          cpu: 250m
+          memory: 512Mi
+        limits:
+          cpu: "1"
+          memory: 1Gi
+      storage:
+        size: 1Gi
+  backup:
+    enabled: true
+    classRef:
+      name: cnpg-barman-plugin
+    storages:
+      - storageRef:
+          name: s3mock-s3
