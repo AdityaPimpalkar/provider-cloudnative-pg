@@ -45,9 +45,8 @@ test("create a PostgreSQL instance through the UI, wait for Ready, delete it", a
     await form.open();
     await form.fillBasics(name, namespace);
     createdInstance = name;
-    // Whole cores: the UI sends fractional CPU as a JSON number, which the API
-    // rejects (#99).
-    await form.configureAndCreate({ nodes: 1, cpu: 1, memoryGi: 1, diskGi: 1 });
+    // Fractional CPU guards #99: it must reach the API as a quantity string.
+    await form.configureAndCreate({ nodes: 1, cpu: "0.5", memoryGi: 1, diskGi: 1 });
   });
 
   await test.step("instance becomes Ready", async () => {
@@ -58,6 +57,7 @@ test("create a PostgreSQL instance through the UI, wait for Ready, delete it", a
     const instances = kubectlJsonPath(namespace, `cluster/${name}`, "{.spec.instances}");
     if (instances !== undefined) {
       expect(instances).toBe("1");
+      expect(kubectlJsonPath(namespace, `cluster/${name}`, "{.spec.resources.requests.cpu}")).toBe("500m");
       expect(kubectlJsonPath(namespace, `cluster/${name}`, "{.status.readyInstances}")).toBe("1");
     }
   });
