@@ -45,7 +45,8 @@ jobs:
         if: failure()
         run: |
           kubectl get provider,instance,cluster,backups.backup.openeverest.io,restores.backup.openeverest.io,pod -A || true
-          kubectl logs -n everest-system --all-containers --tail=200 -l app.kubernetes.io/name=everest-controller || true
+          kubectl logs -n everest-system deploy/everest-controller --tail=200 || true
+          kubectl logs -n everest-system deploy/everest-controller --previous --tail=100 || true
           kubectl logs -n provider-system --all-containers --tail=300 -l app.kubernetes.io/name=provider-cloudnative-pg || true
 
       - name: Upload chainsaw report

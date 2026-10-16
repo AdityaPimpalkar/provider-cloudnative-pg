@@ -23,10 +23,15 @@ export class DatabaseFormPage {
     return this.page.locator(`input[name="${path}"]`);
   }
 
-  async open(): Promise<void> {
+  async open(provider = "provider-cloudnative-pg"): Promise<void> {
     await this.page.goto("/databases");
-    // With a single provider installed the button opens the form directly.
-    await this.page.getByTestId("add-db-cluster-button").click();
+    // With no instances the list shows provider tiles; otherwise the table
+    // toolbar has a create button that opens the form directly when only one
+    // provider is installed.
+    await this.page
+      .getByTestId(`provider-tile-${provider}`)
+      .or(this.page.getByTestId("add-db-cluster-button"))
+      .click();
     await this.page.waitForURL("**/databases/new");
     await expect(this.page.getByText("Create an instance")).toBeVisible();
   }

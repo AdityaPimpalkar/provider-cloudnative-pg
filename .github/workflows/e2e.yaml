@@ -86,7 +86,8 @@ jobs:
         if: failure()
         run: |
           kubectl get provider,instance,cluster,pod -A || true
-          kubectl logs -n everest-system --all-containers --tail=200 -l app.kubernetes.io/name=everest-server || true
+          kubectl logs -n everest-system deploy/everest-server --tail=100 || true
+          kubectl logs -n everest-system deploy/everest-controller --tail=100 || true
           kubectl logs -n provider-system --all-containers --tail=300 -l app.kubernetes.io/name=provider-cloudnative-pg || true
 
       - name: Cleanup

@@ -37,9 +37,13 @@ export default defineConfig({
     baseURL: process.env.EVEREST_URL || "http://localhost:8080",
     storageState: ".auth/user.json",
     headless: true,
+    // Fail a missing element within a minute rather than at the test timeout.
+    actionTimeout: 60_000,
+    navigationTimeout: 60_000,
+    // Traces carry screenshots and DOM snapshots; video would bloat artifacts.
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
-    video: "retain-on-failure",
+    video: "off",
   },
 
   projects: [

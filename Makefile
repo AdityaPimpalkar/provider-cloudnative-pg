@@ -194,7 +194,7 @@ deploy-provider-ci: helm-deps ## Deploy the provider via Helm for CI (IMG must a
 		--wait --timeout 5m
 
 .PHONY: install-openeverest
-install-openeverest: ## Install the released OpenEverest core (CRDs, server, controller, UI) matching go.mod, without monitoring.
+install-openeverest: ## Install the released OpenEverest core (CRDs, server, controller, UI) matching go.mod.
 	helm repo add openeverest $(OPENEVEREST_HELM_REPO) >/dev/null 2>&1 || true
 	helm repo update openeverest
 	helm upgrade --install everest-core openeverest/openeverest \
@@ -204,7 +204,6 @@ install-openeverest: ## Install the released OpenEverest core (CRDs, server, con
 	  --set telemetry=false \
 	  --set upgrade.preflightChecks=false \
 	  --set kube-state-metrics.enabled=false \
-	  --set monitoring.enabled=false \
 	  --set createMonitoringResources=false \
 	  --wait --timeout 10m
 
