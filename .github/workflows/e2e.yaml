@@ -1,0 +1,103 @@
+# E2E UI tests: Playwright drives the OpenEverest UI (released core, version
+# from go.mod) to create, check and delete a PostgreSQL instance served by this
+# provider built from source, on a k3d cluster.
+#
+# Runs on manual dispatch, nightly on main, and on pull requests labelled
+# "test/e2e" (when that label is added and on new pushes while it is present).
+name: E2E UI Tests
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 2 * * *"
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  E2E_NAMESPACE: e2e-ui
+
+jobs:
+  e2e-ui:
+    name: E2E UI Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    if: >-
+      github.event_name != 'pull_request' ||
+      (contains(github.event.pull_request.labels.*.name, 'test/e2e') &&
+       (github.event.action != 'labeled' || github.event.label.name == 'test/e2e'))
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up platform
+        uses: ./.github/actions/e2e-platform
+
+      - name: Create database namespace
+        run: kubectl create namespace "$E2E_NAMESPACE"
+
+      - name: Expose the OpenEverest UI
+        # A NodePort on the k3d server container is steadier than kubectl
+        # port-forward, which can drop connections mid-run.
+        run: |
+          kubectl patch svc -n everest-system everest --type=merge \
+            -p '{"spec":{"type":"NodePort","ports":[{"name":"http","port":8080,"protocol":"TCP","targetPort":8080,"nodePort":30080}]}}'
+          server="$(k3d node list --no-headers | awk '$2 == "server" {print $1; exit}')"
+          node_ip="$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$server")"
+          echo "EVEREST_URL=http://${node_ip}:30080" >> "$GITHUB_ENV"
+          for _ in $(seq 1 30); do
+            curl -sf -o /dev/null "http://${node_ip}:30080" && exit 0
+            sleep 2
+          done
+          exit 1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: test/e2e/package-lock.json
+
+      - name: Install Playwright
+        working-directory: test/e2e
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Run Playwright tests
+        working-directory: test/e2e
+        env:
+          CI: "true"
+        run: npx playwright test
+
+      - name: Check OpenEverest stayed healthy
+        run: make check-openeverest-restarts
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-${{ github.run_id }}
+          path: |
+            test/e2e/playwright-report/
+            test/e2e/test-results/
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Debug cluster on failure
+        if: failure()
+        run: |
+          kubectl get provider,instance,cluster,pod -A || true
+          kubectl logs -n everest-system deploy/everest-server --tail=100 || true
+          kubectl logs -n everest-system deploy/everest-controller --tail=100 || true
+          kubectl logs -n provider-system --all-containers --tail=300 -l app.kubernetes.io/name=provider-cloudnative-pg || true
+
+      - name: Cleanup
+        if: always()
+        run: make k3d-cluster-down

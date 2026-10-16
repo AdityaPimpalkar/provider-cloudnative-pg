@@ -312,6 +312,8 @@ code generation, and the backup/restore interfaces are documented once for all p
 | `charts/provider-cloudnative-pg/` | Helm chart (`generated/` is produced by `make generate`) |
 | `config/rbac/role.yaml` | Generated `ClusterRole` — do not edit |
 | `test/integration/` | Chainsaw suites: `core/replicaset`, `extensions/bundled`, `extensions/imagevolume` |
+| `test/e2e-cluster/` | Chainsaw e2e suites on the full OpenEverest platform: `backup-restore` |
+| `test/e2e/` | Playwright UI tests against the OpenEverest UI |
 | `test/vars.sh` | Pinned versions used by tests |
 | `examples/` | Example `Instance` resources |
 | `dev/` | Tilt dev environment, `.env` configuration, k3d cluster config |
@@ -327,9 +329,24 @@ code generation, and the backup/restore interfaces are documented once for all p
   `extensions/imagevolume` needs Kubernetes ImageVolume (1.35+ with containerd 2.1+); the dev
   and CI k3d cluster ([dev/k3d_config.yaml](dev/k3d_config.yaml)) runs k3s 1.36, so
   `make test-integration` covers it (alone: `make test-integration-imagevolume`).
+- **E2E cluster tests** — chainsaw suites under [test/e2e-cluster/](test/e2e-cluster/) that run
+  user journeys on the full platform: the released OpenEverest core (server, controller and CRDs,
+  at the version pinned in `go.mod`) installed by `make install-openeverest`, plus this provider.
+  `backup-restore` writes data, takes a Backup, restores it into a new Instance through
+  `spec.dataSource`, and checks the data. Run with `make test-e2e-cluster`.
+- **E2E UI tests** — Playwright tests under [test/e2e/](test/e2e/) drive the OpenEverest UI: they
+  create a PostgreSQL instance through the provider's generated form, wait for it to be Ready, and
+  delete it. Run with `make test-e2e` (installs Chromium for Playwright) against a UI at `EVEREST_URL` (default
+  `http://localhost:8080`, e.g. `kubectl -n everest-system port-forward svc/everest 8080:8080`);
+  the test namespace defaults to `e2e-ui` (`E2E_NAMESPACE`) and must exist. Set
+  `E2E_SKIP_KUBECTL=true` if the test host cannot reach the cluster API (this also skips deleting
+  the instance when a test fails midway).
 - **CI** — [.github/workflows/build.yaml](.github/workflows/build.yaml) runs lint, build, unit
   tests, generated-file verification, and Helm lint;
-  [.github/workflows/test.yaml](.github/workflows/test.yaml) runs the integration suites.
+  [.github/workflows/test.yaml](.github/workflows/test.yaml) runs the integration suites;
+  [.github/workflows/e2e-cluster.yaml](.github/workflows/e2e-cluster.yaml) runs the e2e cluster
+  suites on every pull request; [.github/workflows/e2e.yaml](.github/workflows/e2e.yaml) runs the
+  UI tests nightly, on demand, and on pull requests labelled `test/e2e`.
 
 ## Troubleshooting
 

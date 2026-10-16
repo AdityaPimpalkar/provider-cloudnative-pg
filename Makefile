@@ -32,6 +32,12 @@ CNPG_HELM_REPO ?= https://cloudnative-pg.github.io/charts
 # Namespace for standalone operator/plugin install (`make install-cloudnative-pg`).
 HELM_NAMESPACE ?= default
 
+# Released OpenEverest core used by the e2e tests; follows the API version pinned in go.mod.
+OPENEVEREST_HELM_REPO ?= https://openeverest.github.io/helm-charts/
+OPENEVEREST_CHART_VERSION ?= $(shell go list -m -f '{{.Version}}' github.com/openeverest/openeverest/v2 2>/dev/null | sed 's/^v//')
+EVEREST_NAMESPACE ?= everest-system
+EVEREST_ADMIN_PASSWORD ?= admin
+
 .PHONY: help
 help: ## Display this help.
 	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} /^[a-zA-Z_0-9-]+:.*?##/ { printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
@@ -160,6 +166,28 @@ test-integration-extensions: ## Run the extensions integration test for extensio
 test-integration-imagevolume: ## Run the image-volume extensions integration test (needs PostgreSQL 18 images and Kubernetes ImageVolume).
 	. ./test/vars.sh && chainsaw test --config ./test/integration/.chainsaw.yaml ./test/integration/extensions/imagevolume
 
+.PHONY: test-e2e-cluster
+test-e2e-cluster: ## Run e2e-cluster suites (chainsaw) against OpenEverest core and this provider (see `make install-openeverest`).
+	. ./test/vars.sh && chainsaw test --config ./test/e2e-cluster/.chainsaw.yaml ./test/e2e-cluster
+
+.PHONY: test-e2e-cluster-backup-restore
+test-e2e-cluster-backup-restore: ## Run the restore-into-a-new-Instance e2e-cluster suite.
+	. ./test/vars.sh && chainsaw test --config ./test/e2e-cluster/.chainsaw.yaml ./test/e2e-cluster/backup-restore
+
+.PHONY: test-e2e
+test-e2e: ## Run Playwright UI tests against a running OpenEverest UI (EVEREST_URL, default http://localhost:8080).
+	cd test/e2e && npm ci && npx playwright install chromium && npx playwright test
+
+.PHONY: check-openeverest-restarts
+check-openeverest-restarts: ## Fail if any OpenEverest core container has restarted (e.g. a crash-looping controller).
+	@kubectl get pods -n $(EVEREST_NAMESPACE)
+	@restarts="$$(kubectl get pods -n $(EVEREST_NAMESPACE) -o jsonpath='{range .items[*]}{range .status.containerStatuses[*]}{.restartCount}{"\n"}{end}{end}' | awk '{s+=$$1} END {print s+0}')"; \
+	if [ "$$restarts" -gt 0 ]; then \
+	  kubectl logs -n $(EVEREST_NAMESPACE) deploy/everest-controller --previous --tail=50 || true; \
+	  echo "OpenEverest containers restarted $$restarts time(s)"; \
+	  exit 1; \
+	fi
+
 .PHONY: load-image
 load-image: ## Import the provider image (IMG) into the k3d cluster.
 	k3d image import ${IMG} -c ${K3D_CLUSTER_NAME}
@@ -174,6 +202,20 @@ deploy-provider-ci: helm-deps ## Deploy the provider via Helm for CI (IMG must a
 		--set image.pullPolicy=Never \
 		--set plugin-barman-cloud.enabled=false \
 		--wait --timeout 5m
+
+.PHONY: install-openeverest
+install-openeverest: ## Install the released OpenEverest core (CRDs, server, controller, UI) matching go.mod.
+	helm repo add openeverest $(OPENEVEREST_HELM_REPO) >/dev/null 2>&1 || true
+	helm repo update openeverest
+	helm upgrade --install everest-core openeverest/openeverest \
+	  --version $(OPENEVEREST_CHART_VERSION) \
+	  --namespace $(EVEREST_NAMESPACE) --create-namespace \
+	  --set server.initialAdminPassword=$(EVEREST_ADMIN_PASSWORD) \
+	  --set telemetry=false \
+	  --set upgrade.preflightChecks=false \
+	  --set kube-state-metrics.enabled=false \
+	  --set createMonitoringResources=false \
+	  --wait --timeout 10m
 
 .PHONY: install-openeverest-crds
 install-openeverest-crds: ## Install OpenEverest CRDs from the core version pinned in go.mod.
