@@ -1,0 +1,66 @@
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: wal-storage
+spec:
+  steps:
+    - name: create-with-wal-volume
+      try:
+        - apply:
+            file: 00-instance.yaml
+        - script:
+            timeout: 600s
+            content: |
+              set -eu
+              kubectl wait --for=create cluster/wal-test -n "$NAMESPACE" --timeout=30s
+              kubectl wait --for=condition=Ready cluster/wal-test -n "$NAMESPACE" --timeout=540s
+              kubectl wait --for=jsonpath='{.spec.walStorage.size}'=1Gi cluster/wal-test -n "$NAMESPACE" --timeout=30s
+              kubectl wait --for=jsonpath='{.status.phase}'=Bound pvc/wal-test-1-wal -n "$NAMESPACE" --timeout=30s
+              test "$(kubectl get pvc/wal-test-1-wal -n "$NAMESPACE" -o jsonpath='{.spec.resources.requests.storage}')" = 1Gi
+              test "$(kubectl get cluster/wal-test -n "$NAMESPACE" -o jsonpath='{.spec.storage.size}')" = 2Gi
+      finally:
+        - script:
+            timeout: 30s
+            content: |
+              # Reclaim this test's volumes even when the default StorageClass retains them.
+              for pv in $(kubectl get pvc -n "$NAMESPACE" -o jsonpath='{.items[*].spec.volumeName}'); do
+                kubectl patch pv "$pv" --type=merge -p '{"spec":{"persistentVolumeReclaimPolicy":"Delete"}}'
+              done
+    - name: grow-wal-volume
+      try:
+        - script:
+            timeout: 540s
+            content: |
+              set -eu
+              storage_class="$(kubectl get pvc/wal-test-1-wal -n "$NAMESPACE" -o jsonpath='{.spec.storageClassName}')"
+              if [ "$(kubectl get storageclass "$storage_class" -o jsonpath='{.allowVolumeExpansion}')" != true ]; then
+                echo "SKIP: physical WAL expansion requires an expandable default StorageClass"
+                exit 0
+              fi
+              kubectl patch instance/wal-test -n "$NAMESPACE" --type=merge -p '{"spec":{"components":{"engine":{"parameters":{"walStorage":{"size":"2Gi"}}}}}}'
+              kubectl wait --for=jsonpath='{.spec.walStorage.size}'=2Gi cluster/wal-test -n "$NAMESPACE" --timeout=60s
+              kubectl wait --for=jsonpath='{.spec.resources.requests.storage}'=2Gi pvc/wal-test-1-wal -n "$NAMESPACE" --timeout=210s
+              # CSI drivers may round up to a minimum volume size, so require at least 2Gi.
+              for _ in $(seq 1 70); do
+                capacity="$(kubectl get pvc/wal-test-1-wal -n "$NAMESPACE" -o jsonpath='{.status.capacity.storage}')"
+                resizing="$(kubectl get pvc/wal-test-1-wal -n "$NAMESPACE" -o jsonpath='{.status.conditions[*].type}')"
+                case "$capacity" in
+                  *Gi) [ "${capacity%Gi}" -ge 2 ] && [ -z "$resizing" ] && break ;;
+                  *Ti) [ -z "$resizing" ] && break ;;
+                esac
+                sleep 3
+              done
+              echo "WAL PVC capacity: $capacity"
+              case "$capacity" in
+                *Gi) [ "${capacity%Gi}" -ge 2 ] ;;
+                *Ti) true ;;
+                *) false ;;
+              esac
+              test -z "$resizing"
+              test "$(kubectl get cluster/wal-test -n "$NAMESPACE" -o jsonpath='{.spec.storage.size}')" = 2Gi
+    - name: cleanup
+      try:
+        - script:
+            timeout: 120s
+            content: |
+              kubectl delete instance/wal-test -n "$NAMESPACE" --wait=true --timeout=110s

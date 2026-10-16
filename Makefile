@@ -144,6 +144,10 @@ helm-lint: helm-deps ## Lint the Helm chart.
 test-integration: ## Run all integration tests (chainsaw) against a running cluster (image-volume extensions need Kubernetes 1.35+).
 	. ./test/vars.sh && chainsaw test --config ./test/integration/.chainsaw.yaml ./test/integration
 
+.PHONY: test-integration-wal
+test-integration-wal: ## Run separate WAL volume tests (expansion requires an expandable default StorageClass).
+	. ./test/vars.sh && chainsaw test --config ./test/integration/.chainsaw.yaml ./test/integration/wal-storage
+
 .PHONY: test-integration-core
 test-integration-core: ## Run core integration tests (chainsaw).
 	. ./test/vars.sh && chainsaw test --config ./test/integration/.chainsaw.yaml ./test/integration/core

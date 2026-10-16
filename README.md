@@ -113,10 +113,49 @@ Stateful workloads additionally report:
 |---|---|---|
 | Persistent storage | ✅ | `spec.components.engine.storage` |
 | Storage expansion | ✅ | when the StorageClass allows volume expansion (`resizeInUseVolumes`) |
+| Separate WAL volume | ✅ | `spec.components.engine.parameters.walStorage` maps directly to CNPG `spec.walStorage` |
 | Backups (on demand) | ✅ | operator-native (`executionMode: ProviderManaged`) via the Barman Cloud Plugin; one backup storage per Instance (CNPG supports a single WAL archive) |
 | Restore | ✅ | from a succeeded Backup via Barman |
 | Scheduled backups | ✅ | `spec.backup.storages[].schedules` → CNPG `ScheduledBackup`; mirrored as OpenEverest `Backup` CRs |
 | PITR | ✅ | restore to a point in time via `spec.dataSource` |
+
+### Separate WAL volume
+
+Configure WAL independently of the data volume:
+
+In the UI, the Resources section exposes a **Separate WAL storage** toggle
+(OpenEverest dev.4 or later). It is off by default for new instances, keeping the
+single-volume layout. Enabling it reveals a required **WAL disk size** and an
+optional **WAL storage class** (selectable when WAL storage is first added, then
+fixed). Existing WAL settings turn the toggle on
+automatically. Dev.4 cannot lock the switch in edit mode, so validation blocks
+saving with the toggle off once separate WAL storage is configured.
+
+```yaml
+spec:
+  components:
+    engine:
+      storage:
+        size: 20Gi
+      parameters:
+        walStorage:
+          size: 5Gi
+          storageClass: fast-storage
+          resizeInUseVolumes: true
+```
+
+`walStorage` uses CNPG's native storage configuration, including optional
+`pvcTemplate`. Omit it to keep WAL on the data volume. Each PostgreSQL instance
+gets its own WAL PVC. Set a positive `size` (or a `pvcTemplate` storage request,
+as CNPG allows); omit `storageClass` to use the default StorageClass. The
+data-volume storage class is not inherited.
+
+CNPG manages provisioning, migration when adding a WAL volume, and expansion.
+Once configured, WAL storage cannot be removed. CNPG validates updates and
+rejects shrinking volumes; expansion requires a StorageClass/CSI driver that
+supports it (`allowVolumeExpansion: true`). Adding a volume to an existing
+cluster can restart instances; follow CNPG's storage lifecycle guidance.
+This setting provisions storage, not a WAL disk-usage alert or monitoring policy.
 
 ## Installation
 
