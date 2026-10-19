@@ -17,6 +17,9 @@ import (
 // Add fields here when the postgresql component type needs custom configuration
 // beyond what the base Instance spec provides.
 type CNPGCustomSpec struct {
+	// PriorityClassName sets the Kubernetes PriorityClass of the instance pods.
+	// The PriorityClass must exist; changing it rolls the instance pods.
+	PriorityClassName string `json:"priorityClassName,omitempty"`
 	// RequireTLS rejects client connections that do not use TLS by placing a
 	// "hostnossl all all all reject" rule before the user's pg_hba rules.
 	// Unset or false keeps CNPG's default, which also accepts unencrypted

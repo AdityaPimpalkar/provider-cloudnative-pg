@@ -2,8 +2,10 @@ package cnpg
 
 import (
 	"fmt"
+	"strings"
 
 	cnpgv1 "github.com/cloudnative-pg/cloudnative-pg/api/v1"
+	"k8s.io/apimachinery/pkg/util/validation"
 
 	"github.com/adityapimpalkar/provider-cloudnative-pg/definition/components"
 
@@ -12,6 +14,11 @@ import (
 )
 
 func ValidateCustomSpec(custom *components.CNPGCustomSpec) error {
+	if custom.PriorityClassName != "" {
+		if errs := validation.IsDNS1123Subdomain(custom.PriorityClassName); len(errs) > 0 {
+			return fmt.Errorf("priorityClassName %q is invalid: %s", custom.PriorityClassName, strings.Join(errs, "; "))
+		}
+	}
 	if custom.Bootstrap != nil {
 		if err := ValidateBootstrap(custom.Bootstrap); err != nil {
 			return err

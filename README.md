@@ -66,6 +66,7 @@ provider itself is covered under [Installation](#installation).
 | Managed roles | ✅ | CloudNativePG managed roles with readiness gating in `Status()` |
 | TLS-only connections | ✅ | `parameters.requireTLS: true` rejects unencrypted client connections; see [Require TLS](#require-tls) |
 | Pod scheduling | ✅ | `spec.components.engine.schedulingPolicy` (all fields), or `parameters.affinity` — not both |
+| Pod priority | ✅ | `parameters.priorityClassName` → CloudNativePG `spec.priorityClassName`; the PriorityClass must exist, and changing it rolls the instance pods |
 | Monitoring | ✅ | Prometheus: a PodMonitor for the instance pods via `spec.topology.parameters.monitoring.prometheus`; requires the Prometheus Operator. See [Scrape metrics with Prometheus](#scrape-metrics-with-prometheus) |
 
 ### Extensions
@@ -267,6 +268,7 @@ The technology-specific knobs worth knowing about:
 | `affinity` | `engine` | CloudNativePG `AffinityConfiguration`; rejected together with `schedulingPolicy` `affinity`, `nodeSelector` or `tolerations` |
 | `managed` | `engine` | Managed PostgreSQL roles |
 | `resizeInUseVolumes` | `engine` | Allow PVC expansion on running instances |
+| `priorityClassName` | `engine` | Kubernetes PriorityClass of the instance pods |
 | `certificates` | `engine` | TLS certificate configuration passthrough |
 | `requireTLS` | `engine` | Reject unencrypted client connections; see [Require TLS](#require-tls) |
 | `monitoring` | `engine` | CloudNativePG monitoring configuration (custom queries, metrics TLS, …) |

@@ -1001,6 +1001,8 @@ spec:
                       type: array
                   type: object
               type: object
+            priorityClassName:
+              type: string
             pvcTemplate:
               properties:
                 accessModes:
@@ -1121,6 +1123,17 @@ spec:
                     slowOpThresholdMs: 200
               path: spec.components.engine.parameters.postgresql.parameters
               uiType: text
+            priorityClassName:
+              fieldParams:
+                helperText: Optional. Name of an existing Kubernetes PriorityClass for the instance pods. Changing it restarts the instances one at a time.
+                label: Priority class
+                placeholder: Cluster default
+              path: spec.components.engine.parameters.priorityClassName
+              uiType: text
+              validation:
+                regex:
+                  message: Must be a valid Kubernetes object name (lowercase letters, digits, '-' and '.')
+                  pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
             requireTLS:
               fieldParams:
                 defaultValue: true
@@ -1144,6 +1157,7 @@ spec:
                 required: true
           componentsOrder:
             - storageClass
+            - priorityClassName
             - requireTLS
             - configuration
           description: Configure advanced settings for your database
