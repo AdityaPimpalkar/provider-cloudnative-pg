@@ -1,0 +1,68 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/kyverno/chainsaw/main/.schemas/json/test-chainsaw-v1alpha1.json
+# requireTLS refuses unencrypted client connections and is applied by reload.
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: tls-only
+spec:
+  timeouts:
+    cleanup: 3m
+  steps:
+    - name: create-instance
+      try:
+        - apply:
+            file: 00-instance.yaml
+        - script:
+            timeout: 6m
+            content: |
+              set -e
+              kubectl wait --for=create cluster/tls-only -n "$NAMESPACE" --timeout=60s
+              kubectl wait --for=condition=Ready cluster/tls-only -n "$NAMESPACE" --timeout=300s
+      catch:
+        - script:
+            content: kubectl get instance,cluster,pod -n "$NAMESPACE" -o wide
+        - script:
+            content: kubectl get cluster/tls-only -n "$NAMESPACE" -o yaml
+
+    - name: reject-unencrypted
+      try:
+        - script:
+            timeout: 2m
+            content: |
+              set -eu
+              password="$(kubectl get secret tls-only-app -n "$NAMESPACE" -o jsonpath='{.data.password}' | base64 -d)"
+              connect() {
+                kubectl exec -n "$NAMESPACE" tls-only-1 -c postgres -- env PGPASSWORD="$password" \
+                  psql "host=tls-only-rw user=app dbname=app sslmode=$1" -tAc 'SELECT ssl FROM pg_stat_ssl WHERE pid = pg_backend_pid()' 2>&1
+              }
+              for _ in $(seq 1 30); do
+                out="$(connect disable || true)"
+                case "$out" in *"rejects connection"*"no encryption"*) break ;; esac
+                sleep 2
+              done
+              echo "sslmode=disable: $out"
+              case "$out" in *"rejects connection"*"no encryption"*) ;; *) exit 1 ;; esac
+              test "$(connect require)" = t
+
+    - name: disable-without-restart
+      try:
+        - script:
+            timeout: 2m
+            content: |
+              set -eu
+              uid="$(kubectl get pod tls-only-1 -n "$NAMESPACE" -o jsonpath='{.metadata.uid}')"
+              kubectl patch instance/tls-only -n "$NAMESPACE" --type=merge \
+                -p '{"spec":{"components":{"engine":{"parameters":{"requireTLS":false}}}}}'
+              password="$(kubectl get secret tls-only-app -n "$NAMESPACE" -o jsonpath='{.data.password}' | base64 -d)"
+              for _ in $(seq 1 45); do
+                out="$(kubectl exec -n "$NAMESPACE" tls-only-1 -c postgres -- env PGPASSWORD="$password" \
+                  psql "host=tls-only-rw user=app dbname=app sslmode=disable" -tAc 'SELECT 1' 2>&1 || true)"
+                [ "$out" = 1 ] && break
+                sleep 2
+              done
+              echo "sslmode=disable after requireTLS=false: $out"
+              test "$out" = 1
+              test "$(kubectl get pod tls-only-1 -n "$NAMESPACE" -o jsonpath='{.metadata.uid}')" = "$uid"
+      catch:
+        - script:
+            content: kubectl get cluster/tls-only -n "$NAMESPACE" -o jsonpath='{.spec.postgresql.pg_hba}'
