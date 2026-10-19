@@ -8,7 +8,7 @@ spec:
     - name: start-s3mock
       try:
         - apply:
-            file: 00-s3mock.yaml
+            file: ../../testdata/s3mock.yaml
         - script:
             timeout: 120s
             content: |

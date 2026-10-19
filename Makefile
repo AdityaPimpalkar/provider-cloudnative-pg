@@ -174,6 +174,10 @@ test-integration-imagevolume: ## Run the image-volume extensions integration tes
 test-e2e-cluster: ## Run e2e-cluster suites (chainsaw) against OpenEverest core and this provider (see `make install-openeverest`).
 	. ./test/vars.sh && chainsaw test --config ./test/e2e-cluster/.chainsaw.yaml ./test/e2e-cluster
 
+.PHONY: test-e2e-cluster-backup-deletion
+test-e2e-cluster-backup-deletion: ## Run the backup retention and deletion e2e-cluster suite.
+	. ./test/vars.sh && chainsaw test --config ./test/e2e-cluster/.chainsaw.yaml ./test/e2e-cluster/backup-deletion
+
 .PHONY: test-e2e-cluster-backup-restore
 test-e2e-cluster-backup-restore: ## Run the restore-into-a-new-Instance e2e-cluster suite.
 	. ./test/vars.sh && chainsaw test --config ./test/e2e-cluster/.chainsaw.yaml ./test/e2e-cluster/backup-restore

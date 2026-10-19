@@ -1,0 +1,14 @@
+apiVersion: backup.openeverest.io/v1alpha1
+kind: Backup
+metadata:
+  name: pg-del-retain
+spec:
+  origin:
+    type: Instance
+    instanceRef:
+      name: pg-del
+  classRef:
+    name: cnpg-barman-plugin
+  storageRef:
+    name: s3mock-s3
+  deletionPolicy: Retain

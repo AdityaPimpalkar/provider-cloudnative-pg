@@ -150,8 +150,9 @@ restricted Pod Security Standard. Backups that never received a Barman ID
 its logs and delete the Job to retry. Data deletion runs only while the source
 Instance exists; delete Backups before deleting their Instance.
 
-The backup integration suite checks native policy configuration, not the
-passage of a multi-day recovery window.
+The backup integration and e2e suites check native policy configuration and
+per-backup deletion in the object store, not the passage of a multi-day
+recovery window.
 
 ## Installation
 
@@ -375,7 +376,8 @@ code generation, and the backup/restore interfaces are documented once for all p
 | `charts/provider-cloudnative-pg/` | Helm chart (`generated/` is produced by `make generate`) |
 | `config/rbac/role.yaml` | Generated `ClusterRole` — do not edit |
 | `test/integration/` | Chainsaw suites: `core/replicaset`, `backup`, `extensions/bundled`, `extensions/imagevolume`, `tls-only` |
-| `test/e2e-cluster/` | Chainsaw e2e suites on the full OpenEverest platform: `backup-restore` |
+| `test/e2e-cluster/` | Chainsaw e2e suites on the full OpenEverest platform: `backup-restore`, `backup-deletion` |
+| `test/testdata/` | Fixtures shared by the suites (S3Mock object store) |
 | `test/e2e/` | Playwright UI tests against the OpenEverest UI |
 | `test/vars.sh` | Pinned versions used by tests |
 | `examples/` | Example `Instance` resources |
@@ -396,7 +398,9 @@ code generation, and the backup/restore interfaces are documented once for all p
   user journeys on the full platform: the released OpenEverest core (server, controller and CRDs,
   at the version pinned in `go.mod`) installed by `make install-openeverest`, plus this provider.
   `backup-restore` writes data, takes a Backup, restores it into a new Instance through
-  `spec.dataSource`, and checks the data. Run with `make test-e2e-cluster`.
+  `spec.dataSource`, and checks the data. `backup-deletion` checks that schedule retention reaches
+  the Barman ObjectStore, that deleting a `Retain` Backup keeps its objects in the object store, and
+  that deleting a `Delete` Backup removes them. Run with `make test-e2e-cluster`.
 - **E2E UI tests** — Playwright tests under [test/e2e/](test/e2e/) drive the OpenEverest UI: they
   create a PostgreSQL instance through the provider's generated form, wait for it to be Ready, and
   delete it. Run with `make test-e2e` (installs Chromium for Playwright) against a UI at `EVEREST_URL` (default
