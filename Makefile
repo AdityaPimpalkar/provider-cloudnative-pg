@@ -192,7 +192,7 @@ record-openeverest-restarts: ## Wait for OpenEverest core pods to be Ready and r
 .PHONY: check-openeverest-restarts
 check-openeverest-restarts: ## Fail if any OpenEverest core container restarted since record-openeverest-restarts (e.g. a crash-looping controller).
 	@kubectl get pods -n $(EVEREST_NAMESPACE)
-	@baseline="$$(cat $(OPENEVEREST_RESTARTS_BASELINE) 2>/dev/null || echo 0)"; \
+	@baseline="$$(cat $(OPENEVEREST_RESTARTS_BASELINE) 2>/dev/null)"; baseline="$${baseline:-0}"; \
 	restarts="$$($(openeverest-restarts))"; \
 	if [ "$$restarts" -gt "$$baseline" ]; then \
 	  kubectl logs -n $(EVEREST_NAMESPACE) deploy/everest-controller --previous --tail=50 || true; \
