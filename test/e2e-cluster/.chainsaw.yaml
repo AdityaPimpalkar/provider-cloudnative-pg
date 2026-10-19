@@ -1,0 +1,19 @@
+---
+apiVersion: chainsaw.kyverno.io/v1alpha2
+kind: Configuration
+metadata:
+  name: e2e-cluster
+spec:
+  timeouts:
+    apply: 60s
+    assert: 60s
+    delete: 60s
+    error: 60s
+    exec: 60s
+    cleanup: 120s
+  cleanup:
+    skipDelete: false
+  report:
+    format: XML
+    name: chainsaw-report-e2e-cluster
+    path: /tmp
