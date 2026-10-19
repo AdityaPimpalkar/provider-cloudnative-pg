@@ -4,19 +4,70 @@ metadata:
   name: wal-storage
 spec:
   steps:
+    # WAL expansion needs an expandable StorageClass. Use the default one when it
+    # allows expansion (e.g. a CSI driver with a resizer, as on LKE). Otherwise
+    # (k3d's local-path) WAL goes on an expandable copy of it: that verifies the
+    # resize request reaches the WAL PVC, but not a physical resize.
+    - name: choose-wal-storage-class
+      try:
+        - script:
+            content: |
+              set -eu
+              default="$(kubectl get storageclass -o jsonpath='{range .items[?(@.metadata.annotations.storageclass\.kubernetes\.io/is-default-class=="true")]}{.metadata.name}{"\n"}{end}' | head -1)"
+              test -n "$default"
+              if [ "$(kubectl get storageclass "$default" -o jsonpath='{.allowVolumeExpansion}')" = true ]; then
+                class="$default"; resize=physical
+              else
+                class="wal-expandable-$NAMESPACE"; resize=request
+                kubectl get storageclass "$default" -o json | jq --arg name "$class" '{
+                  apiVersion, kind, provisioner, parameters, volumeBindingMode,
+                  metadata: {name: $name}, reclaimPolicy: "Delete", allowVolumeExpansion: true
+                } | with_entries(select(.value != null))' | kubectl create -f -
+              fi
+              echo "WAL StorageClass: $class (resize check: $resize)"
+              kubectl create configmap wal-test-storage -n "$NAMESPACE" --from-literal=class="$class" --from-literal=resize="$resize"
+      cleanup:
+        - script:
+            content: kubectl delete storageclass "wal-expandable-$NAMESPACE" --ignore-not-found
     - name: create-with-wal-volume
       try:
-        - apply:
-            file: 00-instance.yaml
         - script:
             timeout: 600s
             content: |
               set -eu
+              class="$(kubectl get configmap wal-test-storage -n "$NAMESPACE" -o jsonpath='{.data.class}')"
+              kubectl apply -n "$NAMESPACE" -f - <<EOF
+              apiVersion: core.openeverest.io/v1alpha1
+              kind: Instance
+              metadata:
+                name: wal-test
+              spec:
+                providerRef:
+                  name: provider-cloudnative-pg
+                components:
+                  engine:
+                    type: postgresql
+                    replicas: 1
+                    resources:
+                      requests:
+                        cpu: 250m
+                        memory: 512Mi
+                      limits:
+                        cpu: "1"
+                        memory: 1Gi
+                    storage:
+                      size: 2Gi
+                    parameters:
+                      walStorage:
+                        size: 1Gi
+                        storageClass: $class
+              EOF
               kubectl wait --for=create cluster/wal-test -n "$NAMESPACE" --timeout=30s
               kubectl wait --for=condition=Ready cluster/wal-test -n "$NAMESPACE" --timeout=540s
               kubectl wait --for=jsonpath='{.spec.walStorage.size}'=1Gi cluster/wal-test -n "$NAMESPACE" --timeout=30s
               kubectl wait --for=jsonpath='{.status.phase}'=Bound pvc/wal-test-1-wal -n "$NAMESPACE" --timeout=30s
               test "$(kubectl get pvc/wal-test-1-wal -n "$NAMESPACE" -o jsonpath='{.spec.resources.requests.storage}')" = 1Gi
+              test "$(kubectl get pvc/wal-test-1-wal -n "$NAMESPACE" -o jsonpath='{.spec.storageClassName}')" = "$class"
               test "$(kubectl get cluster/wal-test -n "$NAMESPACE" -o jsonpath='{.spec.storage.size}')" = 2Gi
       finally:
         - script:
@@ -32,14 +83,18 @@ spec:
             timeout: 540s
             content: |
               set -eu
-              storage_class="$(kubectl get pvc/wal-test-1-wal -n "$NAMESPACE" -o jsonpath='{.spec.storageClassName}')"
-              if [ "$(kubectl get storageclass "$storage_class" -o jsonpath='{.allowVolumeExpansion}')" != true ]; then
-                echo "SKIP: physical WAL expansion requires an expandable default StorageClass"
-                exit 0
-              fi
+              resize="$(kubectl get configmap wal-test-storage -n "$NAMESPACE" -o jsonpath='{.data.resize}')"
+              data_before="$(kubectl get pvc/wal-test-1 -n "$NAMESPACE" -o jsonpath='{.spec.resources.requests.storage}')"
               kubectl patch instance/wal-test -n "$NAMESPACE" --type=merge -p '{"spec":{"components":{"engine":{"parameters":{"walStorage":{"size":"2Gi"}}}}}}'
               kubectl wait --for=jsonpath='{.spec.walStorage.size}'=2Gi cluster/wal-test -n "$NAMESPACE" --timeout=60s
               kubectl wait --for=jsonpath='{.spec.resources.requests.storage}'=2Gi pvc/wal-test-1-wal -n "$NAMESPACE" --timeout=210s
+              # The data volume is sized independently and stays as it was.
+              test "$(kubectl get pvc/wal-test-1 -n "$NAMESPACE" -o jsonpath='{.spec.resources.requests.storage}')" = "$data_before"
+              test "$(kubectl get cluster/wal-test -n "$NAMESPACE" -o jsonpath='{.spec.storage.size}')" = 2Gi
+              if [ "$resize" != physical ]; then
+                echo "WAL PVC requests 2Gi; physical resize not checked (the StorageClass has no volume resizer)"
+                exit 0
+              fi
               # CSI drivers may round up to a minimum volume size, so require at least 2Gi.
               for _ in $(seq 1 70); do
                 capacity="$(kubectl get pvc/wal-test-1-wal -n "$NAMESPACE" -o jsonpath='{.status.capacity.storage}')"
@@ -57,7 +112,6 @@ spec:
                 *) false ;;
               esac
               test -z "$resizing"
-              test "$(kubectl get cluster/wal-test -n "$NAMESPACE" -o jsonpath='{.spec.storage.size}')" = 2Gi
     - name: cleanup
       try:
         - script:

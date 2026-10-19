@@ -151,7 +151,7 @@ test-integration: ## Run all integration tests (chainsaw) against a running clus
 	. ./test/vars.sh && chainsaw test --config ./test/integration/.chainsaw.yaml ./test/integration
 
 .PHONY: test-integration-wal
-test-integration-wal: ## Run separate WAL volume tests (expansion requires an expandable default StorageClass).
+test-integration-wal: ## Run separate WAL volume tests (needs jq; physical expansion is checked only on an expandable default StorageClass).
 	. ./test/vars.sh && chainsaw test --config ./test/integration/.chainsaw.yaml ./test/integration/wal-storage
 
 .PHONY: test-integration-core
