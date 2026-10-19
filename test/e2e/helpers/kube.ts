@@ -1,18 +1,14 @@
 import { execFileSync } from "node:child_process";
 
 /**
- * Reads a field of a namespaced resource with kubectl, or returns undefined
- * when kubectl checks are disabled (E2E_SKIP_KUBECTL=true) for runs where the
- * test host cannot reach the cluster API.
+ * Whether the test host can reach the cluster API with kubectl. Set
+ * E2E_SKIP_KUBECTL=true when it cannot; cluster checks are then skipped, and
+ * reported as skipped.
  */
-export function kubectlJsonPath(
-  namespace: string,
-  resource: string,
-  jsonPath: string,
-): string | undefined {
-  if (process.env.E2E_SKIP_KUBECTL === "true") {
-    return undefined;
-  }
+export const kubectlEnabled = process.env.E2E_SKIP_KUBECTL !== "true";
+
+/** Reads a field of a namespaced resource with kubectl. */
+export function kubectlJsonPath(namespace: string, resource: string, jsonPath: string): string {
   return execFileSync(
     "kubectl",
     ["get", resource, "-n", namespace, "-o", `jsonpath=${jsonPath}`],
@@ -22,10 +18,10 @@ export function kubectlJsonPath(
 
 /**
  * Deletes an Instance without waiting, ignoring one that is already gone. A
- * no-op when kubectl checks are disabled (E2E_SKIP_KUBECTL=true).
+ * no-op when kubectl is disabled.
  */
 export function kubectlDeleteInstance(namespace: string, name: string): void {
-  if (process.env.E2E_SKIP_KUBECTL === "true") {
+  if (!kubectlEnabled) {
     return;
   }
   execFileSync(

@@ -9,10 +9,9 @@ import type { Page } from "@playwright/test";
 export class LoginPage {
   constructor(private readonly page: Page) {}
 
-  /** Navigate to the login page. */
+  /** Navigate to the login page; filling the form waits for it to render. */
   async goto(): Promise<void> {
     await this.page.goto("/login");
-    await this.page.waitForLoadState("networkidle");
   }
 
   /** Fill in the username field. */

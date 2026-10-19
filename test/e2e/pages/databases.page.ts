@@ -15,6 +15,14 @@ export class DatabasesPage {
     return this.page.getByTestId(`${name}-status`);
   }
 
+  /** Rendered once the list has loaded: provider tiles when empty, else the create button. */
+  loaded() {
+    return this.page
+      .locator('[data-testid^="provider-tile-"]')
+      .or(this.page.getByTestId("add-db-cluster-button"))
+      .first();
+  }
+
   /** Polls the list until the instance reports the given phase. */
   async waitForPhase(name: string, phase: string, timeoutMs: number): Promise<void> {
     await this.open();

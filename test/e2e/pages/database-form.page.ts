@@ -3,8 +3,10 @@ import { expect, type Page } from "@playwright/test";
 /** Resource values small enough for a CI k3d cluster. */
 export interface InstanceResources {
   nodes: number;
-  cpu: number;
-  memoryGi: number;
+  cpuRequest: number;
+  cpuLimit: number;
+  memoryRequestGi: number;
+  memoryLimitGi: number;
   diskGi: number;
 }
 
@@ -77,10 +79,10 @@ export class DatabaseFormPage {
   private async setResources(r: InstanceResources): Promise<void> {
     const values: Record<string, number> = {
       "spec.components.engine.replicas": r.nodes,
-      "spec.components.engine.resources.requests.cpu": r.cpu,
-      "spec.components.engine.resources.limits.cpu": r.cpu,
-      "spec.components.engine.resources.requests.memory": r.memoryGi,
-      "spec.components.engine.resources.limits.memory": r.memoryGi,
+      "spec.components.engine.resources.requests.cpu": r.cpuRequest,
+      "spec.components.engine.resources.limits.cpu": r.cpuLimit,
+      "spec.components.engine.resources.requests.memory": r.memoryRequestGi,
+      "spec.components.engine.resources.limits.memory": r.memoryLimitGi,
       "spec.components.engine.storage.size": r.diskGi,
     };
     for (const [path, value] of Object.entries(values)) {

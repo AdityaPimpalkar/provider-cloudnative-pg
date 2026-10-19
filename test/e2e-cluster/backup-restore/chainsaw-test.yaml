@@ -7,7 +7,8 @@ spec:
   description: |
     Restore into a new Instance (R-BK-5) on the full OpenEverest platform: write
     data to a source Instance, take a Backup, create a second Instance with a
-    Backup dataSource, and check the data is there while the source keeps running.
+    Backup dataSource, and check the data is there, and that the source keeps its
+    data while the restored Instance exists and after it is deleted.
   catch:
     - script:
         content: kubectl get instance,cluster,backup.backup.openeverest.io,backup.postgresql.cnpg.io,restore.backup.openeverest.io,objectstore,pod -n "$NAMESPACE" -o wide
@@ -85,11 +86,28 @@ spec:
         - script:
             content: |
               set -e
-              got="$(kubectl exec -n "$NAMESPACE" pg-dest-1 -c postgres -- psql -v ON_ERROR_STOP=1 -d app -tAc 'SELECT note FROM e2e_restore WHERE id = 1')"
+              row() { kubectl exec -n "$NAMESPACE" "$1" -c postgres -- psql -v ON_ERROR_STOP=1 -d app -tAc 'SELECT note FROM e2e_restore WHERE id = 1'; }
+              got="$(row pg-dest-1)"
               echo "restored row: $got"
               test "$got" = openeverest
-              # The source is untouched and still serving.
-              test "$(kubectl get instance/pg-src -n "$NAMESPACE" -o jsonpath='{.status.phase}')" = Ready
+              # Restoring into a new Instance leaves the source data in place.
+              got="$(row pg-src-1)"
+              echo "source row while both exist: $got"
+              test "$got" = openeverest
+
+    - name: source-survives-restored-instance-deletion
+      try:
+        - script:
+            timeout: 180s
+            content: |
+              set -e
+              kubectl delete instance/pg-dest -n "$NAMESPACE" --wait=true --timeout=150s
+              got="$(kubectl exec -n "$NAMESPACE" pg-src-1 -c postgres -- psql -v ON_ERROR_STOP=1 -d app -tAc 'SELECT note FROM e2e_restore WHERE id = 1')"
+              echo "source row after deleting the restored Instance: $got"
+              test "$got" = openeverest
+              # TODO(#47): also require objectstore/s3mock-s3 to survive; today the
+              # restored Instance can take over its ownership, so deleting it may
+              # garbage-collect the source's ObjectStore.
 
     - name: cleanup
       try:
@@ -97,6 +115,6 @@ spec:
             timeout: 300s
             content: |
               set -e
-              kubectl delete instance/pg-dest -n "$NAMESPACE" --wait=true --timeout=120s
+              kubectl delete instance/pg-dest -n "$NAMESPACE" --ignore-not-found --wait=true --timeout=120s
               kubectl delete backup.backup.openeverest.io --all -n "$NAMESPACE" --wait=true --timeout=60s
               kubectl delete instance/pg-src -n "$NAMESPACE" --wait=true --timeout=110s

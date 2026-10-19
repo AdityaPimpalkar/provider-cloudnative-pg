@@ -339,8 +339,8 @@ code generation, and the backup/restore interfaces are documented once for all p
   delete it. Run with `make test-e2e` (installs Chromium for Playwright) against a UI at `EVEREST_URL` (default
   `http://localhost:8080`, e.g. `kubectl -n everest-system port-forward svc/everest 8080:8080`);
   the test namespace defaults to `e2e-ui` (`E2E_NAMESPACE`) and must exist. Set
-  `E2E_SKIP_KUBECTL=true` if the test host cannot reach the cluster API (this also skips deleting
-  the instance when a test fails midway).
+  `E2E_SKIP_KUBECTL=true` if the test host cannot reach the cluster API: the CNPG Cluster checks are
+  then reported as skipped, and an instance left by a failed test is not deleted.
 - **CI** — [.github/workflows/build.yaml](.github/workflows/build.yaml) runs lint, build, unit
   tests, generated-file verification, and Helm lint;
   [.github/workflows/test.yaml](.github/workflows/test.yaml) runs the integration suites;
