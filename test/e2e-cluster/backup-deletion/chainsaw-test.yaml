@@ -87,7 +87,10 @@ spec:
                 printf '%s' "$listing" | grep -o '<Key>' | wc -l | tr -d ' '
               }
               for b in retain delete; do
+                # Plugin backups leave status.serverName empty; Barman then uses the
+                # cluster name, as the provider's deletion Job does.
                 server="$(kubectl get backup.postgresql.cnpg.io/pg-del-$b -n "$NAMESPACE" -o jsonpath='{.status.serverName}')"
+                server="${server:-$(kubectl get backup.postgresql.cnpg.io/pg-del-$b -n "$NAMESPACE" -o jsonpath='{.spec.cluster.name}')}"
                 id="$(kubectl get backup.postgresql.cnpg.io/pg-del-$b -n "$NAMESPACE" -o jsonpath='{.status.backupId}')"
                 test -n "$server" && test -n "$id"
                 prefix="$server/base/$id/"
