@@ -160,6 +160,7 @@ func (p *Provider) Sync(c *controller.Context) error {
 	if custom.PostgresConfiguration != nil {
 		pg.Spec.PostgresConfiguration = *custom.PostgresConfiguration
 	}
+	cnpg.ApplyRequireTLS(pg, &custom)
 
 	if custom.Managed != nil {
 		pg.Spec.Managed = custom.Managed
@@ -276,6 +277,7 @@ func buildClusterSpec(engine corev1alpha1.ComponentSpec, custom components.CNPGC
 
 	spec := cnpgv1.ClusterSpec{
 		Instances:            int(*engine.Replicas),
+		PriorityClassName:    custom.PriorityClassName,
 		StorageConfiguration: storage,
 		Resources: corev1.ResourceRequirements{
 			Requests: corev1.ResourceList{

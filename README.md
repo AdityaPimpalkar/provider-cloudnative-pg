@@ -64,7 +64,9 @@ provider itself is covered under [Installation](#installation).
 | Custom configuration | ✅ | PostgreSQL GUCs via `spec.components.engine.parameters.postgresql` |
 | Bootstrap (`initdb`) | ✅ | database name, owner, and credentials secret |
 | Managed roles | ✅ | CloudNativePG managed roles with readiness gating in `Status()` |
+| TLS-only connections | ✅ | `parameters.requireTLS: true` rejects unencrypted client connections; see [Require TLS](#require-tls) |
 | Pod scheduling | ✅ | `spec.components.engine.schedulingPolicy` (all fields), or `parameters.affinity` — not both |
+| Pod priority | ✅ | `parameters.priorityClassName` → CloudNativePG `spec.priorityClassName`; the PriorityClass must exist, and changing it rolls the instance pods |
 | Monitoring | ✅ | Prometheus: a PodMonitor for the instance pods via `spec.topology.parameters.monitoring.prometheus`; requires the Prometheus Operator. See [Scrape metrics with Prometheus](#scrape-metrics-with-prometheus) |
 
 ### Extensions
@@ -266,9 +268,36 @@ The technology-specific knobs worth knowing about:
 | `affinity` | `engine` | CloudNativePG `AffinityConfiguration`; rejected together with `schedulingPolicy` `affinity`, `nodeSelector` or `tolerations` |
 | `managed` | `engine` | Managed PostgreSQL roles |
 | `resizeInUseVolumes` | `engine` | Allow PVC expansion on running instances |
+| `priorityClassName` | `engine` | Kubernetes PriorityClass of the instance pods |
 | `certificates` | `engine` | TLS certificate configuration passthrough |
+| `requireTLS` | `engine` | Reject unencrypted client connections; see [Require TLS](#require-tls) |
 | `monitoring` | `engine` | CloudNativePG monitoring configuration (custom queries, metrics TLS, …) |
 | `monitoring.prometheus` | topology | Create a PodMonitor for the instance; see [Scrape metrics with Prometheus](#scrape-metrics-with-prometheus) |
+
+### Require TLS
+
+CloudNativePG always serves TLS, but its default `pg_hba.conf` also accepts
+unencrypted connections. Set `requireTLS: true` to refuse them:
+
+```yaml
+spec:
+  components:
+    engine:
+      parameters:
+        requireTLS: true
+```
+
+The provider places `hostnossl all all all reject` before any rules in
+`postgresql.pg_hba`. CloudNativePG applies it with a configuration reload, so
+instances are not restarted. Replication and local connections are unaffected:
+CloudNativePG's own rules for them come first and use TLS or the local socket.
+
+Clients must connect with TLS. libpq's default `sslmode=prefer` does;
+`sslmode=disable` is refused. Use `sslmode=verify-full` with the cluster CA to
+also authenticate the server.
+
+The UI enables this by default for new instances. Unset means off, so existing
+instances keep accepting unencrypted clients until you turn it on.
 
 ## Development
 
@@ -311,7 +340,7 @@ code generation, and the backup/restore interfaces are documented once for all p
 | `definition/` | Provider identity, component types, versions, topologies, backup classes |
 | `charts/provider-cloudnative-pg/` | Helm chart (`generated/` is produced by `make generate`) |
 | `config/rbac/role.yaml` | Generated `ClusterRole` — do not edit |
-| `test/integration/` | Chainsaw suites: `core/replicaset`, `extensions/bundled`, `extensions/imagevolume` |
+| `test/integration/` | Chainsaw suites: `core/replicaset`, `extensions/bundled`, `extensions/imagevolume`, `tls-only` |
 | `test/e2e-cluster/` | Chainsaw e2e suites on the full OpenEverest platform: `backup-restore` |
 | `test/e2e/` | Playwright UI tests against the OpenEverest UI |
 | `test/vars.sh` | Pinned versions used by tests |
