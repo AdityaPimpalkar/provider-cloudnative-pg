@@ -64,6 +64,7 @@ provider itself is covered under [Installation](#installation).
 | Custom configuration | ✅ | PostgreSQL GUCs via `spec.components.engine.parameters.postgresql` |
 | Bootstrap (`initdb`) | ✅ | database name, owner, and credentials secret |
 | Managed roles | ✅ | CloudNativePG managed roles with readiness gating in `Status()` |
+| Synchronous replication | ✅ | `parameters.postgresql.synchronous`; see [Synchronous replication](#synchronous-replication) |
 | TLS-only connections | ✅ | `parameters.requireTLS: true` rejects unencrypted client connections; see [Require TLS](#require-tls) |
 | Pod scheduling | ✅ | `spec.components.engine.schedulingPolicy` (all fields), or `parameters.affinity` — not both |
 | Pod priority | ✅ | `parameters.priorityClassName` → CloudNativePG `spec.priorityClassName`; the PriorityClass must exist, and changing it rolls the instance pods |
@@ -312,6 +313,40 @@ The technology-specific knobs worth knowing about:
 | `requireTLS` | `engine` | Reject unencrypted client connections; see [Require TLS](#require-tls) |
 | `monitoring` | `engine` | CloudNativePG monitoring configuration (custom queries, metrics TLS, …) |
 | `monitoring.prometheus` | topology | Create a PodMonitor for the instance; see [Scrape metrics with Prometheus](#scrape-metrics-with-prometheus) |
+
+### Synchronous replication
+
+Replication is asynchronous by default. To make each commit wait for standbys,
+set CloudNativePG's
+[`synchronous`](https://cloudnative-pg.io/documentation/current/replication/#synchronous-replication)
+configuration (the UI exposes it as the **Synchronous replication** toggle under
+Resources):
+
+```yaml
+spec:
+  components:
+    engine:
+      replicas: 3
+      parameters:
+        postgresql:
+          synchronous:
+            method: any           # any = quorum, first = priority order
+            number: 1             # standbys that must confirm each commit
+            dataDurability: required
+```
+
+- `number` must be lower than `replicas` (plus any listed standby names); the
+  provider rejects other values before applying the Cluster.
+- With the default `synchronous_commit = on`, a commit returns once the required
+  standbys have flushed its WAL to durable storage. Set
+  `postgresql.parameters.synchronous_commit` to `remote_apply` to also wait until
+  the change is visible on them, or `remote_write` for a weaker guarantee.
+  Applications can lower `synchronous_commit` per transaction, and those
+  transactions are not covered by the guarantee.
+- `dataDurability: required` stops writes when too few standbys are available.
+  `preferred` falls back to asynchronous replication and restores synchronous
+  replication when standbys return. The provider does not alert on that
+  fallback; watch the replication metrics.
 
 ### Require TLS
 
