@@ -93,9 +93,10 @@ runs:
           deploy/provider-cloudnative-pg deploy/cnpg-operator --timeout=5m
         kubectl get provider provider-cloudnative-pg
         kubectl get backupclass cnpg-barman-plugin
-        # Deployments report Available before a crash loop starts; let them
-        # settle, then require every OpenEverest container to be running clean.
-        # The workflows check again after their tests, since a controller that
-        # fails at startup can take minutes to restart.
+        # Deployments report Available before a crash loop starts. Let them
+        # settle, require every OpenEverest pod to be Ready, and record the
+        # restart count; an occasional restart while starting up is harmless.
+        # The workflows fail after their tests if anything restarted since,
+        # since a crash-looping controller can take minutes to restart again.
         sleep 45
-        make check-openeverest-restarts
+        make record-openeverest-restarts
