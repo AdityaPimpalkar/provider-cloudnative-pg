@@ -321,6 +321,10 @@ func (p *Provider) Status(c *controller.Context) (controller.Status, error) {
 		return controller.Pending("Waiting to get CloudNativePG cluster resource"), nil
 	}
 
+	if status, failed := failedClusterStatus(pg); failed {
+		return status, nil
+	}
+
 	readyCondition := meta.FindStatusCondition(pg.Status.Conditions, string(cnpgv1.ConditionClusterReady))
 	if readyCondition != nil && readyCondition.Status == metav1.ConditionTrue && pg.Status.Instances > 0 && pg.Status.ReadyInstances == pg.Status.Instances {
 		if roleStatus, blocked := cnpg.ManagedRolesStatus(pg); blocked {
@@ -401,6 +405,28 @@ func (p *Provider) Status(c *controller.Context) (controller.Status, error) {
 	}
 
 	return controller.Initializing("waiting for CloudNativePG cluster to initialize"), nil
+}
+
+// failedClusterStatus maps CNPG phases that stop reconciliation until someone
+// intervenes. In-progress phases (switchover, failover, upgrade, replica
+// creation, supervised switchover) are left to the caller.
+func failedClusterStatus(pg *cnpgv1.Cluster) (controller.Status, bool) {
+	switch pg.Status.Phase {
+	case cnpgv1.PhaseUnrecoverable,
+		cnpgv1.PhaseFailurePlugin,
+		cnpgv1.PhaseUnknownPlugin,
+		cnpgv1.PhaseCannotCreateClusterObjects,
+		cnpgv1.PhaseImageCatalogError,
+		cnpgv1.PhaseArchitectureBinaryMissing,
+		cnpgv1.PhaseDefinitionInvalid:
+		message := pg.Status.Phase
+		if pg.Status.PhaseReason != "" {
+			message += ": " + pg.Status.PhaseReason
+		}
+		return controller.Failed(message), true
+	default:
+		return controller.Status{}, false
+	}
 }
 
 // Cleanup handles deletion of provider-managed resources.
