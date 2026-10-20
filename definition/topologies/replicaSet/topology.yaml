@@ -332,6 +332,8 @@ ui:
                         celExpressions:
                           - celExpr: "spec.components.engine.storage.size >= original.spec.components.engine.storage.size"
                             message: "Disk size cannot be decreased"
+                          - celExpr: "!has(original.spec.components.engine.parameters.walStorage.size) || has(spec.components.engine.parameters.walStorage.size)"
+                            message: "Separate WAL storage cannot be disabled once configured"
               componentsOrder:
                 - cpu-requests
                 - cpu-limits
@@ -392,8 +394,52 @@ ui:
             - number
             - method
             - dataDurability
+        walStorage:
+          uiType: group
+          groupType: toggleable
+          label: "Separate WAL storage"
+          description: "Store WAL on a dedicated volume. Once configured, separate WAL storage cannot be disabled."
+          components:
+            size:
+              path: spec.components.engine.parameters.walStorage.size
+              uiType: number
+              fieldParams:
+                label: "WAL disk size"
+                helperText: "The WAL disk cannot be shrunk. Growing it requires an expandable StorageClass."
+                badge: "Gi"
+                badgeToApi: true
+              validation:
+                required: true
+                min: 1
+                int: true
+                modes:
+                  edit:
+                    celExpressions:
+                      - celExpr: "!has(original.spec.components.engine.parameters.walStorage.size) || spec.components.engine.parameters.walStorage.size >= original.spec.components.engine.parameters.walStorage.size"
+                        message: "WAL disk size cannot be decreased"
+            storageClass:
+              uiType: select
+              path: spec.components.engine.parameters.walStorage.storageClass
+              fieldParams:
+                label: "WAL storage class"
+                helperText: "Optional. Uses the default StorageClass when omitted, not the data disk's class. Cannot be changed once WAL storage exists."
+              dataSource:
+                provider: storageClasses
+              validation:
+                modes:
+                  edit:
+                    celExpressions:
+                      # CNPG would apply a new class only to future PVCs; keep the
+                      # class fixed once WAL storage exists, but selectable when
+                      # adding WAL storage to an existing instance.
+                      - celExpr: "!has(original.spec.components.engine.parameters.walStorage.size) || (has(spec.components.engine.parameters.walStorage.storageClass) == has(original.spec.components.engine.parameters.walStorage.storageClass) && (!has(spec.components.engine.parameters.walStorage.storageClass) || spec.components.engine.parameters.walStorage.storageClass == original.spec.components.engine.parameters.walStorage.storageClass))"
+                        message: "WAL storage class cannot be changed once WAL storage exists"
+          componentsOrder:
+            - size
+            - storageClass
       componentsOrder:
         - nodes
+        - walStorage
         - synchronousReplication
     advanced:
       label: "Advanced configuration"
@@ -413,6 +459,24 @@ ui:
             required: true
           dataSource:
             provider: storageClasses
+        priorityClassName:
+          uiType: text
+          path: spec.components.engine.parameters.priorityClassName
+          fieldParams:
+            label: "Priority class"
+            placeholder: "Cluster default"
+            helperText: "Optional. Name of an existing Kubernetes PriorityClass for the instance pods. Changing it restarts the instances one at a time."
+          validation:
+            regex:
+              pattern: "^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$"
+              message: "Must be a valid Kubernetes object name (lowercase letters, digits, '-' and '.')"
+        requireTLS:
+          uiType: toggle
+          path: spec.components.engine.parameters.requireTLS
+          fieldParams:
+            label: "Require TLS for client connections"
+            helperText: "Rejects unencrypted connections. Clients must connect with TLS; libpq's default sslmode=prefer does, sslmode=disable is refused. Applied without a restart."
+            defaultValue: true
         configuration:
           uiType: text
           path: spec.components.engine.parameters.postgresql.parameters
@@ -427,6 +491,8 @@ ui:
             maxRows: 8
       componentsOrder:
         - storageClass
+        - priorityClassName
+        - requireTLS
         - configuration
   sectionsOrder:
     - databaseVersion

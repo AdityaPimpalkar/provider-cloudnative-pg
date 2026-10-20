@@ -1,0 +1,28 @@
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: pg-src
+spec:
+  providerRef:
+    name: provider-cloudnative-pg
+  version: "17.10"
+  components:
+    engine:
+      type: postgresql
+      replicas: 1
+      resources:
+        requests:
+          cpu: 250m
+          memory: 512Mi
+        limits:
+          cpu: "1"
+          memory: 1Gi
+      storage:
+        size: 1Gi
+  backup:
+    enabled: true
+    classRef:
+      name: cnpg-barman-plugin
+    storages:
+      - storageRef:
+          name: s3mock-s3

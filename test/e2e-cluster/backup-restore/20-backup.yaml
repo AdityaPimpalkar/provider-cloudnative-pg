@@ -1,0 +1,13 @@
+apiVersion: backup.openeverest.io/v1alpha1
+kind: Backup
+metadata:
+  name: pg-src-backup
+spec:
+  origin:
+    type: Instance
+    instanceRef:
+      name: pg-src
+  classRef:
+    name: cnpg-barman-plugin
+  storageRef:
+    name: s3mock-s3

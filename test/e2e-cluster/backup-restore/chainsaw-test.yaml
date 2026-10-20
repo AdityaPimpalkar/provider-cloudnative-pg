@@ -1,0 +1,120 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/kyverno/chainsaw/main/.schemas/json/test-chainsaw-v1alpha1.json
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: backup-restore
+spec:
+  description: |
+    Restore into a new Instance (R-BK-5) on the full OpenEverest platform: write
+    data to a source Instance, take a Backup, create a second Instance with a
+    Backup dataSource, and check the data is there, and that the source keeps its
+    data while the restored Instance exists and after it is deleted.
+  catch:
+    - script:
+        content: kubectl get instance,cluster,backup.backup.openeverest.io,backup.postgresql.cnpg.io,restore.backup.openeverest.io,objectstore,pod -n "$NAMESPACE" -o wide
+    - script:
+        content: kubectl get instance -n "$NAMESPACE" -o yaml
+    - script:
+        content: kubectl get restore.backup.openeverest.io,objectstore -n "$NAMESPACE" -o yaml
+    - podLogs:
+        namespace: provider-system
+        selector: app.kubernetes.io/name=provider-cloudnative-pg
+        tail: 200
+  steps:
+    - name: platform-ready
+      try:
+        - script:
+            content: |
+              set -e
+              kubectl wait --for=condition=Available -n everest-system deploy --all --timeout=60s
+              kubectl wait --for=condition=Available -n provider-system deploy/provider-cloudnative-pg deploy/cnpg-operator --timeout=60s
+              kubectl get backupclass cnpg-barman-plugin
+
+    - name: start-s3mock
+      try:
+        - apply:
+            file: 00-s3mock.yaml
+        - script:
+            timeout: 120s
+            content: kubectl wait --for=condition=Available deployment/s3mock -n "$NAMESPACE" --timeout=110s
+
+    - name: create-source
+      try:
+        - apply:
+            file: 10-source.yaml
+        - script:
+            timeout: 600s
+            content: |
+              set -e
+              kubectl wait --for=create cluster/pg-src -n "$NAMESPACE" --timeout=60s
+              kubectl wait --for=condition=Ready cluster/pg-src -n "$NAMESPACE" --timeout=480s
+              kubectl wait --for=jsonpath='{.status.phase}'=Ready instance/pg-src -n "$NAMESPACE" --timeout=60s
+
+    - name: seed-source-data
+      try:
+        - script:
+            content: |
+              set -e
+              kubectl exec -n "$NAMESPACE" pg-src-1 -c postgres -- psql -v ON_ERROR_STOP=1 -d app -c \
+                "CREATE TABLE e2e_restore (id int PRIMARY KEY, note text); INSERT INTO e2e_restore VALUES (1, 'openeverest');"
+
+    - name: backup-source
+      try:
+        - apply:
+            file: 20-backup.yaml
+        - script:
+            timeout: 360s
+            content: kubectl wait --for=jsonpath='{.status.state}'=Succeeded backup.backup.openeverest.io/pg-src-backup -n "$NAMESPACE" --timeout=330s
+
+    - name: restore-into-new-instance
+      try:
+        - apply:
+            file: 30-dest.yaml
+        - script:
+            timeout: 720s
+            content: |
+              set -e
+              kubectl wait --for=create restore.backup.openeverest.io/pg-dest-datasource -n "$NAMESPACE" --timeout=120s
+              kubectl wait --for=create cluster/pg-dest -n "$NAMESPACE" --timeout=120s
+              kubectl wait --for=condition=Ready cluster/pg-dest -n "$NAMESPACE" --timeout=480s
+              kubectl wait --for=condition=DataSourceReady instance/pg-dest -n "$NAMESPACE" --timeout=120s
+              kubectl wait --for=jsonpath='{.status.state}'=Succeeded restore.backup.openeverest.io/pg-dest-datasource -n "$NAMESPACE" --timeout=60s
+              kubectl wait --for=jsonpath='{.status.phase}'=Ready instance/pg-dest -n "$NAMESPACE" --timeout=120s
+
+    - name: verify-restored-data
+      try:
+        - script:
+            content: |
+              set -e
+              row() { kubectl exec -n "$NAMESPACE" "$1" -c postgres -- psql -v ON_ERROR_STOP=1 -d app -tAc 'SELECT note FROM e2e_restore WHERE id = 1'; }
+              got="$(row pg-dest-1)"
+              echo "restored row: $got"
+              test "$got" = openeverest
+              # Restoring into a new Instance leaves the source data in place.
+              got="$(row pg-src-1)"
+              echo "source row while both exist: $got"
+              test "$got" = openeverest
+
+    - name: source-survives-restored-instance-deletion
+      try:
+        - script:
+            timeout: 180s
+            content: |
+              set -e
+              kubectl delete instance/pg-dest -n "$NAMESPACE" --wait=true --timeout=150s
+              got="$(kubectl exec -n "$NAMESPACE" pg-src-1 -c postgres -- psql -v ON_ERROR_STOP=1 -d app -tAc 'SELECT note FROM e2e_restore WHERE id = 1')"
+              echo "source row after deleting the restored Instance: $got"
+              test "$got" = openeverest
+              # TODO(#47): also require objectstore/s3mock-s3 to survive; today the
+              # restored Instance can take over its ownership, so deleting it may
+              # garbage-collect the source's ObjectStore.
+
+    - name: cleanup
+      try:
+        - script:
+            timeout: 300s
+            content: |
+              set -e
+              kubectl delete instance/pg-dest -n "$NAMESPACE" --ignore-not-found --wait=true --timeout=120s
+              kubectl delete backup.backup.openeverest.io --all -n "$NAMESPACE" --wait=true --timeout=60s
+              kubectl delete instance/pg-src -n "$NAMESPACE" --wait=true --timeout=110s
