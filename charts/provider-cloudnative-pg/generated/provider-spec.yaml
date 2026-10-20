@@ -1079,6 +1079,87 @@ spec:
               type: boolean
             resizeInUseVolumes:
               type: boolean
+            walStorage:
+              properties:
+                pvcTemplate:
+                  properties:
+                    accessModes:
+                      items:
+                        type: string
+                      type: array
+                    dataSource:
+                      properties:
+                        apiGroup:
+                          type: string
+                        kind:
+                          type: string
+                        name:
+                          type: string
+                      type: object
+                    dataSourceRef:
+                      properties:
+                        apiGroup:
+                          type: string
+                        kind:
+                          type: string
+                        name:
+                          type: string
+                        namespace:
+                          type: string
+                      type: object
+                    resources:
+                      properties:
+                        limits:
+                          additionalProperties:
+                            properties:
+                              format:
+                                type: string
+                            type: object
+                          type: object
+                        requests:
+                          additionalProperties:
+                            properties:
+                              format:
+                                type: string
+                            type: object
+                          type: object
+                      type: object
+                    selector:
+                      properties:
+                        matchExpressions:
+                          items:
+                            properties:
+                              key:
+                                type: string
+                              operator:
+                                type: string
+                              values:
+                                items:
+                                  type: string
+                                type: array
+                            type: object
+                          type: array
+                        matchLabels:
+                          additionalProperties:
+                            type: string
+                          type: object
+                      type: object
+                    storageClassName:
+                      type: string
+                    volumeAttributesClassName:
+                      type: string
+                    volumeMode:
+                      type: string
+                    volumeName:
+                      type: string
+                  type: object
+                resizeInUseVolumes:
+                  type: boolean
+                size:
+                  type: string
+                storageClass:
+                  type: string
+              type: object
           type: object
       type: postgresql
   defaultVersion: "17.10"
@@ -1442,6 +1523,8 @@ spec:
                             celExpressions:
                               - celExpr: spec.components.engine.storage.size >= original.spec.components.engine.storage.size
                                 message: Disk size cannot be decreased
+                              - celExpr: '!has(original.spec.components.engine.parameters.walStorage.size) || has(spec.components.engine.parameters.walStorage.size)'
+                                message: Separate WAL storage cannot be disabled once configured
                         required: true
                     memory-limits:
                       fieldParams:
@@ -1479,6 +1562,49 @@ spec:
                 - numberOfnodes
                 - resources-limits
               uiType: group
+            walStorage:
+              components:
+                size:
+                  fieldParams:
+                    badge: Gi
+                    badgeToApi: true
+                    helperText: The WAL disk cannot be shrunk. Growing it requires an expandable StorageClass.
+                    label: WAL disk size
+                  path: spec.components.engine.parameters.walStorage.size
+                  uiType: number
+                  validation:
+                    int: true
+                    min: 1
+                    modes:
+                      edit:
+                        celExpressions:
+                          - celExpr: '!has(original.spec.components.engine.parameters.walStorage.size) || spec.components.engine.parameters.walStorage.size >= original.spec.components.engine.parameters.walStorage.size'
+                            message: WAL disk size cannot be decreased
+                    required: true
+                storageClass:
+                  dataSource:
+                    provider: storageClasses
+                  fieldParams:
+                    helperText: Optional. Uses the default StorageClass when omitted, not the data disk's class. Cannot be changed once WAL storage exists.
+                    label: WAL storage class
+                  path: spec.components.engine.parameters.walStorage.storageClass
+                  uiType: select
+                  validation:
+                    modes:
+                      edit:
+                        celExpressions:
+                          - celExpr: '!has(original.spec.components.engine.parameters.walStorage.size) || (has(spec.components.engine.parameters.walStorage.storageClass) == has(original.spec.components.engine.parameters.walStorage.storageClass) && (!has(spec.components.engine.parameters.walStorage.storageClass) || spec.components.engine.parameters.walStorage.storageClass == original.spec.components.engine.parameters.walStorage.storageClass))'
+                            message: WAL storage class cannot be changed once WAL storage exists
+              componentsOrder:
+                - size
+                - storageClass
+              description: Store WAL on a dedicated volume. Once configured, separate WAL storage cannot be disabled.
+              groupType: toggleable
+              label: Separate WAL storage
+              uiType: group
+          componentsOrder:
+            - nodes
+            - walStorage
           description: Configure the resources your new database will have access to.
           label: Resources details
       sectionsOrder:

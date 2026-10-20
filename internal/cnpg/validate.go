@@ -19,6 +19,11 @@ func ValidateCustomSpec(custom *components.CNPGCustomSpec) error {
 			return fmt.Errorf("priorityClassName %q is invalid: %s", custom.PriorityClassName, strings.Join(errs, "; "))
 		}
 	}
+	if custom.WALStorage != nil {
+		if size := custom.WALStorage.GetSizeOrNil(); size == nil || size.Sign() <= 0 {
+			return fmt.Errorf("walStorage requires a valid positive size or pvcTemplate storage request")
+		}
+	}
 	if custom.Bootstrap != nil {
 		if err := ValidateBootstrap(custom.Bootstrap); err != nil {
 			return err

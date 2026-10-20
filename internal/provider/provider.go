@@ -279,6 +279,7 @@ func buildClusterSpec(engine corev1alpha1.ComponentSpec, custom components.CNPGC
 		Instances:            int(*engine.Replicas),
 		PriorityClassName:    custom.PriorityClassName,
 		StorageConfiguration: storage,
+		WalStorage:           custom.WALStorage,
 		Resources: corev1.ResourceRequirements{
 			Requests: corev1.ResourceList{
 				corev1.ResourceCPU:    *engine.Resources.Requests.Cpu(),

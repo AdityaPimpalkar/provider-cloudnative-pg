@@ -26,6 +26,10 @@ type CNPGCustomSpec struct {
 	// connections. Applied by CNPG with a configuration reload, no restart.
 	RequireTLS *bool `json:"requireTLS,omitempty"`
 
+	// WALStorage provisions a separate WAL PVC per PostgreSQL instance using
+	// CNPG's native storage configuration. Once enabled it cannot be removed.
+	WALStorage *cnpgv1.StorageConfiguration `json:"walStorage,omitempty"`
+
 	ResizeInUseVolumes *bool `json:"resizeInUseVolumes,omitempty"`
 
 	PersistentVolumeClaimTemplate *corev1.PersistentVolumeClaimSpec `json:"pvcTemplate,omitempty"`
