@@ -163,7 +163,7 @@ func TestCPURuleMatchesUIRegex(t *testing.T) {
 			"0", "0.0", "0m", "-1", "-500m", "0.0005", "1.0001",
 		} {
 			uiOK := uiRule.MatchString(value)
-			goOK := validateCPU("request", resource.MustParse(value)) == nil
+			goOK := validateCPU(corev1.ResourceRequestsCPU, resource.MustParse(value)) == nil
 			if uiOK != goOK {
 				t.Errorf("%q: UI regex accepts=%t, Validate accepts=%t", value, uiOK, goOK)
 			}
