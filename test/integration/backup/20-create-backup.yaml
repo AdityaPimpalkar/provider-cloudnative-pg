@@ -1,0 +1,14 @@
+apiVersion: backup.openeverest.io/v1alpha1
+kind: Backup
+metadata:
+  name: on-demand-backup
+spec:
+  origin:
+    type: Instance
+    instanceRef:
+      name: backup-test
+  classRef:
+    name: cnpg-barman-plugin
+  storageRef:
+    name: s3mock-s3
+  deletionPolicy: Delete

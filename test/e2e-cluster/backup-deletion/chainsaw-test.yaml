@@ -1,0 +1,155 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/kyverno/chainsaw/main/.schemas/json/test-chainsaw-v1alpha1.json
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: backup-deletion
+spec:
+  description: |
+    Backup lifecycle on the full OpenEverest platform: schedule time retention is
+    delegated to Barman through the ObjectStore, deleting a Backup with
+    deletionPolicy Retain keeps its data in the object store, and deleting one
+    with deletionPolicy Delete removes that base backup's objects (R-BK-4).
+  catch:
+    - script:
+        content: kubectl get instance,cluster,backup.backup.openeverest.io,backup.postgresql.cnpg.io,objectstore,job,pod -n "$NAMESPACE" -o wide
+    - script:
+        content: kubectl get backup.backup.openeverest.io,backup.postgresql.cnpg.io -n "$NAMESPACE" -o yaml
+    - script:
+        content: kubectl logs -n "$NAMESPACE" -l backup.openeverest.io/data-deletion=true --tail=100
+    - script:
+        content: kubectl exec -n "$NAMESPACE" s3-client -- curl -s "http://s3mock:9090/backups?list-type=2"
+    - podLogs:
+        namespace: provider-system
+        selector: app.kubernetes.io/name=provider-cloudnative-pg
+        tail: 200
+  steps:
+    - name: platform-ready
+      try:
+        - script:
+            content: |
+              set -e
+              kubectl wait --for=condition=Available -n everest-system deploy --all --timeout=60s
+              kubectl wait --for=condition=Available -n provider-system deploy/provider-cloudnative-pg deploy/cnpg-operator --timeout=60s
+              kubectl get backupclass cnpg-barman-plugin
+
+    - name: start-s3mock
+      try:
+        - apply:
+            file: ../../testdata/s3mock.yaml
+        - script:
+            timeout: 150s
+            content: |
+              set -e
+              kubectl wait --for=condition=Available deployment/s3mock -n "$NAMESPACE" --timeout=110s
+              kubectl run s3-client -n "$NAMESPACE" --image=curlimages/curl:8.11.1 --restart=Never --command -- sleep 3600
+              kubectl wait --for=condition=Ready pod/s3-client -n "$NAMESPACE" --timeout=30s
+
+    - name: create-instance
+      try:
+        - apply:
+            file: 10-instance.yaml
+        - script:
+            timeout: 600s
+            content: |
+              set -e
+              kubectl wait --for=create cluster/pg-del -n "$NAMESPACE" --timeout=60s
+              kubectl wait --for=condition=Ready cluster/pg-del -n "$NAMESPACE" --timeout=480s
+              kubectl wait --for=jsonpath='{.status.phase}'=Ready instance/pg-del -n "$NAMESPACE" --timeout=60s
+
+    - name: retention-delegated-to-barman
+      try:
+        - script:
+            content: kubectl wait --for=jsonpath='{.spec.retentionPolicy}'=30d objectstore/s3mock-s3 -n "$NAMESPACE" --timeout=60s
+
+    # CNPG runs one backup at a time per cluster, so take them one after the other.
+    - name: take-backups
+      try:
+        - apply:
+            file: 20-backup-retain.yaml
+        - script:
+            timeout: 360s
+            content: kubectl wait --for=jsonpath='{.status.state}'=Succeeded backup.backup.openeverest.io/pg-del-retain -n "$NAMESPACE" --timeout=330s
+        - apply:
+            file: 20-backup-delete.yaml
+        - script:
+            timeout: 360s
+            content: kubectl wait --for=jsonpath='{.status.state}'=Succeeded backup.backup.openeverest.io/pg-del-delete -n "$NAMESPACE" --timeout=330s
+
+    - name: record-backup-objects
+      try:
+        - script:
+            content: |
+              set -e
+              # Number of objects under a prefix; fails unless S3Mock returns a bucket listing.
+              objects() {
+                listing="$(kubectl exec -n "$NAMESPACE" s3-client -- curl -sf "http://s3mock:9090/backups?list-type=2&prefix=$1")"
+                case "$listing" in *ListBucketResult*) ;; *) echo "unexpected S3 listing: $listing" >&2; return 1 ;; esac
+                printf '%s' "$listing" | grep -o '<Key>' | wc -l | tr -d ' '
+              }
+              for b in retain delete; do
+                # Plugin backups leave status.serverName empty; Barman then uses the
+                # cluster name, as the provider's deletion Job does.
+                server="$(kubectl get backup.postgresql.cnpg.io/pg-del-$b -n "$NAMESPACE" -o jsonpath='{.status.serverName}')"
+                server="${server:-$(kubectl get backup.postgresql.cnpg.io/pg-del-$b -n "$NAMESPACE" -o jsonpath='{.spec.cluster.name}')}"
+                id="$(kubectl get backup.postgresql.cnpg.io/pg-del-$b -n "$NAMESPACE" -o jsonpath='{.status.backupId}')"
+                test -n "$server" && test -n "$id"
+                prefix="$server/base/$id/"
+                keys="$(objects "$prefix")"
+                echo "$b: $keys object(s) under s3://backups/$prefix"
+                test "$keys" -gt 0
+                kubectl annotate backup.backup.openeverest.io/pg-del-$b -n "$NAMESPACE" e2e.openeverest.io/s3-prefix="$prefix"
+              done
+
+    - name: delete-retain-keeps-data
+      try:
+        - script:
+            timeout: 120s
+            content: |
+              set -e
+              # Number of objects under a prefix; fails unless S3Mock returns a bucket listing.
+              objects() {
+                listing="$(kubectl exec -n "$NAMESPACE" s3-client -- curl -sf "http://s3mock:9090/backups?list-type=2&prefix=$1")"
+                case "$listing" in *ListBucketResult*) ;; *) echo "unexpected S3 listing: $listing" >&2; return 1 ;; esac
+                printf '%s' "$listing" | grep -o '<Key>' | wc -l | tr -d ' '
+              }
+              prefix="$(kubectl get backup.backup.openeverest.io/pg-del-retain -n "$NAMESPACE" -o jsonpath='{.metadata.annotations.e2e\.openeverest\.io/s3-prefix}')"
+              kubectl delete backup.backup.openeverest.io/pg-del-retain -n "$NAMESPACE" --wait=true --timeout=90s
+              kubectl wait --for=delete backup.postgresql.cnpg.io/pg-del-retain -n "$NAMESPACE" --timeout=30s
+              if kubectl get job/delete-backup-pg-del-retain -n "$NAMESPACE" >/dev/null 2>&1; then
+                echo "unexpected data deletion Job for a Retain backup"
+                exit 1
+              fi
+              keys="$(objects "$prefix")"
+              echo "retain: $keys object(s) left under s3://backups/$prefix"
+              test "$keys" -gt 0
+
+    - name: delete-removes-data
+      try:
+        - script:
+            timeout: 300s
+            content: |
+              set -e
+              # Number of objects under a prefix; fails unless S3Mock returns a bucket listing.
+              objects() {
+                listing="$(kubectl exec -n "$NAMESPACE" s3-client -- curl -sf "http://s3mock:9090/backups?list-type=2&prefix=$1")"
+                case "$listing" in *ListBucketResult*) ;; *) echo "unexpected S3 listing: $listing" >&2; return 1 ;; esac
+                printf '%s' "$listing" | grep -o '<Key>' | wc -l | tr -d ' '
+              }
+              prefix="$(kubectl get backup.backup.openeverest.io/pg-del-delete -n "$NAMESPACE" -o jsonpath='{.metadata.annotations.e2e\.openeverest\.io/s3-prefix}')"
+              kubectl delete backup.backup.openeverest.io/pg-del-delete -n "$NAMESPACE" --wait=false
+              kubectl wait --for=condition=Complete job/delete-backup-pg-del-delete -n "$NAMESPACE" --timeout=210s
+              kubectl wait --for=delete backup.backup.openeverest.io/pg-del-delete -n "$NAMESPACE" --timeout=60s
+              keys="$(objects "$prefix")"
+              echo "delete: $keys object(s) left under s3://backups/$prefix"
+              test "$keys" -eq 0
+
+    - name: cleanup
+      try:
+        - script:
+            timeout: 300s
+            content: |
+              set -e
+              kubectl patch instance/pg-del -n "$NAMESPACE" --type=json -p='[{"op":"replace","path":"/spec/backup/storages/0/schedules","value":[]}]'
+              kubectl wait --for=delete scheduledbackup/pg-del-yearly -n "$NAMESPACE" --timeout=60s
+              kubectl delete backups.backup.openeverest.io --all -n "$NAMESPACE" --wait=true --timeout=120s
+              kubectl delete instance/pg-del -n "$NAMESPACE" --wait=true --timeout=110s

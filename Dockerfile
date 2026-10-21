@@ -1,5 +1,5 @@
 # Build the provider binary
-FROM golang:1.27 AS builder
+FROM --platform=$BUILDPLATFORM golang:1.27 AS builder
 ARG TARGETOS
 ARG TARGETARCH
 
