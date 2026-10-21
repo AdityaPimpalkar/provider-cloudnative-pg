@@ -9,6 +9,8 @@ export interface InstanceResources {
   memoryRequestGi: number;
   memoryLimitGi: number;
   diskGi: number;
+  /** When set, turns on Separate WAL storage with a WAL disk of this size. */
+  walGi?: number;
 }
 
 /**
@@ -88,6 +90,12 @@ export class DatabaseFormPage {
     };
     for (const [path, value] of Object.entries(values)) {
       await this.field(path).fill(String(value));
+    }
+    if (r.walGi !== undefined) {
+      // A toggleable group: its fields render only once switched on. The WAL
+      // storage class select then defaults to the first StorageClass.
+      await this.page.getByLabel("Enable Separate WAL storage").check();
+      await this.field("spec.components.engine.parameters.walStorage.size").fill(String(r.walGi));
     }
   }
 }

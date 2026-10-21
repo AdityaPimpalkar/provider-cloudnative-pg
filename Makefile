@@ -150,6 +150,10 @@ helm-lint: helm-deps ## Lint the Helm chart.
 test-integration: ## Run all integration tests (chainsaw) against a running cluster (image-volume extensions need Kubernetes 1.35+).
 	. ./test/vars.sh && chainsaw test --config ./test/integration/.chainsaw.yaml ./test/integration
 
+.PHONY: test-integration-wal
+test-integration-wal: ## Run separate WAL volume tests (needs jq; physical expansion is checked only on an expandable default StorageClass).
+	. ./test/vars.sh && chainsaw test --config ./test/integration/.chainsaw.yaml ./test/integration/wal-storage
+
 .PHONY: test-integration-core
 test-integration-core: ## Run core integration tests (chainsaw).
 	. ./test/vars.sh && chainsaw test --config ./test/integration/.chainsaw.yaml ./test/integration/core
@@ -179,12 +183,24 @@ test-e2e: ## Run Playwright UI tests against a running OpenEverest UI (EVEREST_U
 	cd test/e2e && npm ci && npx playwright install chromium && npx playwright test
 
 .PHONY: check-openeverest-restarts
-check-openeverest-restarts: ## Fail if any OpenEverest core container has restarted (e.g. a crash-looping controller).
+OPENEVEREST_RESTARTS_BASELINE ?= /tmp/openeverest-restarts-baseline
+
+openeverest-restarts = kubectl get pods -n $(EVEREST_NAMESPACE) -o jsonpath='{range .items[*]}{range .status.containerStatuses[*]}{.restartCount}{"\n"}{end}{end}' | awk '{s+=$$1} END {print s+0}'
+
+.PHONY: record-openeverest-restarts
+record-openeverest-restarts: ## Wait for OpenEverest core pods to be Ready and record their restart count as the baseline.
+	kubectl wait --for=condition=Ready pod --all -n $(EVEREST_NAMESPACE) --timeout=3m
 	@kubectl get pods -n $(EVEREST_NAMESPACE)
-	@restarts="$$(kubectl get pods -n $(EVEREST_NAMESPACE) -o jsonpath='{range .items[*]}{range .status.containerStatuses[*]}{.restartCount}{"\n"}{end}{end}' | awk '{s+=$$1} END {print s+0}')"; \
-	if [ "$$restarts" -gt 0 ]; then \
+	@$(openeverest-restarts) > $(OPENEVEREST_RESTARTS_BASELINE)
+
+.PHONY: check-openeverest-restarts
+check-openeverest-restarts: ## Fail if any OpenEverest core container restarted since record-openeverest-restarts (e.g. a crash-looping controller).
+	@kubectl get pods -n $(EVEREST_NAMESPACE)
+	@baseline="$$(cat $(OPENEVEREST_RESTARTS_BASELINE) 2>/dev/null)"; baseline="$${baseline:-0}"; \
+	restarts="$$($(openeverest-restarts))"; \
+	if [ "$$restarts" -gt "$$baseline" ]; then \
 	  kubectl logs -n $(EVEREST_NAMESPACE) deploy/everest-controller --previous --tail=50 || true; \
-	  echo "OpenEverest containers restarted $$restarts time(s)"; \
+	  echo "OpenEverest containers restarted $$((restarts - baseline)) time(s) since the platform settled"; \
 	  exit 1; \
 	fi
 

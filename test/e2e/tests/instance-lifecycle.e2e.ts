@@ -84,3 +84,37 @@ test("create a PostgreSQL instance through the UI, wait for Ready, delete it", a
     createdInstance = undefined;
   });
 });
+
+test("create a PostgreSQL instance with separate WAL storage through the UI", async ({ page }) => {
+  const name = `pg-wal-${Date.now().toString(36)}`;
+  const form = new DatabaseFormPage(page);
+  const databases = new DatabasesPage(page);
+  // WAL disk sized differently from the data disk, so each PVC is attributable.
+  const withWal: InstanceResources = { ...resources, walGi: 2 };
+
+  await test.step("create with the Separate WAL storage toggle on", async () => {
+    await form.open();
+    await form.fillBasics(name, namespace);
+    createdInstance = name;
+    await form.configureAndCreate(withWal);
+  });
+
+  await test.step("instance becomes Ready", async () => {
+    await databases.waitForPhase(name, "Ready", 10 * 60 * 1_000);
+  });
+
+  const clusterStep = kubectlEnabled ? test.step : test.step.skip;
+  await clusterStep("CloudNativePG keeps WAL on its own volume", async () => {
+    const get = (resource: string, jsonPath: string) => kubectlJsonPath(namespace, resource, jsonPath);
+    expect(get(`cluster/${name}`, "{.spec.walStorage.size}")).toBe(`${withWal.walGi}Gi`);
+    expect(get(`cluster/${name}`, "{.spec.storage.size}")).toBe(`${withWal.diskGi}Gi`);
+    expect(get(`pvc/${name}-1-wal`, "{.status.phase}")).toBe("Bound");
+    expect(get(`pvc/${name}-1-wal`, "{.spec.resources.requests.storage}")).toBe(`${withWal.walGi}Gi`);
+    expect(get(`pvc/${name}-1`, "{.spec.resources.requests.storage}")).toBe(`${withWal.diskGi}Gi`);
+  });
+
+  await test.step("delete through the UI", async () => {
+    await databases.delete(name);
+    createdInstance = undefined;
+  });
+});

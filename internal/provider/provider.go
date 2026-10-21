@@ -104,6 +104,10 @@ func (p *Provider) Validate(c *controller.Context) error {
 		return err
 	}
 
+	if err := cnpg.ValidateSynchronous(engine, &custom); err != nil {
+		return err
+	}
+
 	if err := cnpg.ValidateScheduling(engine.SchedulingPolicy, &custom); err != nil {
 		return err
 	}
@@ -279,6 +283,7 @@ func buildClusterSpec(engine corev1alpha1.ComponentSpec, custom components.CNPGC
 		Instances:            int(*engine.Replicas),
 		PriorityClassName:    custom.PriorityClassName,
 		StorageConfiguration: storage,
+		WalStorage:           custom.WALStorage,
 		Resources: corev1.ResourceRequirements{
 			Requests: corev1.ResourceList{
 				corev1.ResourceCPU:    *engine.Resources.Requests.Cpu(),
@@ -318,6 +323,10 @@ func (p *Provider) Status(c *controller.Context) (controller.Status, error) {
 	pg := &cnpgv1.Cluster{}
 	if err := c.Get(pg, c.Name()); err != nil {
 		return controller.Pending("Waiting to get CloudNativePG cluster resource"), nil
+	}
+
+	if status, failed := failedClusterStatus(pg); failed {
+		return status, nil
 	}
 
 	readyCondition := meta.FindStatusCondition(pg.Status.Conditions, string(cnpgv1.ConditionClusterReady))
@@ -400,6 +409,28 @@ func (p *Provider) Status(c *controller.Context) (controller.Status, error) {
 	}
 
 	return controller.Initializing("waiting for CloudNativePG cluster to initialize"), nil
+}
+
+// failedClusterStatus maps CNPG phases that stop reconciliation until someone
+// intervenes. In-progress phases (switchover, failover, upgrade, replica
+// creation, supervised switchover) are left to the caller.
+func failedClusterStatus(pg *cnpgv1.Cluster) (controller.Status, bool) {
+	switch pg.Status.Phase {
+	case cnpgv1.PhaseUnrecoverable,
+		cnpgv1.PhaseFailurePlugin,
+		cnpgv1.PhaseUnknownPlugin,
+		cnpgv1.PhaseCannotCreateClusterObjects,
+		cnpgv1.PhaseImageCatalogError,
+		cnpgv1.PhaseArchitectureBinaryMissing,
+		cnpgv1.PhaseDefinitionInvalid:
+		message := pg.Status.Phase
+		if pg.Status.PhaseReason != "" {
+			message += ": " + pg.Status.PhaseReason
+		}
+		return controller.Failed(message), true
+	default:
+		return controller.Status{}, false
+	}
 }
 
 // Cleanup handles deletion of provider-managed resources.
