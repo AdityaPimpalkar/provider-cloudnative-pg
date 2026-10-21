@@ -158,6 +158,10 @@ test-integration-wal: ## Run separate WAL volume tests (needs jq; physical expan
 test-integration-core: ## Run core integration tests (chainsaw).
 	. ./test/vars.sh && chainsaw test --config ./test/integration/.chainsaw.yaml ./test/integration/core
 
+.PHONY: test-integration-backup
+test-integration-backup: ## Run backup integration tests (requires CNPG, the Barman plugin, and BackupClasses).
+	. ./test/vars.sh && chainsaw test --config ./test/integration/.chainsaw.yaml ./test/integration/backup
+
 .PHONY: test-integration-core-replicaset
 test-integration-core-replicaset: ## Run core replicaset integration tests (chainsaw).
 	. ./test/vars.sh && chainsaw test --config ./test/integration/.chainsaw.yaml ./test/integration/core/replicaset
@@ -173,6 +177,10 @@ test-integration-imagevolume: ## Run the image-volume extensions integration tes
 .PHONY: test-e2e-cluster
 test-e2e-cluster: ## Run e2e-cluster suites (chainsaw) against OpenEverest core and this provider (see `make install-openeverest`).
 	. ./test/vars.sh && chainsaw test --config ./test/e2e-cluster/.chainsaw.yaml ./test/e2e-cluster
+
+.PHONY: test-e2e-cluster-backup-deletion
+test-e2e-cluster-backup-deletion: ## Run the backup retention and deletion e2e-cluster suite.
+	. ./test/vars.sh && chainsaw test --config ./test/e2e-cluster/.chainsaw.yaml ./test/e2e-cluster/backup-deletion
 
 .PHONY: test-e2e-cluster-backup-restore
 test-e2e-cluster-backup-restore: ## Run the restore-into-a-new-Instance e2e-cluster suite.
