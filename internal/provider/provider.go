@@ -347,8 +347,7 @@ func (p *Provider) Status(c *controller.Context) (controller.Status, error) {
 			return extStatus, nil
 		}
 
-		requireTLS := custom.RequireTLS != nil && *custom.RequireTLS
-		details, ok := connectionDetails(c, pg, requireTLS)
+		details, ok := connectionDetails(c, pg)
 		if !ok {
 			return controller.Provisioning("waiting to get CloudNativePG credentials secret"), nil
 		}

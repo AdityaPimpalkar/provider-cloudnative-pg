@@ -15,25 +15,25 @@ import (
 )
 
 const (
-	// cnpgPostgresPortName is the Service port CloudNativePG creates
-	// (pkg/specs.PostgresContainerName, used by buildInstanceServicePorts).
-	cnpgPostgresPortName = "postgres"
-
-	// libpq sslmodes. CloudNativePG forces ssl=on, and its default pg_hba rule
-	// ("host all all all") still accepts unencrypted connections, which is
-	// libpq's prefer. requireTLS inserts "hostnossl all all all reject".
-	sslModePrefer  = "prefer"
+	// sslModeRequire is the client sslmode published in connection details.
+	// CloudNativePG always serves TLS, and the instance Service port is not
+	// configurable, so require works whether or not requireTLS is set.
+	// prefer is libpq's default, so publishing it adds nothing for libpq.
+	// pg-connection-string >= 2.7 treats prefer, require, and verify-ca as
+	// verify-full, which fails against the operator-managed server
+	// certificate; the README says where the cluster CA lives.
 	sslModeRequire = "require"
 
 	// hostRProperty is the DNS name of the read Service (<cluster>-r).
 	// That Service targets every ready instance, including the primary.
 	hostRProperty = "host-r"
 	// hostROProperty is the DNS name of the read-only Service (<cluster>-ro).
-	// That Service targets ready replicas and excludes the primary.
+	// That Service targets ready replicas and excludes the primary, so a
+	// cluster with fewer than two instances has no endpoints for it.
 	hostROProperty = "host-ro"
 )
 
-func connectionDetails(c *controller.Context, pg *cnpgv1.Cluster, requireTLS bool) (controller.ConnectionDetails, bool) {
+func connectionDetails(c *controller.Context, pg *cnpgv1.Cluster) (controller.ConnectionDetails, bool) {
 	secretName, database, ok := connectionIdentity(pg)
 	if !ok {
 		return controller.ConnectionDetails{}, false
@@ -50,17 +50,18 @@ func connectionDetails(c *controller.Context, pg *cnpgv1.Cluster, requireTLS boo
 	}
 
 	host := serviceHost(pg.GetServiceReadWriteName(), c.Namespace())
-	port := connectionPort(c, pg, secret)
-	sslmode := clientSSLMode(requireTLS)
+	port := connectionPort(secret)
 	extra := map[string]string{
 		"database":   database,
 		"secretName": secretName,
-		"sslmode":    sslmode,
+		"sslmode":    sslModeRequire,
 	}
 	if pg.IsReadServiceEnabled() {
 		extra[hostRProperty] = serviceHost(pg.GetServiceReadName(), c.Namespace())
 	}
-	if pg.IsReadOnlyServiceEnabled() {
+	// The -ro Service selects replicas only. One instance is the primary, so
+	// that Service has no endpoints and is left out of the connection Secret.
+	if pg.IsReadOnlyServiceEnabled() && pg.Spec.Instances >= 2 {
 		extra[hostROProperty] = serviceHost(pg.GetServiceReadOnlyName(), c.Namespace())
 	}
 
@@ -71,7 +72,7 @@ func connectionDetails(c *controller.Context, pg *cnpgv1.Cluster, requireTLS boo
 		Port:                 port,
 		Username:             username,
 		Password:             password,
-		URI:                  postgresURI(username, password, host, port, database, sslmode),
+		URI:                  postgresURI(username, password, host, port, database, sslModeRequire),
 		AdditionalProperties: extra,
 	}, true
 }
@@ -86,34 +87,11 @@ func connectionIdentity(pg *cnpgv1.Cluster) (secretName, database string, ok boo
 	return "", "", false
 }
 
-func connectionPort(c *controller.Context, pg *cnpgv1.Cluster, secret *corev1.Secret) string {
-	if port := servicePostgresPort(c, pg.GetServiceReadWriteName()); port != "" {
-		return port
-	}
+func connectionPort(secret *corev1.Secret) string {
 	if port := string(secret.Data["port"]); port != "" {
 		return port
 	}
 	return strconv.Itoa(cnpgpostgres.ServerPort)
-}
-
-func servicePostgresPort(c *controller.Context, name string) string {
-	svc := &corev1.Service{}
-	if err := c.Get(svc, name); err != nil {
-		return ""
-	}
-	for _, port := range svc.Spec.Ports {
-		if port.Name == cnpgPostgresPortName && port.Port > 0 {
-			return strconv.Itoa(int(port.Port))
-		}
-	}
-	return ""
-}
-
-func clientSSLMode(requireTLS bool) string {
-	if requireTLS {
-		return sslModeRequire
-	}
-	return sslModePrefer
 }
 
 func serviceHost(name, namespace string) string {

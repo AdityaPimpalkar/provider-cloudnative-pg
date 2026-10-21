@@ -269,6 +269,8 @@ Component names are defined by this provider — see [definition/provider.yaml](
 More examples live in [examples/](examples/), including
 [TimescaleDB](examples/instance-timescaledb.yaml) and [pgvector](examples/instance-pgvector.yaml).
 
+### Connection details
+
 Watch it come up and read the connection details:
 
 ```bash
@@ -276,8 +278,32 @@ kubectl get instance my-instance -w
 kubectl get instance my-instance -o jsonpath='{.status.connectionSecretRef.name}'
 ```
 
-The credentials (host, port, username, password, uri) live in the connection
-Secret named by `.status.connectionSecretRef.name`.
+The credentials (`host`, `port`, `username`, `password`, `uri`, `sslmode`,
+`host-r`, `host-ro`) live in the connection Secret named by
+`.status.connectionSecretRef.name`.
+
+- `host` is `<cluster>-rw.<namespace>.svc`, the read-write Service.
+- `host-r` is `<cluster>-r.<namespace>.svc`. That Service targets every ready
+  instance, including the primary. It is omitted when the read Service is
+  disabled.
+- `host-ro` is `<cluster>-ro.<namespace>.svc`. That Service targets ready
+  replicas and excludes the primary, so it is published only when the
+  read-only Service is enabled and `replicas` is at least 2.
+- `port` is the `port` key of the credential Secret. CloudNativePG writes
+  `5432` there. A user-supplied basic-auth Secret may omit it, and then the
+  port is `5432`. The Service port is not configurable.
+- `sslmode` is `require`, and `uri` includes it. CloudNativePG always serves
+  TLS, so this works whether or not [`requireTLS`](#require-tls) is set.
+  libpq's default `prefer` is not published.
+
+`node-postgres` (`pg-connection-string` 2.7 and later) treats `sslmode=prefer`,
+`require`, and `verify-ca` as `verify-full` (`ssl: true`). That check fails
+for CloudNativePG's operator-managed server certificate. The CA certificate
+is the `ca.crt` key in the `<cluster>-ca` Secret, or in the Secret named by
+`certificates.serverCASecret` when you bring your own. Use that file as
+`sslrootcert` with `sslmode=verify-full` to authenticate the server.
+`pg-connection-string` also accepts `sslmode=no-verify`, which encrypts
+without checking the certificate. That value is not a libpq `sslmode`.
 
 ### Scrape metrics with Prometheus
 
@@ -408,7 +434,11 @@ CloudNativePG's own rules for them come first and use TLS or the local socket.
 
 Clients must connect with TLS. libpq's default `sslmode=prefer` does;
 `sslmode=disable` is refused. Use `sslmode=verify-full` with the cluster CA to
-also authenticate the server.
+also authenticate the server. The CA certificate is the `ca.crt` key in the
+`<cluster>-ca` Secret, or in the Secret named by `certificates.serverCASecret`
+when you bring your own. The connection Secret's `uri` uses `sslmode=require`;
+see [Connection details](#connection-details) for how `node-postgres` treats
+that value.
 
 The UI enables this by default for new instances. Unset means off, so existing
 instances keep accepting unencrypted clients until you turn it on.

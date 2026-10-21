@@ -45,16 +45,15 @@ func TestConnectionDetails(t *testing.T) {
 				credentialSecret("custom-app", "app", "p@ss word", "5432"),
 				credentialSecret("pg-app", "other", "nope", "5432"),
 				credentialSecret("pg-superuser", "postgres", "admin", "5432"),
-				postgresService("pg-rw", 15432),
 			},
 			wantPhase: corev1alpha1.InstancePhaseReady,
 			want: connectionWant(
-				"pg-rw.ns.svc", "15432", "app", "p@ss word", "app", "custom-app", sslModePrefer, true, true,
-				"postgresql://app:p%40ss%20word@pg-rw.ns.svc:15432/app?sslmode=prefer",
+				"pg-rw.ns.svc", "5432", "app", "p@ss word", "app", "custom-app", sslModeRequire, true, true,
+				"postgresql://app:p%40ss%20word@pg-rw.ns.svc:5432/app?sslmode=require",
 			),
 		},
 		{
-			name: "requireTLS sets sslmode require",
+			name: "requireTLS keeps sslmode require",
 			cluster: readyCluster(&cnpgv1.Cluster{
 				Spec: cnpgv1.ClusterSpec{Bootstrap: appDatabase},
 			}),
@@ -69,7 +68,7 @@ func TestConnectionDetails(t *testing.T) {
 			),
 		},
 		{
-			name: "port comes from the credential secret when the service has none",
+			name: "port comes from the credential secret",
 			cluster: readyCluster(&cnpgv1.Cluster{
 				Spec: cnpgv1.ClusterSpec{Bootstrap: appDatabase},
 			}),
@@ -78,8 +77,8 @@ func TestConnectionDetails(t *testing.T) {
 			},
 			wantPhase: corev1alpha1.InstancePhaseReady,
 			want: connectionWant(
-				"pg-rw.ns.svc", "15432", "app", "secret", "app", "custom-app", sslModePrefer, true, true,
-				"postgresql://app:secret@pg-rw.ns.svc:15432/app?sslmode=prefer",
+				"pg-rw.ns.svc", "15432", "app", "secret", "app", "custom-app", sslModeRequire, true, true,
+				"postgresql://app:secret@pg-rw.ns.svc:15432/app?sslmode=require",
 			),
 		},
 		{
@@ -92,8 +91,8 @@ func TestConnectionDetails(t *testing.T) {
 			},
 			wantPhase: corev1alpha1.InstancePhaseReady,
 			want: connectionWant(
-				"pg-rw.ns.svc", strconv.Itoa(cnpgpostgres.ServerPort), "app", "secret", "app", "custom-app", sslModePrefer, true, true,
-				"postgresql://app:secret@pg-rw.ns.svc:"+strconv.Itoa(cnpgpostgres.ServerPort)+"/app?sslmode=prefer",
+				"pg-rw.ns.svc", strconv.Itoa(cnpgpostgres.ServerPort), "app", "secret", "app", "custom-app", sslModeRequire, true, true,
+				"postgresql://app:secret@pg-rw.ns.svc:"+strconv.Itoa(cnpgpostgres.ServerPort)+"/app?sslmode=require",
 			),
 		},
 		{
@@ -113,8 +112,8 @@ func TestConnectionDetails(t *testing.T) {
 			},
 			wantPhase: corev1alpha1.InstancePhaseReady,
 			want: connectionWant(
-				"pg-rw.ns.svc", strconv.Itoa(cnpgpostgres.ServerPort), "postgres", "admin", "postgres", "custom-superuser", sslModePrefer, true, true,
-				"postgresql://postgres:admin@pg-rw.ns.svc:"+strconv.Itoa(cnpgpostgres.ServerPort)+"/postgres?sslmode=prefer",
+				"pg-rw.ns.svc", strconv.Itoa(cnpgpostgres.ServerPort), "postgres", "admin", "postgres", "custom-superuser", sslModeRequire, true, true,
+				"postgresql://postgres:admin@pg-rw.ns.svc:"+strconv.Itoa(cnpgpostgres.ServerPort)+"/postgres?sslmode=require",
 			),
 		},
 		{
@@ -147,8 +146,8 @@ func TestConnectionDetails(t *testing.T) {
 			},
 			wantPhase: corev1alpha1.InstancePhaseReady,
 			want: connectionWant(
-				"pg-rw.ns.svc", "5432", "app", "secret", "app", "custom-app", sslModePrefer, true, false,
-				"postgresql://app:secret@pg-rw.ns.svc:5432/app?sslmode=prefer",
+				"pg-rw.ns.svc", "5432", "app", "secret", "app", "custom-app", sslModeRequire, true, false,
+				"postgresql://app:secret@pg-rw.ns.svc:5432/app?sslmode=require",
 			),
 		},
 		{
@@ -168,8 +167,25 @@ func TestConnectionDetails(t *testing.T) {
 			},
 			wantPhase: corev1alpha1.InstancePhaseReady,
 			want: connectionWant(
-				"pg-rw.ns.svc", "5432", "app", "secret", "app", "custom-app", sslModePrefer, false, true,
-				"postgresql://app:secret@pg-rw.ns.svc:5432/app?sslmode=prefer",
+				"pg-rw.ns.svc", "5432", "app", "secret", "app", "custom-app", sslModeRequire, false, true,
+				"postgresql://app:secret@pg-rw.ns.svc:5432/app?sslmode=require",
+			),
+		},
+		{
+			name: "single instance omits the read-only service",
+			cluster: readyCluster(&cnpgv1.Cluster{
+				Spec: cnpgv1.ClusterSpec{
+					Instances: 1,
+					Bootstrap: appDatabase,
+				},
+			}),
+			objects: []client.Object{
+				credentialSecret("custom-app", "app", "secret", "5432"),
+			},
+			wantPhase: corev1alpha1.InstancePhaseReady,
+			want: connectionWant(
+				"pg-rw.ns.svc", "5432", "app", "secret", "app", "custom-app", sslModeRequire, true, false,
+				"postgresql://app:secret@pg-rw.ns.svc:5432/app?sslmode=require",
 			),
 		},
 	}
@@ -197,9 +213,12 @@ func TestConnectionDetails(t *testing.T) {
 func readyCluster(pg *cnpgv1.Cluster) *cnpgv1.Cluster {
 	pg.Name = "pg"
 	pg.Namespace = testNamespace
+	if pg.Spec.Instances == 0 {
+		pg.Spec.Instances = 2
+	}
 	pg.Status = cnpgv1.ClusterStatus{
-		Instances:      1,
-		ReadyInstances: 1,
+		Instances:      pg.Spec.Instances,
+		ReadyInstances: pg.Spec.Instances,
 		Conditions: []metav1.Condition{{
 			Type:   string(cnpgv1.ConditionClusterReady),
 			Status: metav1.ConditionTrue,
@@ -219,18 +238,6 @@ func credentialSecret(name, username, password, port string) *corev1.Secret {
 	return &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: testNamespace},
 		Data:       data,
-	}
-}
-
-func postgresService(name string, port int32) *corev1.Service {
-	return &corev1.Service{
-		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: testNamespace},
-		Spec: corev1.ServiceSpec{
-			Ports: []corev1.ServicePort{{
-				Name: cnpgPostgresPortName,
-				Port: port,
-			}},
-		},
 	}
 }
 
