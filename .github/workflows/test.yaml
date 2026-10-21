@@ -81,6 +81,9 @@ jobs:
           HELM_NAMESPACE=provider-system make install-barman-plugin
           kubectl wait --for=condition=Established crd/objectstores.barmancloud.cnpg.io --timeout=2m
 
+      - name: Install BackupClasses
+        run: make install-backupclasses
+
       - name: Deploy provider
         run: make deploy-provider-ci
 

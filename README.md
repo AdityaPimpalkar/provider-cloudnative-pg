@@ -120,7 +120,47 @@ Stateful workloads additionally report:
 | Backups (on demand) | ✅ | operator-native (`executionMode: ProviderManaged`) via the Barman Cloud Plugin; one backup storage per Instance (CNPG supports a single WAL archive) |
 | Restore | ✅ | from a succeeded Backup via Barman |
 | Scheduled backups | ✅ | `spec.backup.storages[].schedules` → CNPG `ScheduledBackup`; mirrored as OpenEverest `Backup` CRs |
+| Schedule retention | ✅ | time-based recovery windows are delegated to CNPG/Barman via ObjectStore retentionPolicy; count-based retention is rejected |
+| Backup deletion | ✅ | `deletionPolicy: Delete` removes the Barman base backup; `Retain` removes only the CNPG Backup resource |
 | PITR | ✅ | restore to a point in time via `spec.dataSource` |
+
+### Backup retention and deletion
+
+CNPG retention uses the Barman Cloud Plugin's native recovery window:
+
+```yaml
+retention:
+  type: time
+  duration: 30d
+```
+
+All schedules targeting the same storage, including disabled schedules, must
+specify the same duration or all omit retention (keep all). The window applies
+to that cluster's entire Barman archive, including on-demand backups and WAL,
+not independently to each schedule. Barman preserves the base backup needed to
+recover from the beginning of the window. Count retention is not supported.
+Instances in one namespace that use the same backup storage share its
+ObjectStore, so they must also agree on retention. An Instance whose retention
+would change the policy already stored is refused with a
+`BackupRetentionConflict` on its `BackupConfigured` condition.
+The OpenEverest dev.4 schedule form edits only count retention ("retention
+copies"), which this provider rejects. Leave copies at 0 and set time retention
+through the API or CLI.
+`deletionPolicy: Retain` skips explicit data deletion; it does not exempt a
+backup from Barman's archive-wide retention policy.
+If CNPG removes a backup resource during native catalog cleanup, its Everest
+record is reported as failed/unavailable rather than starting a replacement backup.
+
+`deletionPolicy: Delete` runs a one-off `barman-cloud-backup-delete` Job
+(`delete-backup-<name>`) for the backup's Barman ID. The Job meets the
+restricted Pod Security Standard. Backups that never received a Barman ID
+(not started, or failed early) have no data to delete. If the Job fails, inspect
+its logs and delete the Job to retry. Data deletion runs only while the source
+Instance exists; delete Backups before deleting their Instance.
+
+The backup integration and e2e suites check native policy configuration and
+per-backup deletion in the object store, not the passage of a multi-day
+recovery window.
 
 ### Separate WAL volume
 
@@ -385,6 +425,7 @@ make generate           # RBAC, provider spec, Helm chart sync
 make run                # run the provider locally against the cluster
 make test               # unit tests
 make test-integration   # chainsaw suites under test/integration/
+make test-integration-backup # backup integration suite against S3Mock
 make dev-down
 ```
 
@@ -414,8 +455,9 @@ code generation, and the backup/restore interfaces are documented once for all p
 | `definition/` | Provider identity, component types, versions, topologies, backup classes |
 | `charts/provider-cloudnative-pg/` | Helm chart (`generated/` is produced by `make generate`) |
 | `config/rbac/role.yaml` | Generated `ClusterRole` — do not edit |
-| `test/integration/` | Chainsaw suites: `core/replicaset`, `extensions/bundled`, `extensions/imagevolume`, `tls-only`, `wal-storage` |
-| `test/e2e-cluster/` | Chainsaw e2e suites on the full OpenEverest platform: `backup-restore` |
+| `test/integration/` | Chainsaw suites: `core/replicaset`, `backup`, `extensions/bundled`, `extensions/imagevolume`, `tls-only`, `wal-storage` |
+| `test/e2e-cluster/` | Chainsaw e2e suites on the full OpenEverest platform: `backup-restore`, `backup-deletion` |
+| `test/testdata/` | Fixtures shared by the suites (S3Mock object store) |
 | `test/e2e/` | Playwright UI tests against the OpenEverest UI |
 | `test/vars.sh` | Pinned versions used by tests |
 | `examples/` | Example `Instance` resources |
@@ -427,7 +469,7 @@ code generation, and the backup/restore interfaces are documented once for all p
 - **Unit tests** — `make test`.
 - **Integration tests** — chainsaw suites under [test/integration/](test/integration/).
   Individual suites are also exposed as make targets (`make test-integration-core`,
-  `make test-integration-core-replicaset`, `make test-integration-extensions`, …).
+  `make test-integration-backup`, `make test-integration-core-replicaset`, `make test-integration-extensions`, …).
   The extension suites run a one-instance PostgreSQL and use each extension through `psql`.
   `extensions/imagevolume` needs Kubernetes ImageVolume (1.35+ with containerd 2.1+); the dev
   and CI k3d cluster ([dev/k3d_config.yaml](dev/k3d_config.yaml)) runs k3s 1.36, so
@@ -440,7 +482,9 @@ code generation, and the backup/restore interfaces are documented once for all p
   user journeys on the full platform: the released OpenEverest core (server, controller and CRDs,
   at the version pinned in `go.mod`) installed by `make install-openeverest`, plus this provider.
   `backup-restore` writes data, takes a Backup, restores it into a new Instance through
-  `spec.dataSource`, and checks the data. Run with `make test-e2e-cluster`.
+  `spec.dataSource`, and checks the data. `backup-deletion` checks that schedule retention reaches
+  the Barman ObjectStore, that deleting a `Retain` Backup keeps its objects in the object store, and
+  that deleting a `Delete` Backup removes them. Run with `make test-e2e-cluster`.
 - **E2E UI tests** — Playwright tests under [test/e2e/](test/e2e/) drive the OpenEverest UI: they
   create a PostgreSQL instance through the provider's generated form, wait for it to be Ready, and
   delete it; a second test turns on **Separate WAL storage** and checks the WAL volume. Run with `make test-e2e` (installs Chromium for Playwright) against a UI at `EVEREST_URL` (default
