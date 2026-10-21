@@ -13,10 +13,6 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, labeled]
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-
 permissions:
   contents: read
 
@@ -32,6 +28,11 @@ jobs:
       github.event_name != 'pull_request' ||
       (contains(github.event.pull_request.labels.*.name, 'test/e2e') &&
        (github.event.action != 'labeled' || github.event.label.name == 'test/e2e'))
+    # Job-level, so a run whose job is skipped (e.g. a push racing the label)
+    # cannot cancel one that runs.
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}
+      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4

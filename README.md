@@ -64,6 +64,7 @@ provider itself is covered under [Installation](#installation).
 | Custom configuration | ✅ | PostgreSQL GUCs via `spec.components.engine.parameters.postgresql` |
 | Bootstrap (`initdb`) | ✅ | database name, owner, and credentials secret |
 | Managed roles | ✅ | CloudNativePG managed roles with readiness gating in `Status()` |
+| Synchronous replication | ✅ | `parameters.postgresql.synchronous`; see [Synchronous replication](#synchronous-replication) |
 | TLS-only connections | ✅ | `parameters.requireTLS: true` rejects unencrypted client connections; see [Require TLS](#require-tls) |
 | Pod scheduling | ✅ | `spec.components.engine.schedulingPolicy` (all fields), or `parameters.affinity` — not both |
 | Pod priority | ✅ | `parameters.priorityClassName` → CloudNativePG `spec.priorityClassName`; the PriorityClass must exist, and changing it rolls the instance pods |
@@ -115,12 +116,15 @@ Stateful workloads additionally report:
 |---|---|---|
 | Persistent storage | ✅ | `spec.components.engine.storage` |
 | Storage expansion | ✅ | when the StorageClass allows volume expansion (`resizeInUseVolumes`) |
+| Separate WAL volume | ✅ | `spec.components.engine.parameters.walStorage` maps directly to CNPG `spec.walStorage` |
 | Backups (on demand) | ✅ | operator-native (`executionMode: ProviderManaged`) via the Barman Cloud Plugin; one backup storage per Instance (CNPG supports a single WAL archive) |
 | Restore | ✅ | from a succeeded Backup via Barman |
 | Scheduled backups | ✅ | `spec.backup.storages[].schedules` → CNPG `ScheduledBackup`; mirrored as OpenEverest `Backup` CRs |
 | Schedule retention | ✅ | time-based recovery windows are delegated to CNPG/Barman via ObjectStore retentionPolicy; count-based retention is rejected |
 | Backup deletion | ✅ | `deletionPolicy: Delete` removes the Barman base backup; `Retain` removes only the CNPG Backup resource |
 | PITR | ✅ | restore to a point in time via `spec.dataSource` |
+
+### Backup retention and deletion
 
 CNPG retention uses the Barman Cloud Plugin's native recovery window:
 
@@ -157,6 +161,44 @@ Instance exists; delete Backups before deleting their Instance.
 The backup integration and e2e suites check native policy configuration and
 per-backup deletion in the object store, not the passage of a multi-day
 recovery window.
+
+### Separate WAL volume
+
+Configure WAL independently of the data volume:
+
+In the UI, the Resources section exposes a **Separate WAL storage** toggle
+(OpenEverest dev.4 or later). It is off by default for new instances, keeping the
+single-volume layout. Enabling it reveals a required **WAL disk size** and an
+optional **WAL storage class** (selectable when WAL storage is first added, then
+fixed). Existing WAL settings turn the toggle on
+automatically. Dev.4 cannot lock the switch in edit mode, so validation blocks
+saving with the toggle off once separate WAL storage is configured.
+
+```yaml
+spec:
+  components:
+    engine:
+      storage:
+        size: 20Gi
+      parameters:
+        walStorage:
+          size: 5Gi
+          storageClass: fast-storage
+          resizeInUseVolumes: true
+```
+
+`walStorage` uses CNPG's native storage configuration, including optional
+`pvcTemplate`. Omit it to keep WAL on the data volume. Each PostgreSQL instance
+gets its own WAL PVC. Set a positive `size` (or a `pvcTemplate` storage request,
+as CNPG allows); omit `storageClass` to use the default StorageClass. The
+data-volume storage class is not inherited.
+
+CNPG manages provisioning, migration when adding a WAL volume, and expansion.
+Once configured, WAL storage cannot be removed. CNPG validates updates and
+rejects shrinking volumes; expansion requires a StorageClass/CSI driver that
+supports it (`allowVolumeExpansion: true`). Adding a volume to an existing
+cluster can restart instances; follow CNPG's storage lifecycle guidance.
+This setting provisions storage, not a WAL disk-usage alert or monitoring policy.
 
 ## Installation
 
@@ -312,6 +354,40 @@ The technology-specific knobs worth knowing about:
 | `monitoring` | `engine` | CloudNativePG monitoring configuration (custom queries, metrics TLS, …) |
 | `monitoring.prometheus` | topology | Create a PodMonitor for the instance; see [Scrape metrics with Prometheus](#scrape-metrics-with-prometheus) |
 
+### Synchronous replication
+
+Replication is asynchronous by default. To make each commit wait for standbys,
+set CloudNativePG's
+[`synchronous`](https://cloudnative-pg.io/documentation/current/replication/#synchronous-replication)
+configuration (the UI exposes it as the **Synchronous replication** toggle under
+Resources):
+
+```yaml
+spec:
+  components:
+    engine:
+      replicas: 3
+      parameters:
+        postgresql:
+          synchronous:
+            method: any           # any = quorum, first = priority order
+            number: 1             # standbys that must confirm each commit
+            dataDurability: required
+```
+
+- `number` must be lower than `replicas` (plus any listed standby names); the
+  provider rejects other values before applying the Cluster.
+- With the default `synchronous_commit = on`, a commit returns once the required
+  standbys have flushed its WAL to durable storage. Set
+  `postgresql.parameters.synchronous_commit` to `remote_apply` to also wait until
+  the change is visible on them, or `remote_write` for a weaker guarantee.
+  Applications can lower `synchronous_commit` per transaction, and those
+  transactions are not covered by the guarantee.
+- `dataDurability: required` stops writes when too few standbys are available.
+  `preferred` falls back to asynchronous replication and restores synchronous
+  replication when standbys return. The provider does not alert on that
+  fallback; watch the replication metrics.
+
 ### Require TLS
 
 CloudNativePG always serves TLS, but its default `pg_hba.conf` also accepts
@@ -379,7 +455,7 @@ code generation, and the backup/restore interfaces are documented once for all p
 | `definition/` | Provider identity, component types, versions, topologies, backup classes |
 | `charts/provider-cloudnative-pg/` | Helm chart (`generated/` is produced by `make generate`) |
 | `config/rbac/role.yaml` | Generated `ClusterRole` — do not edit |
-| `test/integration/` | Chainsaw suites: `core/replicaset`, `backup`, `extensions/bundled`, `extensions/imagevolume`, `tls-only` |
+| `test/integration/` | Chainsaw suites: `core/replicaset`, `backup`, `extensions/bundled`, `extensions/imagevolume`, `tls-only`, `wal-storage` |
 | `test/e2e-cluster/` | Chainsaw e2e suites on the full OpenEverest platform: `backup-restore`, `backup-deletion` |
 | `test/testdata/` | Fixtures shared by the suites (S3Mock object store) |
 | `test/e2e/` | Playwright UI tests against the OpenEverest UI |
@@ -398,6 +474,10 @@ code generation, and the backup/restore interfaces are documented once for all p
   `extensions/imagevolume` needs Kubernetes ImageVolume (1.35+ with containerd 2.1+); the dev
   and CI k3d cluster ([dev/k3d_config.yaml](dev/k3d_config.yaml)) runs k3s 1.36, so
   `make test-integration` covers it (alone: `make test-integration-imagevolume`).
+  `wal-storage` (`make test-integration-wal`, needs `jq`) grows the WAL volume. On a StorageClass
+  without expansion, such as k3d's `local-path`, it uses an expandable copy and checks that the
+  resize request reaches the WAL PVC; the physical resize is checked only where the default
+  StorageClass expands volumes (e.g. a CSI driver with a resizer).
 - **E2E cluster tests** — chainsaw suites under [test/e2e-cluster/](test/e2e-cluster/) that run
   user journeys on the full platform: the released OpenEverest core (server, controller and CRDs,
   at the version pinned in `go.mod`) installed by `make install-openeverest`, plus this provider.
@@ -407,7 +487,7 @@ code generation, and the backup/restore interfaces are documented once for all p
   that deleting a `Delete` Backup removes them. Run with `make test-e2e-cluster`.
 - **E2E UI tests** — Playwright tests under [test/e2e/](test/e2e/) drive the OpenEverest UI: they
   create a PostgreSQL instance through the provider's generated form, wait for it to be Ready, and
-  delete it. Run with `make test-e2e` (installs Chromium for Playwright) against a UI at `EVEREST_URL` (default
+  delete it; a second test turns on **Separate WAL storage** and checks the WAL volume. Run with `make test-e2e` (installs Chromium for Playwright) against a UI at `EVEREST_URL` (default
   `http://localhost:8080`, e.g. `kubectl -n everest-system port-forward svc/everest 8080:8080`);
   the test namespace defaults to `e2e-ui` (`E2E_NAMESPACE`) and must exist. Set
   `E2E_SKIP_KUBECTL=true` if the test host cannot reach the cluster API: the CNPG Cluster checks are

@@ -19,6 +19,11 @@ func ValidateCustomSpec(custom *components.CNPGCustomSpec) error {
 			return fmt.Errorf("priorityClassName %q is invalid: %s", custom.PriorityClassName, strings.Join(errs, "; "))
 		}
 	}
+	if custom.WALStorage != nil {
+		if size := custom.WALStorage.GetSizeOrNil(); size == nil || size.Sign() <= 0 {
+			return fmt.Errorf("walStorage requires a valid positive size or pvcTemplate storage request")
+		}
+	}
 	if custom.Bootstrap != nil {
 		if err := ValidateBootstrap(custom.Bootstrap); err != nil {
 			return err
@@ -105,6 +110,24 @@ func ValidateScheduling(policy *commonv1alpha1.SchedulingPolicy, custom *compone
 	}
 	if policy.Affinity != nil || len(policy.NodeSelector) > 0 || len(policy.Tolerations) > 0 {
 		return fmt.Errorf("parameters.affinity cannot be combined with schedulingPolicy affinity, nodeSelector or tolerations")
+	}
+	return nil
+}
+
+// ValidateSynchronous mirrors the CloudNativePG webhook so an invalid
+// synchronous replication setting is reported before the Cluster is applied.
+func ValidateSynchronous(engine corev1alpha1.ComponentSpec, custom *components.CNPGCustomSpec) error {
+	if custom.PostgresConfiguration == nil || custom.PostgresConfiguration.Synchronous == nil || engine.Replicas == nil {
+		return nil
+	}
+	sync := custom.PostgresConfiguration.Synchronous
+	if sync.Number < 1 {
+		return fmt.Errorf("postgresql.synchronous.number must be at least 1")
+	}
+	candidates := int(*engine.Replicas) + len(sync.StandbyNamesPre) + len(sync.StandbyNamesPost)
+	if sync.Number >= candidates {
+		return fmt.Errorf("postgresql.synchronous.number (%d) must be lower than the number of replicas (%d) plus listed standby names",
+			sync.Number, *engine.Replicas)
 	}
 	return nil
 }
