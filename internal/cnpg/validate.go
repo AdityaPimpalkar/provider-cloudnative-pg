@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	cnpgv1 "github.com/cloudnative-pg/cloudnative-pg/api/v1"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/util/validation"
 
 	"github.com/adityapimpalkar/provider-cloudnative-pg/definition/components"
@@ -89,6 +91,12 @@ func ValidateEngine(engine corev1alpha1.ComponentSpec) error {
 	if engine.Resources.Limits.Cpu().IsZero() || engine.Resources.Limits.Memory().IsZero() {
 		return fmt.Errorf("both CPU and memory limits are required")
 	}
+	if err := validateCPU(corev1.ResourceRequestsCPU, *engine.Resources.Requests.Cpu()); err != nil {
+		return err
+	}
+	if err := validateCPU(corev1.ResourceLimitsCPU, *engine.Resources.Limits.Cpu()); err != nil {
+		return err
+	}
 	if engine.Resources.Requests.Cpu().Cmp(*engine.Resources.Limits.Cpu()) > 0 {
 		return fmt.Errorf("CPU request %s is greater than limit %s",
 			engine.Resources.Requests.Cpu().String(),
@@ -98,6 +106,20 @@ func ValidateEngine(engine corev1alpha1.ComponentSpec) error {
 		return fmt.Errorf("memory request %s is greater than limit %s",
 			engine.Resources.Requests.Memory().String(),
 			engine.Resources.Limits.Memory().String())
+	}
+	return nil
+}
+
+// validateCPU applies the UI's CPU rule (positive, at most millicore precision)
+// to the parsed quantity. The API server stores quantities canonically (0.5 as
+// 500m, 1000 as 1k), so the UI regex cannot be matched against the string here.
+func validateCPU(name corev1.ResourceName, cpu resource.Quantity) error {
+	if cpu.Sign() <= 0 {
+		return fmt.Errorf("%s %s must be greater than zero", name, cpu.String())
+	}
+	if resource.NewMilliQuantity(cpu.MilliValue(), resource.DecimalSI).Cmp(cpu) != 0 {
+		return fmt.Errorf("%s %s is finer than a millicore; use cores (e.g. 0.5, 2) or millicores (e.g. 500m)",
+			name, cpu.String())
 	}
 	return nil
 }
