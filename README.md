@@ -135,6 +135,10 @@ specify the same duration or all omit retention (keep all). The window applies
 to that cluster's entire Barman archive, including on-demand backups and WAL,
 not independently to each schedule. Barman preserves the base backup needed to
 recover from the beginning of the window. Count retention is not supported.
+Instances in one namespace that use the same backup storage share its
+ObjectStore, so they must also agree on retention. An Instance whose retention
+would change the policy already stored is refused with a
+`BackupRetentionConflict` on its `BackupConfigured` condition.
 The OpenEverest dev.4 schedule form edits only count retention ("retention
 copies"), which this provider rejects. Leave copies at 0 and set time retention
 through the API or CLI.

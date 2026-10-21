@@ -12,10 +12,12 @@ import (
 	machineryapi "github.com/cloudnative-pg/machinery/pkg/api"
 	barmancloudv1 "github.com/cloudnative-pg/plugin-barman-cloud/api/v1"
 	backupv1alpha1 "github.com/openeverest/openeverest/v2/api/backup/v1alpha1"
+	corev1alpha1 "github.com/openeverest/openeverest/v2/api/core/v1alpha1"
 	"github.com/openeverest/openeverest/v2/provider-runtime/controller"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 func SyncBackupInfrastructure(c *controller.Context) ([]cnpgv1.PluginConfiguration, error) {
@@ -75,6 +77,9 @@ func SyncBackupInfrastructure(c *controller.Context) ([]cnpgv1.PluginConfigurati
 		if err != nil {
 			return nil, &controller.BackupConfigError{Reason: "InvalidBackupRetention", Message: err.Error()}
 		}
+		if err := checkSharedRetention(c, strg.StorageRef.Name, retention); err != nil {
+			return nil, err
+		}
 		objStore.Spec.RetentionPolicy = retention
 		if err := c.Apply(objStore); err != nil {
 			return nil, fmt.Errorf("apply ObjectStore %q: %w", strg.StorageRef.Name, err)
@@ -89,6 +94,63 @@ func SyncBackupInfrastructure(c *controller.Context) ([]cnpgv1.PluginConfigurati
 			PluginParameterObjectStore: mainName,
 		},
 	}}, nil
+}
+
+// checkSharedRetention guards the ObjectStore every Instance in the namespace
+// shares for a storage (see #47): Barman applies its retentionPolicy to each
+// cluster that archives there, so the last writer would win. When Instances
+// disagree, only one whose policy differs from the stored one is refused, so
+// the others keep reconciling and the stored policy does not change.
+func checkSharedRetention(c *controller.Context, storageName, retention string) error {
+	self := c.Instance()
+	instances := &corev1alpha1.InstanceList{}
+	if err := c.Client().List(c.Context(), instances, client.InNamespace(self.Namespace)); err != nil {
+		return fmt.Errorf("list Instances sharing storage %q: %w", storageName, err)
+	}
+	var conflicts []string
+	for i := range instances.Items {
+		peer := &instances.Items[i]
+		if peer.Name == self.Name || !peer.DeletionTimestamp.IsZero() ||
+			peer.Spec.ProviderRef.Name != self.Spec.ProviderRef.Name ||
+			peer.Spec.Backup == nil || !peer.Spec.Backup.Enabled {
+			continue
+		}
+		for _, strg := range peer.Spec.Backup.Storages {
+			if strg.StorageRef.Name != storageName {
+				continue
+			}
+			// An invalid peer policy fails that Instance's own validation.
+			if policy, err := storageRetentionPolicy(strg); err == nil && policy != retention {
+				conflicts = append(conflicts, fmt.Sprintf("%s (%s)", peer.Name, retentionLabel(policy)))
+			}
+		}
+	}
+	if len(conflicts) == 0 {
+		return nil
+	}
+
+	current := &barmancloudv1.ObjectStore{}
+	if err := c.Get(current, storageName); err != nil {
+		if !apierrors.IsNotFound(err) {
+			return fmt.Errorf("get ObjectStore %q: %w", storageName, err)
+		}
+	} else if current.Spec.RetentionPolicy == retention {
+		return nil
+	}
+	return &controller.BackupConfigError{
+		Reason: "BackupRetentionConflict",
+		Message: fmt.Sprintf(
+			"storage %q is shared in namespace %q with Instances that set a different retention than %s: %s; "+
+				"Barman retention applies to every Instance archiving to the storage, so set the same retention on all of them",
+			storageName, self.Namespace, retentionLabel(retention), strings.Join(conflicts, ", ")),
+	}
+}
+
+func retentionLabel(policy string) string {
+	if policy == "" {
+		return "keep all"
+	}
+	return policy
 }
 
 func buildObjectStore(
