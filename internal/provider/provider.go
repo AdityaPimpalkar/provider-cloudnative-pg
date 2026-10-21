@@ -2,7 +2,6 @@ package provider
 
 import (
 	"fmt"
-	"net/url"
 	"os"
 
 	batchv1 "k8s.io/api/batch/v1"
@@ -348,58 +347,11 @@ func (p *Provider) Status(c *controller.Context) (controller.Status, error) {
 			return extStatus, nil
 		}
 
-		host := fmt.Sprintf("%s.%s.svc", pg.GetServiceReadWriteName(), c.Namespace())
-
-		var (
-			secretName string
-			username   string
-			password   string
-		)
-		for _, candidateSecretName := range []string{pg.GetApplicationSecretName(), pg.GetSuperuserSecretName()} {
-			secret := &corev1.Secret{}
-			if err := c.Get(secret, candidateSecretName); err != nil {
-				continue
-			}
-			u := string(secret.Data["username"])
-			p := string(secret.Data["password"])
-			if u != "" && p != "" {
-				secretName = candidateSecretName
-				username = u
-				password = p
-				break
-			}
-		}
-
-		if username == "" || password == "" {
+		details, ok := connectionDetails(c, pg)
+		if !ok {
 			return controller.Provisioning("waiting to get CloudNativePG credentials secret"), nil
 		}
-
-		database := pg.GetApplicationDatabaseName()
-		if database == "" {
-			database = "postgres"
-		}
-		uri := fmt.Sprintf(
-			"postgresql://%s:%s@%s:%s/%s",
-			url.QueryEscape(username),
-			url.QueryEscape(password),
-			host,
-			"5432",
-			url.PathEscape(database),
-		)
-
-		return controller.ReadyWithConnectionDetails(controller.ConnectionDetails{
-			Type:     "postgresql",
-			Provider: common.ProviderName,
-			Host:     host,
-			Port:     "5432",
-			Username: username,
-			Password: password,
-			URI:      uri,
-			AdditionalProperties: map[string]string{
-				"database":   database,
-				"secretName": secretName,
-			},
-		}), nil
+		return controller.ReadyWithConnectionDetails(details), nil
 	}
 
 	if pg.Status.Instances > 0 {
