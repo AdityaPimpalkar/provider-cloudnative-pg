@@ -1,0 +1,39 @@
+# Instance with TimescaleDB Community Edition enabled.
+#
+# The community edition includes features under the Timescale License (TSL),
+# which is not open source: use it only for internal use or if you hold a
+# license from Timescale. It prohibits offering TimescaleDB to third parties
+# as a database service.
+# https://github.com/timescale/timescaledb/blob/main/tsl/LICENSE-TIMESCALE
+#
+# Prerequisites:
+#   1. OpenEverest CRDs + this provider installed
+#   2. PostgreSQL 18.6 or later (Timescale builds against the latest 18.x minor)
+#   3. Kubernetes ImageVolume support:
+#        - Kubernetes 1.35+, or
+#        - 1.33 / 1.34 with the ImageVolume feature gate enabled
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: my-timescaledb-community
+spec:
+  provider: provider-cloudnative-pg
+  version: "18.6"
+  components:
+    engine:
+      type: postgresql
+      version: "18.6"
+      replicas: 1
+      resources:
+        requests:
+          cpu: "1"
+          memory: 1Gi
+        limits:
+          cpu: "1"
+          memory: 1Gi
+      storage:
+        size: 5Gi
+      parameters:
+        extensions:
+          timescaledbCommunity:
+            enabled: true

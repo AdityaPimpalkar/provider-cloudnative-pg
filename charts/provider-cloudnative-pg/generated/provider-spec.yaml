@@ -3,7 +3,7 @@
 spec:
   componentTypes:
     postgresql:
-      defaultVersion: "17.10"
+      defaultVersion: "18.6"
       versions:
         - image: ghcr.io/cloudnative-pg/postgresql:14.23-standard-trixie
           version: "14.23"
@@ -15,6 +15,8 @@ spec:
           version: "17.10"
         - image: ghcr.io/cloudnative-pg/postgresql:18.4-standard-trixie
           version: "18.4"
+        - image: ghcr.io/cloudnative-pg/postgresql:18.6-standard-trixie
+          version: "18.6"
   components:
     engine:
       parametersSchema:
@@ -606,6 +608,11 @@ spec:
                     enabled:
                       type: boolean
                   type: object
+                timescaledbCommunity:
+                  properties:
+                    enabled:
+                      type: boolean
+                  type: object
                 wal2json:
                   properties:
                     enabled:
@@ -1162,7 +1169,7 @@ spec:
               type: object
           type: object
       type: postgresql
-  defaultVersion: "17.10"
+  defaultVersion: "18.6"
   release:
     version: 0.3.2
   topologies:
@@ -1430,6 +1437,24 @@ spec:
                 celExpressions:
                   - celExpr: '!(has(spec.components.engine.parameters.extensions.timescaledb.enabled) && spec.components.engine.parameters.extensions.timescaledb.enabled) || (spec.version >= "18." && spec.version < "19.")'
                     message: TimescaleDB requires PostgreSQL 18. Select a 18.x database version to enable it.
+            timescaledbCommunity:
+              fieldParams:
+                defaultValue: false
+                helperText: 'TimescaleDB with compression, continuous aggregates and policies. These features are under the Timescale License (TSL), which is not open source: use it only internally or with a license from Timescale; offering it to third parties as a database service is prohibited. PostgreSQL 18.6+ only; preloaded, so only at creation; cannot be disabled or combined with TimescaleDB (Apache-2.0).'
+                label: TimescaleDB Community (Timescale License)
+                modes:
+                  edit:
+                    disabled: true
+                  restore:
+                    disabled: true
+              path: spec.components.engine.parameters.extensions.timescaledbCommunity.enabled
+              uiType: toggle
+              validation:
+                celExpressions:
+                  - celExpr: '!(has(spec.components.engine.parameters.extensions.timescaledbCommunity.enabled) && spec.components.engine.parameters.extensions.timescaledbCommunity.enabled) || (spec.version).matches("^18\\.([6-9]|[1-9][0-9]+)(\\.|$)")'
+                    message: TimescaleDB Community requires PostgreSQL 18.6 or later. Select a newer 18.x database version to enable it.
+                  - celExpr: '!(has(spec.components.engine.parameters.extensions.timescaledbCommunity.enabled) && spec.components.engine.parameters.extensions.timescaledbCommunity.enabled && has(spec.components.engine.parameters.extensions.timescaledb.enabled) && spec.components.engine.parameters.extensions.timescaledb.enabled)'
+                    message: Enable either TimescaleDB (Apache-2.0) or TimescaleDB Community, not both.
             wal2json:
               fieldParams:
                 defaultValue: false
@@ -1448,6 +1473,7 @@ spec:
             - pgvector
             - pgaudit
             - timescaledb
+            - timescaledbCommunity
             - postgis
             - pgrouting
             - pgivm
@@ -1671,11 +1697,14 @@ spec:
         - advanced
   versions:
     - components:
-        engine: "17.10"
-      name: "17.10"
+        engine: "18.6"
+      name: "18.6"
     - components:
         engine: "18.4"
       name: "18.4"
+    - components:
+        engine: "17.10"
+      name: "17.10"
     - components:
         engine: "16.14"
       name: "16.14"

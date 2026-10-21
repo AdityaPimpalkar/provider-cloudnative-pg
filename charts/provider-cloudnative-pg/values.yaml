@@ -117,8 +117,8 @@ extensionCatalog:
   images:
     # Trixie builds from the upstream catalog
     # image-catalogs-extensions/catalog-minimal-trixie.yaml in
-    # https://github.com/cloudnative-pg/artifacts; AGE from
-    # https://github.com/solanicaio/postgresql-extensions.
+    # https://github.com/cloudnative-pg/artifacts; AGE and TimescaleDB
+    # Community from https://github.com/solanicaio/postgresql-extensions.
     - major: 18
       image: ghcr.io/cloudnative-pg/postgresql:18.4-standard-trixie
       extensions:
@@ -126,6 +126,12 @@ extensionCatalog:
           sqlVersion: "2.30.1"
           image:
             reference: ghcr.io/cloudnative-pg/timescaledb-oss:2.30.1-18-trixie
+        # Timescale License (TSL) components: internal use only, or with a
+        # license from Timescale. Needs PostgreSQL 18.6+.
+        - name: timescaledb
+          sqlVersion: "2.31.0"
+          image:
+            reference: ghcr.io/solanicaio/timescaledb:2.31.0-202610210913-18-trixie@sha256:27f856054ab4cc274a44b59114bb9574e0b96ab5ebd7063b67ba146dd1efba62
         - name: postgis
           sqlVersion: "3.6.4"
           image:
