@@ -80,7 +80,8 @@ ImageVolume (1.35+, or 1.33/1.34 + feature gate), and adding one restarts the in
 
 The image-volume images come from a CloudNativePG `ClusterImageCatalog` that the chart renders
 from `extensionCatalog` in its values (default: the official CloudNativePG trixie builds plus
-AGE, pinned by digest). The provider copies the catalog entry of each enabled extension (image,
+AGE and TimescaleDB Community from solanicaio/postgresql-extensions). The provider copies the
+catalog entry of each enabled extension (image,
 paths, env) into the Cluster and passes the `sqlVersion` value to `CREATE EXTENSION`, so admins
 can bump or mirror images with `helm upgrade`, or set `extensionCatalog.create=false` and point
 `extensionCatalog.name` at a catalog they manage (the SQL versions go in
@@ -92,6 +93,7 @@ provider. A new image restarts the instances that use it.
 | pgvector | `pgvector` | ✅ | ✅ no restart | ❌ | PG 14–18, bundled in the `standard` images: no image change. See [examples/instance-pgvector.yaml](examples/instance-pgvector.yaml) |
 | pgAudit | `pgaudit` | ✅ | ✅ restarts | ✅ the operator drops it | PG 14–18, bundled; sets `pgaudit.log: "ddl, role"` unless a value is set in `postgresql.parameters`, and the operator then preloads it and creates it in every database |
 | TimescaleDB OSS | `timescaledb` | ✅ | ❌ creation only ¹ | ❌ | Image volume, preloaded. See [examples/instance-timescaledb.yaml](examples/instance-timescaledb.yaml) |
+| TimescaleDB Community ³ | `timescaledbCommunity` | ✅ | ❌ creation only ¹ | ❌ | Image volume from [solanicaio/postgresql-extensions](https://github.com/solanicaio/postgresql-extensions), preloaded; PostgreSQL **18.6+**; not together with `timescaledb`. See [examples/instance-timescaledb-community.yaml](examples/instance-timescaledb-community.yaml) |
 | PostGIS | `postgis` | ✅ | ✅ restarts | ❌ | Image volume |
 | pgRouting | `pgrouting` | ✅ | ✅ restarts | ❌ | Image volume; requires `postgis` |
 | pg_ivm | `pgivm` | ✅ | ❌ creation only ¹ | ❌ | Image volume, preloaded |
@@ -109,6 +111,15 @@ that.
 privileges set in `postInitApplicationSQL`, which only runs at bootstrap. Default privileges on
 schemas cannot be limited to one schema, so the owner also gets `USAGE` on any other schema the
 `postgres` superuser creates later in the application database.
+
+³ TimescaleDB Community adds the features licensed under the
+[Timescale License (TSL)](https://github.com/timescale/timescaledb/blob/main/tsl/LICENSE-TIMESCALE):
+columnstore compression, continuous aggregates, and compression, retention and refresh policies.
+The TSL is **not** open source: use it only for internal use or if you hold a license from
+Timescale. It prohibits offering TimescaleDB to third parties as a database service. Enabling the
+toggle is your acceptance of the TSL; the provider itself remains Apache-2.0. Timescale builds
+these binaries against the latest PostgreSQL minor, so they need PostgreSQL 18.6 or later. The
+editions use different binaries, so an instance cannot switch between them.
 
 Stateful workloads additionally report:
 
@@ -248,7 +259,7 @@ metadata:
 spec:
   providerRef:
     name: provider-cloudnative-pg
-  version: "17.10"
+  version: "18.6"
   components:
     engine:
       type: postgresql
@@ -344,8 +355,9 @@ parameter (`spec.topology.parameters.monitoring.prometheus`), not a component.
 
 | Version bundle | Default | postgresql |
 |---|---|---|
-| `17.10` | ✅ | `17.10` (`ghcr.io/cloudnative-pg/postgresql:17.10-standard-trixie`) |
+| `18.6` | ✅ | `18.6` (`ghcr.io/cloudnative-pg/postgresql:18.6-standard-trixie`) |
 | `18.4` | | `18.4` |
+| `17.10` | | `17.10` |
 | `16.14` | | `16.14` |
 | `15.18` | | `15.18` |
 | `14.23` | | `14.23` |
@@ -370,7 +382,7 @@ The technology-specific knobs worth knowing about:
 |---|---|---|
 | `bootstrap.initdb` | `engine` | Initial database name, owner, and optional credentials Secret |
 | `postgresql` | `engine` | Full CloudNativePG `PostgresConfiguration` (GUCs, sync replicas, …) |
-| `extensions.*` | `engine` | First-class extensions; see [Extensions](#extensions). TimescaleDB also defaults `timescaledb.telemetry_level=off` and `max_locks_per_transaction=128` unless set in `postgresql.parameters` |
+| `extensions.*` | `engine` | First-class extensions; see [Extensions](#extensions). TimescaleDB (both editions) also defaults `timescaledb.telemetry_level=off` and `max_locks_per_transaction=128` unless set in `postgresql.parameters` |
 | `affinity` | `engine` | CloudNativePG `AffinityConfiguration`; rejected together with `schedulingPolicy` `affinity`, `nodeSelector` or `tolerations` |
 | `managed` | `engine` | Managed PostgreSQL roles |
 | `resizeInUseVolumes` | `engine` | Allow PVC expansion on running instances |

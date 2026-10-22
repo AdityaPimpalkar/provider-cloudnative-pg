@@ -1,0 +1,25 @@
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: tsdb-community
+spec:
+  providerRef:
+    name: provider-cloudnative-pg
+  version: "18.6"
+  components:
+    engine:
+      type: postgresql
+      replicas: 1
+      resources:
+        requests:
+          cpu: 250m
+          memory: 512Mi
+        limits:
+          cpu: "1"
+          memory: 1Gi
+      storage:
+        size: 1Gi
+      parameters:
+        extensions:
+          timescaledbCommunity:
+            enabled: true
