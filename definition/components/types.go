@@ -60,6 +60,14 @@ type ExtensionsSpec struct {
 	// timescaledb in the application database. Cannot be turned off once enabled.
 	TimescaleDB *ExtensionToggle `json:"timescaledb,omitempty"`
 
+	// TimescaleDBCommunity (image volume, Community Edition) is TimescaleDB with
+	// the Timescale License (TSL) components such as compression and continuous
+	// aggregates. The TSL is not open source: it allows internal use but
+	// prohibits offering TimescaleDB to third parties as a database service.
+	// Requires PostgreSQL 18.6+; cannot be combined with timescaledb. Can only
+	// be enabled at creation; cannot be turned off.
+	TimescaleDBCommunity *ExtensionToggle `json:"timescaledbCommunity,omitempty"`
+
 	// PgVector runs CREATE EXTENSION vector in the application database. It ships
 	// in the CloudNativePG standard images (PostgreSQL 14+), so no image change or
 	// restart is needed. Cannot be turned off once enabled.

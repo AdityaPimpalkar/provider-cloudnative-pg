@@ -11,7 +11,7 @@
 
 componentTypes:
   postgresql:
-    defaultVersion: "17.10"
+    defaultVersion: "18.6"
     versions:
       - version: "14.23"
         image: ghcr.io/cloudnative-pg/postgresql:14.23-standard-trixie
@@ -23,17 +23,22 @@ componentTypes:
         image: ghcr.io/cloudnative-pg/postgresql:17.10-standard-trixie
       - version: "18.4"
         image: ghcr.io/cloudnative-pg/postgresql:18.4-standard-trixie
+      - version: "18.6"
+        image: ghcr.io/cloudnative-pg/postgresql:18.6-standard-trixie
 
 # Version bundles — curated engine versions exposed as spec.version on an Instance.
 # Top-level defaultVersion is used when spec.version is omitted.
-defaultVersion: "17.10"
+defaultVersion: "18.6"
 versions:
-  - name: "17.10"
+  - name: "18.6"
     components:
-      engine: "17.10"
+      engine: "18.6"
   - name: "18.4"
     components:
       engine: "18.4"
+  - name: "17.10"
+    components:
+      engine: "17.10"
   - name: "16.14"
     components:
       engine: "16.14"

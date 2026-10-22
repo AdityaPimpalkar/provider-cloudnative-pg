@@ -31,7 +31,7 @@ metadata:
 spec:
   instances: 3
   imagePullPolicy: IfNotPresent
-  (ends_with(imageName, '17.10-standard-trixie')): true
+  (ends_with(imageName, '18.6-standard-trixie')): true
   inheritedMetadata:
     labels:
       core.openeverest.io/component: engine

@@ -41,11 +41,19 @@ type extension struct {
 	// sqlExtension is the CREATE EXTENSION name in the application database (e.g.
 	// timescaledb); empty when there is no CREATE EXTENSION or the operator
 	// manages it.
-	sqlExtension     string
-	preloadLibraries []string
+	sqlExtension string
+	// minPostgresVersion is the oldest PostgreSQL release (major.minor) the
+	// extension image runs on, when its binaries need a newer minor than the
+	// image-volume major alone guarantees.
+	minPostgresVersion string
+	preloadLibraries   []string
 	// defaultParameters apply unless set in parameters.postgresql.parameters.
 	defaultParameters map[string]string
 	requires          []string
+	// conflicts lists extensions that cannot be enabled together with this
+	// one, such as the two TimescaleDB editions, which create the same SQL
+	// extension from different images.
+	conflicts []string
 	// bootstrapSQL runs as the superuser in the application database at initdb,
 	// so such extensions can only be enabled when the instance is created.
 	bootstrapSQL func(owner string) string
@@ -59,7 +67,23 @@ var firstClassExtensions = []extension{
 		catalogEntry:     "timescaledb-oss",
 		sqlExtension:     "timescaledb",
 		preloadLibraries: []string{"timescaledb"},
+		conflicts:        []string{"timescaledbCommunity"},
 		// From the upstream timescaledb-oss Cluster example.
+		defaultParameters: map[string]string{
+			"timescaledb.telemetry_level": "off",
+			"max_locks_per_transaction":   "128",
+		},
+	},
+	{
+		field:        "timescaledbCommunity",
+		toggle:       func(e *components.ExtensionsSpec) *components.ExtensionToggle { return e.TimescaleDBCommunity },
+		catalogEntry: "timescaledb",
+		sqlExtension: "timescaledb",
+		// Timescale builds the TSL library against the latest minor; 2.30+
+		// calls visibilitymap_clear_locked, which PostgreSQL added in 18.6.
+		minPostgresVersion: "18.6",
+		preloadLibraries:   []string{"timescaledb"},
+		conflicts:          []string{"timescaledb"},
 		defaultParameters: map[string]string{
 			"timescaledb.telemetry_level": "off",
 			"max_locks_per_transaction":   "128",
@@ -147,10 +171,12 @@ func enabledExtensions(custom *components.CNPGCustomSpec) []extension {
 }
 
 // ValidateExtensions checks that image-volume extensions run on PostgreSQL 18
-// and that dependencies are enabled too. ImageVolume support cannot be probed
-// here; the cluster must run Kubernetes 1.35+ (or 1.33/1.34 with the
+// (and their minimum minor), that dependencies are enabled too, and that no
+// conflicting extensions are enabled together. ImageVolume support cannot be
+// probed here; the cluster must run Kubernetes 1.35+ (or 1.33/1.34 with the
 // ImageVolume feature gate).
 func ValidateExtensions(custom *components.CNPGCustomSpec, engineVersion, instanceVersion string) error {
+	version := postgresVersion(engineVersion, instanceVersion)
 	major := postgresMajor(engineVersion, instanceVersion)
 	enabled := enabledExtensions(custom)
 	for _, ext := range enabled {
@@ -160,28 +186,55 @@ func ValidateExtensions(custom *components.CNPGCustomSpec, engineVersion, instan
 				ext.field, major,
 			)
 		}
+		if ext.minPostgresVersion != "" && !versionAtLeast(version, ext.minPostgresVersion) {
+			return fmt.Errorf("extensions.%s requires PostgreSQL %s or later (got %q)", ext.field, ext.minPostgresVersion, version)
+		}
 		for _, required := range ext.requires {
 			if !slices.ContainsFunc(enabled, func(e extension) bool { return e.field == required }) {
 				return fmt.Errorf("extensions.%s requires extensions.%s", ext.field, required)
+			}
+		}
+		for _, conflicting := range ext.conflicts {
+			if slices.ContainsFunc(enabled, func(e extension) bool { return e.field == conflicting }) {
+				return fmt.Errorf("extensions.%s and extensions.%s cannot both be enabled", ext.field, conflicting)
 			}
 		}
 	}
 	return nil
 }
 
-func postgresMajor(engineVersion, instanceVersion string) string {
+func postgresVersion(engineVersion, instanceVersion string) string {
 	for _, v := range []string{engineVersion, instanceVersion} {
-		if v == "" {
-			continue
+		if v != "" {
+			return v
 		}
-		if major, _, ok := strings.Cut(v, "."); ok {
-			return major
-		}
-		return v
 	}
 	// Provider default engine image when version is omitted.
-	major, _, _ := strings.Cut(common.PostgresDefaultVersion, ".")
+	return common.PostgresDefaultVersion
+}
+
+func postgresMajor(engineVersion, instanceVersion string) string {
+	major, _, _ := strings.Cut(postgresVersion(engineVersion, instanceVersion), ".")
 	return major
+}
+
+// versionAtLeast compares dotted numeric versions ("18.10" >= "18.6"); an
+// unparsable component compares as 0.
+func versionAtLeast(version, minimum string) bool {
+	got, want := strings.Split(version, "."), strings.Split(minimum, ".")
+	for i := range max(len(got), len(want)) {
+		var g, w int
+		if i < len(got) {
+			g, _ = strconv.Atoi(got[i])
+		}
+		if i < len(want) {
+			w, _ = strconv.Atoi(want[i])
+		}
+		if g != w {
+			return g > w
+		}
+	}
+	return true
 }
 
 // ExtensionImage is a catalog extension entry and its CREATE EXTENSION version.
@@ -387,6 +440,13 @@ func ValidateExtensionsNotDisabled(c *controller.Context, custom *components.CNP
 
 	for _, ext := range firstClassExtensions {
 		if ext.sqlExtension == "" || ext.enabled(custom) {
+			continue
+		}
+		// Both TimescaleDB editions create the SQL extension timescaledb, so on
+		// an instance with one edition the other edition's toggle is off while
+		// timescaledb exists. That is not a disable. Switching editions is
+		// rejected by ValidateExtensionsAtCreation (the image changes).
+		if slices.ContainsFunc(enabledExtensions(custom), func(e extension) bool { return e.sqlExtension == ext.sqlExtension }) {
 			continue
 		}
 		if slices.ContainsFunc(db.Spec.Extensions, func(e cnpgv1.ExtensionSpec) bool { return e.Name == ext.sqlExtension }) {

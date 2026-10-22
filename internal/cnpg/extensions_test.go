@@ -74,10 +74,16 @@ func TestValidateExtensions(t *testing.T) {
 		{name: "image volume on PG 18", custom: withExtensions(components.ExtensionsSpec{TimescaleDB: on}), engineVersion: "18.4"},
 		{name: "image volume on PG 18 from spec.version", custom: withExtensions(components.ExtensionsSpec{PostGIS: on}), instanceVersion: "18.4"},
 		{name: "image volume on PG 17", custom: withExtensions(components.ExtensionsSpec{PgIVM: on}), engineVersion: "17.10", wantErr: true},
-		{name: "image volume on the default version", custom: withExtensions(components.ExtensionsSpec{Wal2JSON: on}), wantErr: true},
+		{name: "image volume on the default version (PG 18)", custom: withExtensions(components.ExtensionsSpec{Wal2JSON: on})},
+		{name: "timescaledb community on the default version", custom: withExtensions(components.ExtensionsSpec{TimescaleDBCommunity: on})},
 		{name: "bundled extensions on PG 14", custom: withExtensions(components.ExtensionsSpec{PgVector: on, PgAudit: on}), engineVersion: "14.23"},
 		{name: "pgrouting with postgis", custom: withExtensions(components.ExtensionsSpec{PostGIS: on, PgRouting: on}), engineVersion: "18.4"},
 		{name: "pgrouting without postgis", custom: withExtensions(components.ExtensionsSpec{PgRouting: on}), engineVersion: "18.4", wantErr: true},
+		{name: "timescaledb community on PG 18.6", custom: withExtensions(components.ExtensionsSpec{TimescaleDBCommunity: on}), engineVersion: "18.6"},
+		{name: "timescaledb community on PG 18.10", custom: withExtensions(components.ExtensionsSpec{TimescaleDBCommunity: on}), engineVersion: "18.10"},
+		{name: "timescaledb community on PG 18.6 from spec.version", custom: withExtensions(components.ExtensionsSpec{TimescaleDBCommunity: on}), instanceVersion: "18.6"},
+		{name: "timescaledb community on PG 18.4", custom: withExtensions(components.ExtensionsSpec{TimescaleDBCommunity: on}), engineVersion: "18.4", wantErr: true},
+		{name: "both timescaledb editions", custom: withExtensions(components.ExtensionsSpec{TimescaleDB: on, TimescaleDBCommunity: on}), engineVersion: "18.6", wantErr: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -86,6 +92,64 @@ func TestValidateExtensions(t *testing.T) {
 				t.Fatalf("ValidateExtensions() error = %v, wantErr %t", err, tt.wantErr)
 			}
 		})
+	}
+}
+
+// Extensions creating the same SQL extension come from different images and
+// must declare each other as conflicts, or both could be enabled.
+func TestExtensionsSharingSQLNameConflict(t *testing.T) {
+	for i, a := range firstClassExtensions {
+		for _, b := range firstClassExtensions[i+1:] {
+			if a.sqlExtension == "" || a.sqlExtension != b.sqlExtension {
+				continue
+			}
+			if !slices.Contains(a.conflicts, b.field) || !slices.Contains(b.conflicts, a.field) {
+				t.Errorf("extensions.%s and extensions.%s both create %q but do not declare each other in conflicts", a.field, b.field, a.sqlExtension)
+			}
+		}
+	}
+}
+
+func TestVersionAtLeast(t *testing.T) {
+	tests := []struct {
+		version, minimum string
+		want             bool
+	}{
+		{"18.6", "18.6", true},
+		{"18.10", "18.6", true},
+		{"18.6.1", "18.6", true},
+		{"19", "18.6", true},
+		{"18.4", "18.6", false},
+		{"18", "18.6", false},
+		{"17.10", "18.6", false},
+	}
+	for _, tt := range tests {
+		if got := versionAtLeast(tt.version, tt.minimum); got != tt.want {
+			t.Errorf("versionAtLeast(%q, %q) = %t, want %t", tt.version, tt.minimum, got, tt.want)
+		}
+	}
+}
+
+func TestApplyExtensionsTimescaleDBCommunity(t *testing.T) {
+	pg := &cnpgv1.Cluster{}
+	images := ExtensionImages{"timescaledb": {Config: cnpgv1.ExtensionConfiguration{Name: "timescaledb"}}}
+	ApplyExtensions(pg, withExtensions(components.ExtensionsSpec{TimescaleDBCommunity: on}), images)
+
+	cfg := pg.Spec.PostgresConfiguration
+	if len(cfg.Extensions) != 1 || cfg.Extensions[0].Name != "timescaledb" {
+		t.Errorf("extension images = %+v, want timescaledb", cfg.Extensions)
+	}
+	if want := []string{"timescaledb"}; !slices.Equal(cfg.AdditionalLibraries, want) {
+		t.Errorf("shared_preload_libraries = %v, want %v", cfg.AdditionalLibraries, want)
+	}
+	if got := cfg.Parameters["timescaledb.telemetry_level"]; got != "off" {
+		t.Errorf("timescaledb.telemetry_level = %q, want off", got)
+	}
+
+	db := BuildExtensionsDatabase("pg", withExtensions(components.ExtensionsSpec{TimescaleDBCommunity: on}), ExtensionImages{"timescaledb": {SQLVersion: "2.31.0"}})
+	want := cnpgv1.ExtensionSpec{DatabaseObjectSpec: cnpgv1.DatabaseObjectSpec{Name: "timescaledb", Ensure: cnpgv1.EnsurePresent}, Version: "2.31.0"}
+	if len(db.Spec.Extensions) != 1 || db.Spec.Extensions[0] != want {
+		t.Errorf("extensions = %+v, want %+v", db.Spec.Extensions, want)
 	}
 }
 
@@ -186,6 +250,9 @@ func TestValidateExtensionsAtCreation(t *testing.T) {
 		{name: "pg_ivm enabled on an existing instance", custom: withExtensions(components.ExtensionsSpec{PgIVM: on}), cluster: clusterWith(), wantReject: true},
 		{name: "timescaledb enabled on an existing instance", custom: withExtensions(components.ExtensionsSpec{TimescaleDB: on}), cluster: clusterWith("postgis"), wantReject: true},
 		{name: "created with timescaledb and pg_ivm", custom: withExtensions(components.ExtensionsSpec{TimescaleDB: on, PgIVM: on}), cluster: clusterWith("timescaledb-oss", "pg-ivm")},
+		{name: "created with timescaledb community", custom: withExtensions(components.ExtensionsSpec{TimescaleDBCommunity: on}), cluster: clusterWith("timescaledb")},
+		{name: "switched from timescaledb to community", custom: withExtensions(components.ExtensionsSpec{TimescaleDBCommunity: on}), cluster: clusterWith("timescaledb-oss"), wantReject: true},
+		{name: "switched from community to timescaledb", custom: withExtensions(components.ExtensionsSpec{TimescaleDB: on}), cluster: clusterWith("timescaledb"), wantReject: true},
 		{name: "other extensions on an existing instance", custom: withExtensions(components.ExtensionsSpec{PostGIS: on, PgRouting: on, Wal2JSON: on, PgVector: on, PgAudit: on}), cluster: clusterWith()},
 	}
 	for _, tt := range tests {
@@ -337,6 +404,7 @@ func TestValidateExtensionsNotDisabled(t *testing.T) {
 		{name: "kept", custom: withExtensions(components.ExtensionsSpec{PgVector: on}), created: []string{"vector"}},
 		{name: "pgvector disabled", created: []string{"vector"}, wantReject: true},
 		{name: "timescaledb disabled, pgvector kept", custom: withExtensions(components.ExtensionsSpec{PgVector: on}), created: []string{"timescaledb", "vector"}, wantReject: true},
+		{name: "timescaledb kept by the community edition", custom: withExtensions(components.ExtensionsSpec{TimescaleDBCommunity: on}), created: []string{"timescaledb"}},
 		{name: "operator-managed pgaudit disabled", custom: withExtensions(components.ExtensionsSpec{PgVector: on}), created: []string{"vector"}},
 	}
 	for _, tt := range tests {
