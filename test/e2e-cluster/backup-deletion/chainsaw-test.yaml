@@ -139,8 +139,11 @@ spec:
               }
               prefix="$(kubectl get backup.backup.openeverest.io/pg-del-delete -n "$NAMESPACE" -o jsonpath='{.metadata.annotations.e2e\.openeverest\.io/s3-prefix}')"
               kubectl delete backup.backup.openeverest.io/pg-del-delete -n "$NAMESPACE" --wait=false
-              kubectl wait --for=condition=Complete job/delete-backup-pg-del-delete -n "$NAMESPACE" --timeout=210s
-              kubectl wait --for=delete backup.backup.openeverest.io/pg-del-delete -n "$NAMESPACE" --timeout=60s
+              # The provider releases the Backup only after its data deletion Job
+              # completes; the Job is then garbage-collected with the Backup, so
+              # waiting on the Job itself races with its removal. The object
+              # count below checks the Job did delete the data.
+              kubectl wait --for=delete backup.backup.openeverest.io/pg-del-delete -n "$NAMESPACE" --timeout=210s
               keys="$(objects "$prefix")"
               echo "delete: $keys object(s) left under s3://backups/$prefix"
               test "$keys" -eq 0
