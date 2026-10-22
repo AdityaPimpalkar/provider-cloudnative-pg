@@ -41,7 +41,9 @@ spec:
             content: |
               set -e
               kubectl wait --for=condition=Available deployment/s3mock -n "$NAMESPACE" --timeout=110s
-              kubectl run s3-client -n "$NAMESPACE" --image=curlimages/curl:8.11.1 --restart=Never --command -- sleep 3600
+              # Exit on SIGTERM: a bare sleep as PID 1 ignores it and holds the
+              # namespace deletion for the whole grace period.
+              kubectl run s3-client -n "$NAMESPACE" --image=curlimages/curl:8.11.1 --restart=Never --command -- sh -c 'trap "exit 0" TERM; sleep 3600 & wait'
               kubectl wait --for=condition=Ready pod/s3-client -n "$NAMESPACE" --timeout=30s
 
     - name: create-instance
@@ -143,13 +145,19 @@ spec:
               echo "delete: $keys object(s) left under s3://backups/$prefix"
               test "$keys" -eq 0
 
+    # Wait for PostgreSQL to stop while S3Mock still runs: chainsaw deletes
+    # S3Mock right after this step, and a shutdown archiving WAL to a
+    # disappearing endpoint can hold the namespace past the cleanup timeout.
     - name: cleanup
       try:
         - script:
-            timeout: 300s
+            timeout: 420s
             content: |
               set -e
               kubectl patch instance/pg-del -n "$NAMESPACE" --type=json -p='[{"op":"replace","path":"/spec/backup/storages/0/schedules","value":[]}]'
               kubectl wait --for=delete scheduledbackup/pg-del-yearly -n "$NAMESPACE" --timeout=60s
               kubectl delete backups.backup.openeverest.io --all -n "$NAMESPACE" --wait=true --timeout=120s
               kubectl delete instance/pg-del -n "$NAMESPACE" --wait=true --timeout=110s
+              kubectl wait --for=delete cluster/pg-del -n "$NAMESPACE" --timeout=60s
+              kubectl wait --for=delete pod -l cnpg.io/cluster=pg-del -n "$NAMESPACE" --timeout=180s
+              kubectl delete pod/s3-client -n "$NAMESPACE" --ignore-not-found --wait=true --timeout=60s

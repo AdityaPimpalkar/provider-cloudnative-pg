@@ -109,12 +109,17 @@ spec:
               # restored Instance can take over its ownership, so deleting it may
               # garbage-collect the source's ObjectStore.
 
+    # Wait for PostgreSQL to stop while S3Mock still runs: chainsaw deletes
+    # S3Mock right after this step, and a shutdown archiving WAL to a
+    # disappearing endpoint can hold the namespace past the cleanup timeout.
     - name: cleanup
       try:
         - script:
-            timeout: 300s
+            timeout: 420s
             content: |
               set -e
               kubectl delete instance/pg-dest -n "$NAMESPACE" --ignore-not-found --wait=true --timeout=120s
               kubectl delete backup.backup.openeverest.io --all -n "$NAMESPACE" --wait=true --timeout=60s
               kubectl delete instance/pg-src -n "$NAMESPACE" --wait=true --timeout=110s
+              kubectl wait --for=delete cluster/pg-src cluster/pg-dest -n "$NAMESPACE" --timeout=60s
+              kubectl wait --for=delete pod -l 'cnpg.io/cluster in (pg-src,pg-dest)' -n "$NAMESPACE" --timeout=180s
