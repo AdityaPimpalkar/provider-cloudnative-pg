@@ -50,6 +50,10 @@ type extension struct {
 	// defaultParameters apply unless set in parameters.postgresql.parameters.
 	defaultParameters map[string]string
 	requires          []string
+	// conflicts lists extensions that cannot be enabled together with this
+	// one, such as the two TimescaleDB editions, which create the same SQL
+	// extension from different images.
+	conflicts []string
 	// bootstrapSQL runs as the superuser in the application database at initdb,
 	// so such extensions can only be enabled when the instance is created.
 	bootstrapSQL func(owner string) string
@@ -63,6 +67,7 @@ var firstClassExtensions = []extension{
 		catalogEntry:     "timescaledb-oss",
 		sqlExtension:     "timescaledb",
 		preloadLibraries: []string{"timescaledb"},
+		conflicts:        []string{"timescaledbCommunity"},
 		// From the upstream timescaledb-oss Cluster example.
 		defaultParameters: map[string]string{
 			"timescaledb.telemetry_level": "off",
@@ -78,6 +83,7 @@ var firstClassExtensions = []extension{
 		// calls visibilitymap_clear_locked, which PostgreSQL added in 18.6.
 		minPostgresVersion: "18.6",
 		preloadLibraries:   []string{"timescaledb"},
+		conflicts:          []string{"timescaledb"},
 		defaultParameters: map[string]string{
 			"timescaledb.telemetry_level": "off",
 			"max_locks_per_transaction":   "128",
@@ -165,15 +171,15 @@ func enabledExtensions(custom *components.CNPGCustomSpec) []extension {
 }
 
 // ValidateExtensions checks that image-volume extensions run on PostgreSQL 18
-// (and their minimum minor), that dependencies are enabled too, and that no two
-// enabled extensions create the same SQL extension. ImageVolume support cannot
-// be probed here; the cluster must run Kubernetes 1.35+ (or 1.33/1.34 with the
+// (and their minimum minor), that dependencies are enabled too, and that no
+// conflicting extensions are enabled together. ImageVolume support cannot be
+// probed here; the cluster must run Kubernetes 1.35+ (or 1.33/1.34 with the
 // ImageVolume feature gate).
 func ValidateExtensions(custom *components.CNPGCustomSpec, engineVersion, instanceVersion string) error {
 	version := postgresVersion(engineVersion, instanceVersion)
 	major := postgresMajor(engineVersion, instanceVersion)
 	enabled := enabledExtensions(custom)
-	for i, ext := range enabled {
+	for _, ext := range enabled {
 		if ext.catalogEntry != "" && major != imageVolumePostgresMajor {
 			return fmt.Errorf(
 				"extensions.%s requires PostgreSQL 18 (got major %q); set spec.version to a 18.x release (e.g. \"18.4\"); also requires Kubernetes ImageVolume (1.35+, or 1.33/1.34 with the ImageVolume feature gate)",
@@ -188,12 +194,9 @@ func ValidateExtensions(custom *components.CNPGCustomSpec, engineVersion, instan
 				return fmt.Errorf("extensions.%s requires extensions.%s", ext.field, required)
 			}
 		}
-		if ext.sqlExtension == "" {
-			continue
-		}
-		for _, other := range enabled[i+1:] {
-			if other.sqlExtension == ext.sqlExtension {
-				return fmt.Errorf("extensions.%s and extensions.%s cannot both be enabled", ext.field, other.field)
+		for _, conflicting := range ext.conflicts {
+			if slices.ContainsFunc(enabled, func(e extension) bool { return e.field == conflicting }) {
+				return fmt.Errorf("extensions.%s and extensions.%s cannot both be enabled", ext.field, conflicting)
 			}
 		}
 	}
@@ -439,8 +442,10 @@ func ValidateExtensionsNotDisabled(c *controller.Context, custom *components.CNP
 		if ext.sqlExtension == "" || ext.enabled(custom) {
 			continue
 		}
-		// Another enabled extension (e.g. the other TimescaleDB edition) keeps
-		// the SQL extension; ValidateExtensionsAtCreation rejects the image swap.
+		// Both TimescaleDB editions create the SQL extension timescaledb, so on
+		// an instance with one edition the other edition's toggle is off while
+		// timescaledb exists. That is not a disable. Switching editions is
+		// rejected by ValidateExtensionsAtCreation (the image changes).
 		if slices.ContainsFunc(enabledExtensions(custom), func(e extension) bool { return e.sqlExtension == ext.sqlExtension }) {
 			continue
 		}

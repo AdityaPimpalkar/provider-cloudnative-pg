@@ -95,6 +95,21 @@ func TestValidateExtensions(t *testing.T) {
 	}
 }
 
+// Extensions creating the same SQL extension come from different images and
+// must declare each other as conflicts, or both could be enabled.
+func TestExtensionsSharingSQLNameConflict(t *testing.T) {
+	for i, a := range firstClassExtensions {
+		for _, b := range firstClassExtensions[i+1:] {
+			if a.sqlExtension == "" || a.sqlExtension != b.sqlExtension {
+				continue
+			}
+			if !slices.Contains(a.conflicts, b.field) || !slices.Contains(b.conflicts, a.field) {
+				t.Errorf("extensions.%s and extensions.%s both create %q but do not declare each other in conflicts", a.field, b.field, a.sqlExtension)
+			}
+		}
+	}
+}
+
 func TestVersionAtLeast(t *testing.T) {
 	tests := []struct {
 		version, minimum string
