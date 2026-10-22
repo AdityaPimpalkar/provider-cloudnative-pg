@@ -3,8 +3,9 @@ import { expect, type Page } from "@playwright/test";
 /** Resource values small enough for a CI k3d cluster. */
 export interface InstanceResources {
   nodes: number;
-  cpuRequest: number;
-  cpuLimit: number;
+  /** Kubernetes CPU quantities, e.g. "0.5" or "500m". */
+  cpuRequest: string;
+  cpuLimit: string;
   memoryRequestGi: number;
   memoryLimitGi: number;
   diskGi: number;
@@ -79,7 +80,7 @@ export class DatabaseFormPage {
   }
 
   private async setResources(r: InstanceResources): Promise<void> {
-    const values: Record<string, number> = {
+    const values: Record<string, number | string> = {
       "spec.components.engine.replicas": r.nodes,
       "spec.components.engine.resources.requests.cpu": r.cpuRequest,
       "spec.components.engine.resources.limits.cpu": r.cpuLimit,

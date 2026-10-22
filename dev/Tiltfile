@@ -104,9 +104,10 @@ if install_openeverest:
         '--set', 'server.initialAdminPassword={0}'.format(ui_admin_password),
         '--set', 'telemetry=false',
         '--set', 'upgrade.preflightChecks=false',
-        # Keep the dev install lean: skip the monitoring stack.
+        # Keep the dev install lean. The monitoring subchart stays: the core
+        # controller watches VictoriaMetrics VMAgents and crash-loops without
+        # their CRDs.
         '--set', 'kube-state-metrics.enabled=false',
-        '--set', 'monitoring.enabled=false',
         '--set', 'createMonitoringResources=false',
     ]
     if openeverest_version:

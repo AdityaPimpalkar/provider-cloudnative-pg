@@ -293,24 +293,32 @@ ui:
               components:
                 cpu-requests:
                   path: "spec.components.engine.resources.requests.cpu"
-                  uiType: number
+                  # Text, not number: Kubernetes CPU quantities are int-or-string,
+                  # so a fractional JSON number such as 0.5 is rejected by the API.
+                  uiType: text
                   fieldParams:
                     label: "CPU requests"
-                    defaultValue: 1
-                    step: 1
+                    defaultValue: "1"
+                    placeholder: "e.g. 0.5 or 500m"
                   validation:
-                    min: 0.1
                     required: true
+                    regex:
+                      pattern: '^([1-9][0-9]*(\.[0-9]{1,3})?|0?\.([1-9][0-9]{0,2}|0[1-9][0-9]?|00[1-9])|[1-9][0-9]*m)$'
+                      message: "Enter cores (e.g. 0.5, 2) or millicores (e.g. 500m), greater than zero"
                 cpu-limits:
                   path: "spec.components.engine.resources.limits.cpu"
-                  uiType: number
+                  # Text, not number: Kubernetes CPU quantities are int-or-string,
+                  # so a fractional JSON number such as 0.5 is rejected by the API.
+                  uiType: text
                   fieldParams:
                     label: "CPU limits"
-                    defaultValue: 1
-                    step: 1
+                    defaultValue: "1"
+                    placeholder: "e.g. 0.5 or 500m"
                   validation:
-                    min: 0.1
                     required: true
+                    regex:
+                      pattern: '^([1-9][0-9]*(\.[0-9]{1,3})?|0?\.([1-9][0-9]{0,2}|0[1-9][0-9]?|00[1-9])|[1-9][0-9]*m)$'
+                      message: "Enter cores (e.g. 0.5, 2) or millicores (e.g. 500m), greater than zero"
                 memory-requests:
                   path: "spec.components.engine.resources.requests.memory"
                   uiType: number
