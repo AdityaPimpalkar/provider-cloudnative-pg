@@ -52,6 +52,7 @@ func New() *Provider {
 			WatchConfigs: []controller.WatchConfig{
 				controller.WatchOwned(&cnpgv1.Cluster{}),
 				controller.WatchOwned(&cnpgv1.Database{}),
+				controller.WatchOwned(&cnpgv1.Pooler{}),
 				controller.WatchOwned(&barmancloudv1.ObjectStore{}),
 				controller.WatchOwned(&cnpgv1.ScheduledBackup{}),
 			},
@@ -130,6 +131,10 @@ func (p *Provider) Validate(c *controller.Context) error {
 	}
 
 	if err := validatePrometheus(c, &custom); err != nil {
+		return err
+	}
+
+	if err := validateProxy(c); err != nil {
 		return err
 	}
 
