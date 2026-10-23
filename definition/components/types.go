@@ -108,3 +108,12 @@ type ExtensionToggle struct {
 type BootstrapConfiguration struct {
 	InitDB *cnpgv1.BootstrapInitDB `json:"initdb,omitempty"`
 }
+
+// PgBouncerParameters is the proxy component's configuration.
+// The Pooler type is always rw. Instance count and pod resources come from
+// the component's replicas and resources.
+type PgBouncerParameters struct {
+	// PoolMode is the PgBouncer pool mode. CloudNativePG accepts session and
+	// transaction. Empty selects the operator default, session.
+	PoolMode string `json:"poolMode,omitempty"`
+}

@@ -16,6 +16,8 @@ config:
         replicas: 3
     backupAgent:
       optional: true
+    proxy:
+      optional: true
 ui:
   sections:
     databaseVersion:
@@ -469,6 +471,104 @@ ui:
         - nodes
         - walStorage
         - synchronousReplication
+    pooler:
+      label: "Connection pooler"
+      description: "PgBouncer in front of the primary. While this is on, clients connect to the pooler."
+      components:
+        pgbouncer:
+          uiType: group
+          groupType: toggleable
+          label: "PgBouncer"
+          description: "A CloudNativePG Pooler of type rw. It forwards to the primary and listens on port 5432. The operator runs its own PgBouncer image."
+          components:
+            poolMode:
+              uiType: select
+              path: spec.components.proxy.parameters.poolMode
+              fieldParams:
+                label: "Pool mode"
+                helperText: "Session keeps a server connection for the life of the client session. Transaction returns it when the transaction ends. Changing it rolls the PgBouncer pods."
+                defaultValue: session
+                options:
+                  - label: "Session"
+                    value: session
+                  - label: "Transaction"
+                    value: transaction
+              validation:
+                required: true
+            instances:
+              path: spec.components.proxy.replicas
+              uiType: number
+              fieldParams:
+                label: "PgBouncer instances"
+                helperText: "How many PgBouncer pods to run."
+                defaultValue: 1
+              validation:
+                required: true
+                min: 1
+                int: true
+            resources:
+              uiType: group
+              groupType: line
+              components:
+                cpu-requests:
+                  path: spec.components.proxy.resources.requests.cpu
+                  # Text, not number: Kubernetes CPU quantities are int-or-string,
+                  # so a fractional JSON number such as 0.5 is rejected by the API.
+                  uiType: text
+                  fieldParams:
+                    label: "CPU requests"
+                    defaultValue: "100m"
+                    placeholder: "e.g. 0.5 or 500m"
+                  validation:
+                    required: true
+                    regex:
+                      pattern: '^([1-9][0-9]*(\.[0-9]{1,3})?|0?\.([1-9][0-9]{0,2}|0[1-9][0-9]?|00[1-9])|[1-9][0-9]*m)$'
+                      message: "Enter cores (e.g. 0.5, 2) or millicores (e.g. 500m), greater than zero"
+                cpu-limits:
+                  path: spec.components.proxy.resources.limits.cpu
+                  uiType: text
+                  fieldParams:
+                    label: "CPU limits"
+                    defaultValue: "100m"
+                    placeholder: "e.g. 0.5 or 500m"
+                  validation:
+                    required: true
+                    regex:
+                      pattern: '^([1-9][0-9]*(\.[0-9]{1,3})?|0?\.([1-9][0-9]{0,2}|0[1-9][0-9]?|00[1-9])|[1-9][0-9]*m)$'
+                      message: "Enter cores (e.g. 0.5, 2) or millicores (e.g. 500m), greater than zero"
+                memory-requests:
+                  path: spec.components.proxy.resources.requests.memory
+                  uiType: number
+                  fieldParams:
+                    label: "Memory requests"
+                    defaultValue: 0.1
+                    step: 0.1
+                    badge: "Gi"
+                    badgeToApi: true
+                  validation:
+                    min: 0.1
+                    required: true
+                memory-limits:
+                  path: spec.components.proxy.resources.limits.memory
+                  uiType: number
+                  fieldParams:
+                    label: "Memory limits"
+                    defaultValue: 0.1
+                    step: 0.1
+                    badge: "Gi"
+                    badgeToApi: true
+                  validation:
+                    min: 0.1
+                    required: true
+              componentsOrder:
+                - cpu-requests
+                - cpu-limits
+                - memory-requests
+                - memory-limits
+          componentsOrder:
+            - poolMode
+            - instances
+            - resources
     advanced:
       label: "Advanced configuration"
       description: "Configure advanced settings for your database"
@@ -528,4 +628,5 @@ ui:
     - extensions
     - monitoring
     - resources
+    - pooler
     - advanced
