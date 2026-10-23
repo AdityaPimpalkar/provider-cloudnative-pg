@@ -45,12 +45,24 @@ spec:
               secret="$(kubectl get instance pooled -n "$NAMESPACE" -o jsonpath='{.status.connectionSecretRef.name}')"
               host="$(kubectl get secret "$secret" -n "$NAMESPACE" -o jsonpath='{.data.host}' | base64 -d)"
               test "$host" = "pooled-pooler.$NAMESPACE.svc"
+              uri="$(kubectl get secret "$secret" -n "$NAMESPACE" -o jsonpath='{.data.uri}' | base64 -d)"
+              case "$uri" in *"@pooled-pooler.$NAMESPACE.svc:5432/app?sslmode=require") ;; *) echo "unexpected uri host/port"; exit 1 ;; esac
               password="$(kubectl get secret pooled-app -n "$NAMESPACE" -o jsonpath='{.data.password}' | base64 -d)"
               ips="$(kubectl get pods -n "$NAMESPACE" -l cnpg.io/poolerName=pooled-pooler -o jsonpath='{range .items[*]}{.status.podIP}{"\n"}{end}')"
               test -n "$ips"
+              # requireTLS also applies at the pooler (client_tls_sslmode=require).
+              test "$(kubectl get pooler pooled-pooler -n "$NAMESPACE" -o jsonpath='{.spec.pgbouncer.parameters.client_tls_sslmode}')" = require
               for _ in $(seq 1 30); do
-                client="$(kubectl exec -n "$NAMESPACE" pooled-1 -c postgres -- env PGPASSWORD="$password" \
-                  psql "host=pooled-pooler user=app dbname=app sslmode=require" \
+                plain="$(kubectl exec -n "$NAMESPACE" pooled-1 -c postgres -- env PGPASSWORD="$password" \
+                  psql "host=pooled-pooler user=app dbname=app sslmode=disable" -tAc 'SELECT 1' 2>&1 || true)"
+                case "$plain" in *"SSL required"*) break ;; esac
+                sleep 2
+              done
+              echo "sslmode=disable through the pooler: $plain"
+              case "$plain" in *"SSL required"*) ;; *) exit 1 ;; esac
+              for _ in $(seq 1 30); do
+                client="$(kubectl exec -n "$NAMESPACE" pooled-1 -c postgres -- \
+                  psql "$uri" \
                   -tAc "SELECT client_addr::text FROM pg_stat_activity WHERE pid = pg_backend_pid()" 2>/dev/null || true)"
                 client="$(printf '%s' "$client" | tr -d '[:space:]')"
                 if [ -n "$client" ] && printf '%s\n' "$ips" | grep -qx "$client"; then
@@ -67,3 +79,27 @@ spec:
             content: kubectl get instance/pooled -n "$NAMESPACE" -o yaml
         - script:
             content: kubectl get pooler,deploy,pod -n "$NAMESPACE" -l cnpg.io/poolerName=pooled-pooler -o yaml
+
+    - name: remove-proxy
+      try:
+        - script:
+            timeout: 3m
+            content: |
+              set -eu
+              kubectl patch instance/pooled -n "$NAMESPACE" --type=json \
+                -p '[{"op":"remove","path":"/spec/components/proxy"}]'
+              kubectl wait --for=delete pooler/pooled-pooler -n "$NAMESPACE" --timeout=120s
+              secret="$(kubectl get instance pooled -n "$NAMESPACE" -o jsonpath='{.status.connectionSecretRef.name}')"
+              for _ in $(seq 1 30); do
+                host="$(kubectl get secret "$secret" -n "$NAMESPACE" -o jsonpath='{.data.host}' | base64 -d)"
+                [ "$host" = "pooled-rw.$NAMESPACE.svc" ] && break
+                sleep 2
+              done
+              echo "host after removing the proxy: $host"
+              test "$host" = "pooled-rw.$NAMESPACE.svc"
+              kubectl wait --for=jsonpath='{.status.phase}'=Ready instance/pooled -n "$NAMESPACE" --timeout=60s
+      catch:
+        - script:
+            content: kubectl get instance/pooled -n "$NAMESPACE" -o yaml
+        - script:
+            content: kubectl get pooler,deploy -n "$NAMESPACE"

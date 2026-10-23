@@ -376,6 +376,10 @@ While the component is set, `host` and `uri` in the connection Secret are the
 pooler (`<instance>-pooler.<namespace>.svc`). Removing the component deletes
 the Pooler and points `host` back at `<instance>-rw`.
 
+The Instance is Ready only once the Pooler is active and its Deployment has
+`replicas` ready PgBouncer pods. Adding the component to a running instance
+returns it to Provisioning until then.
+
 ```yaml
 spec:
   components:
@@ -395,7 +399,8 @@ spec:
 
 PgBouncer presents the cluster's server certificate. `sslmode=require` works;
 `verify-full` checks a name that certificate is not issued for. See
-[Connection details](#connection-details).
+[Connection details](#connection-details). With [`requireTLS`](#require-tls)
+the Pooler also refuses unencrypted clients (`client_tls_sslmode=require`).
 
 ## Versions
 
@@ -489,6 +494,9 @@ The provider places `hostnossl all all all reject` before any rules in
 `postgresql.pg_hba`. CloudNativePG applies it with a configuration reload, so
 instances are not restarted. Replication and local connections are unaffected:
 CloudNativePG's own rules for them come first and use TLS or the local socket.
+With the [`proxy` component](#connection-pooling), the provider also sets
+PgBouncer's `client_tls_sslmode` to `require`, so the pooler refuses
+unencrypted clients as well.
 
 Clients must connect with TLS. libpq's default `sslmode=prefer` does;
 `sslmode=disable` is refused. Use `sslmode=verify-full` with the cluster CA to

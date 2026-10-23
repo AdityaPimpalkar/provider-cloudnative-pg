@@ -8,8 +8,10 @@ import (
 
 	cnpgv1 "github.com/cloudnative-pg/cloudnative-pg/api/v1"
 	pgbouncerconfig "github.com/cloudnative-pg/cloudnative-pg/pkg/management/pgbouncer/config"
+	"github.com/cloudnative-pg/cloudnative-pg/pkg/utils"
 	corev1alpha1 "github.com/openeverest/openeverest/v2/api/core/v1alpha1"
 	"github.com/openeverest/openeverest/v2/provider-runtime/controller"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -25,7 +27,7 @@ import (
 func TestBuildPooler(t *testing.T) {
 	c := proxyContext(t, proxyComponent(`{"poolMode":"transaction"}`, ptr.To(int32(2)), proxyResources()))
 
-	pooler := buildPooler(c, c.Instance().Spec.Components[common.ComponentProxy], mustProxyParams(t, c))
+	pooler := buildPooler(c, c.Instance().Spec.Components[common.ComponentProxy], mustProxyParams(t, c), false)
 
 	if pooler.Name != "pg-pooler" {
 		t.Fatalf("name = %q", pooler.Name)
@@ -60,7 +62,7 @@ func TestBuildPooler(t *testing.T) {
 func TestBuildPoolerDefaults(t *testing.T) {
 	c := proxyContext(t, corev1alpha1.ComponentSpec{})
 
-	pooler := buildPooler(c, c.Instance().Spec.Components[common.ComponentProxy], mustProxyParams(t, c))
+	pooler := buildPooler(c, c.Instance().Spec.Components[common.ComponentProxy], mustProxyParams(t, c), false)
 
 	if pooler.Spec.Instances == nil || *pooler.Spec.Instances != 1 {
 		t.Fatalf("instances = %v, want the operator default of 1", pooler.Spec.Instances)
@@ -70,6 +72,19 @@ func TestBuildPoolerDefaults(t *testing.T) {
 	}
 	if len(pooler.Spec.Template.Spec.Containers) != 0 {
 		t.Fatalf("containers = %+v, want none without resources", pooler.Spec.Template.Spec.Containers)
+	}
+	if len(pooler.Spec.PgBouncer.Parameters) != 0 {
+		t.Fatalf("parameters = %v, want none without requireTLS", pooler.Spec.PgBouncer.Parameters)
+	}
+}
+
+func TestBuildPoolerRequireTLS(t *testing.T) {
+	c := proxyContext(t, corev1alpha1.ComponentSpec{})
+
+	pooler := buildPooler(c, c.Instance().Spec.Components[common.ComponentProxy], mustProxyParams(t, c), true)
+
+	if got := pooler.Spec.PgBouncer.Parameters[pgbouncerClientTLSSSLMode]; got != "require" {
+		t.Fatalf("%s = %q, want require", pgbouncerClientTLSSSLMode, got)
 	}
 }
 
@@ -84,6 +99,8 @@ func TestValidateProxy(t *testing.T) {
 		{name: "omitted mode", proxy: corev1alpha1.ComponentSpec{}},
 		{name: "statement is not a CloudNativePG mode", proxy: proxyComponent(`{"poolMode":"statement"}`, nil, nil), wantErr: "statement"},
 		{name: "zero replicas", proxy: proxyComponent("", ptr.To(int32(0)), nil), wantErr: "at least 1"},
+		{name: "pgbouncer type", proxy: corev1alpha1.ComponentSpec{Type: common.ComponentTypePgbouncer}},
+		{name: "unknown type", proxy: corev1alpha1.ComponentSpec{Type: "pgpool"}, wantErr: "pgpool"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -112,7 +129,7 @@ func TestValidateProxyRejectsANameTheServiceCannotUse(t *testing.T) {
 func TestSyncPooler(t *testing.T) {
 	t.Run("creates the pooler", func(t *testing.T) {
 		c, cl := proxyContextWithClient(t, proxyComponent(`{"poolMode":"session"}`, ptr.To(int32(1)), nil))
-		if err := syncPooler(c); err != nil {
+		if err := syncPooler(c, false); err != nil {
 			t.Fatal(err)
 		}
 		got := &cnpgv1.Pooler{}
@@ -129,12 +146,19 @@ func TestSyncPooler(t *testing.T) {
 		if err := cl.Create(context.Background(), &cnpgv1.Pooler{ObjectMeta: metav1.ObjectMeta{Name: "pg-pooler", Namespace: testNamespace}}); err != nil {
 			t.Fatal(err)
 		}
-		if err := syncPooler(c); err != nil {
+		if err := syncPooler(c, false); err != nil {
 			t.Fatal(err)
 		}
 		err := cl.Get(context.Background(), client.ObjectKey{Namespace: testNamespace, Name: "pg-pooler"}, &cnpgv1.Pooler{})
 		if client.IgnoreNotFound(err) != nil || err == nil {
 			t.Fatalf("pooler get err = %v, want not found", err)
+		}
+	})
+
+	t.Run("does nothing without the component or a pooler", func(t *testing.T) {
+		c, _ := proxyContextWithClient(t)
+		if err := syncPooler(c, false); err != nil {
+			t.Fatal(err)
 		}
 	})
 }
@@ -152,7 +176,7 @@ func TestPoolerConnectionDetails(t *testing.T) {
 			Spec:       cnpgv1.PoolerSpec{Instances: ptr.To(int32(1))},
 			Status:     cnpgv1.PoolerStatus{Phase: cnpgv1.PoolerPhaseActive, Instances: 1},
 		}
-		got := proxyStatus(t, cluster, secret, pooler)
+		got := proxyStatus(t, cluster, secret, pooler, poolerDeployment(1))
 		if got.Phase != corev1alpha1.InstancePhaseReady {
 			t.Fatalf("phase = %q (%s)", got.Phase, got.Message)
 		}
@@ -168,15 +192,37 @@ func TestPoolerConnectionDetails(t *testing.T) {
 		}
 	})
 
-	t.Run("waits while the pooler has not started its pods", func(t *testing.T) {
+	t.Run("waits while fewer PgBouncer pods are ready than requested", func(t *testing.T) {
 		pooler := &cnpgv1.Pooler{
 			ObjectMeta: metav1.ObjectMeta{Name: "pg-pooler", Namespace: testNamespace},
 			Spec:       cnpgv1.PoolerSpec{Instances: ptr.To(int32(2))},
-			Status:     cnpgv1.PoolerStatus{Phase: cnpgv1.PoolerPhaseActive, Instances: 1},
+			Status:     cnpgv1.PoolerStatus{Phase: cnpgv1.PoolerPhaseActive, Instances: 2},
+		}
+		got := proxyStatus(t, cluster, secret, pooler, poolerDeployment(1))
+		if got.Phase != corev1alpha1.InstancePhaseProvisioning || got.Message != "waiting for PgBouncer pods (1/2 ready)" {
+			t.Fatalf("status = %s %q", got.Phase, got.Message)
+		}
+	})
+
+	t.Run("waits for the PgBouncer deployment", func(t *testing.T) {
+		pooler := &cnpgv1.Pooler{
+			ObjectMeta: metav1.ObjectMeta{Name: "pg-pooler", Namespace: testNamespace},
+			Status:     cnpgv1.PoolerStatus{Phase: cnpgv1.PoolerPhaseActive},
 		}
 		got := proxyStatus(t, cluster, secret, pooler)
 		if got.Phase != corev1alpha1.InstancePhaseProvisioning {
 			t.Fatalf("phase = %q", got.Phase)
+		}
+	})
+
+	t.Run("waits while the pooler is inactive", func(t *testing.T) {
+		pooler := &cnpgv1.Pooler{
+			ObjectMeta: metav1.ObjectMeta{Name: "pg-pooler", Namespace: testNamespace},
+			Status:     cnpgv1.PoolerStatus{Phase: cnpgv1.PoolerPhaseInactive, PhaseReason: "cluster not found"},
+		}
+		got := proxyStatus(t, cluster, secret, pooler, poolerDeployment(1))
+		if got.Phase != corev1alpha1.InstancePhaseProvisioning || got.Message != "waiting for the CloudNativePG pooler (inactive): cluster not found" {
+			t.Fatalf("status = %s %q", got.Phase, got.Message)
 		}
 	})
 
@@ -192,10 +238,10 @@ func TestPoolerConnectionDetails(t *testing.T) {
 	})
 }
 
-func proxyStatus(t *testing.T, cluster *cnpgv1.Cluster, secret *corev1.Secret, pooler *cnpgv1.Pooler) controller.Status {
+func proxyStatus(t *testing.T, cluster *cnpgv1.Cluster, secret *corev1.Secret, pooler *cnpgv1.Pooler, objs ...client.Object) controller.Status {
 	t.Helper()
 	scheme := runtime.NewScheme()
-	for _, add := range []func(*runtime.Scheme) error{cnpgv1.AddToScheme, corev1.AddToScheme} {
+	for _, add := range []func(*runtime.Scheme) error{cnpgv1.AddToScheme, corev1.AddToScheme, appsv1.AddToScheme} {
 		if err := add(scheme); err != nil {
 			t.Fatal(err)
 		}
@@ -206,13 +252,50 @@ func proxyStatus(t *testing.T, cluster *cnpgv1.Cluster, secret *corev1.Secret, p
 			common.ComponentProxy: {},
 		}},
 	}
-	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cluster, secret, pooler).Build()
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(append([]client.Object{cluster, secret, pooler}, objs...)...).Build()
 	c := controller.NewContext(context.Background(), cl, instance, common.ProviderName)
 	got, err := (&Provider{}).Status(c)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return got
+}
+
+func poolerDeployment(ready int32) *appsv1.Deployment {
+	return &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: "pg-pooler", Namespace: testNamespace},
+		Status:     appsv1.DeploymentStatus{Replicas: ready, ReadyReplicas: ready},
+	}
+}
+
+func TestInstanceOfPoolerDeployment(t *testing.T) {
+	poolerLabels := map[string]string{
+		utils.ClusterLabelName: "pg",
+		utils.PodRoleLabelName: string(utils.PodRolePooler),
+	}
+	tests := []struct {
+		name   string
+		object metav1.ObjectMeta
+		want   bool
+	}{
+		{name: "pooler deployment", object: metav1.ObjectMeta{Name: "pg-pooler", Namespace: testNamespace, Labels: poolerLabels}, want: true},
+		{name: "pooler not managed by the provider", object: metav1.ObjectMeta{Name: "pg-ro-pooler", Namespace: testNamespace, Labels: poolerLabels}},
+		{name: "unrelated deployment", object: metav1.ObjectMeta{Name: "pg-pooler", Namespace: testNamespace}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := instanceOfPoolerDeployment(context.Background(), &appsv1.Deployment{ObjectMeta: tt.object})
+			if !tt.want {
+				if len(got) != 0 {
+					t.Fatalf("requests = %v, want none", got)
+				}
+				return
+			}
+			if len(got) != 1 || got[0].Name != "pg" || got[0].Namespace != testNamespace {
+				t.Fatalf("requests = %v, want ns/pg", got)
+			}
+		})
+	}
 }
 
 func proxyComponent(parameters string, replicas *int32, resources *corev1.ResourceRequirements) corev1alpha1.ComponentSpec {

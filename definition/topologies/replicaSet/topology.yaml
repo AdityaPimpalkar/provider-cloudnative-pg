@@ -481,6 +481,20 @@ ui:
           label: "PgBouncer"
           description: "A CloudNativePG Pooler of type rw. It forwards to the primary and listens on port 5432. The operator runs its own PgBouncer image."
           components:
+            # Writes spec.components.proxy.type so the toggle owns it: switching
+            # off then removes the whole proxy component, not just its fields.
+            type:
+              uiType: select
+              path: spec.components.proxy.type
+              fieldParams:
+                label: "Pooler"
+                defaultValue: pgbouncer
+                readOnly: true
+                options:
+                  - label: "PgBouncer"
+                    value: pgbouncer
+              validation:
+                required: true
             poolMode:
               uiType: select
               path: spec.components.proxy.parameters.poolMode
@@ -566,6 +580,7 @@ ui:
                 - memory-requests
                 - memory-limits
           componentsOrder:
+            - type
             - poolMode
             - instances
             - resources

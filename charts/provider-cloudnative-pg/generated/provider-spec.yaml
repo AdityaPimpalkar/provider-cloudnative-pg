@@ -1589,7 +1589,20 @@ spec:
                     - memory-limits
                   groupType: line
                   uiType: group
+                type:
+                  fieldParams:
+                    defaultValue: pgbouncer
+                    label: Pooler
+                    options:
+                      - label: PgBouncer
+                        value: pgbouncer
+                    readOnly: true
+                  path: spec.components.proxy.type
+                  uiType: select
+                  validation:
+                    required: true
               componentsOrder:
+                - type
                 - poolMode
                 - instances
                 - resources

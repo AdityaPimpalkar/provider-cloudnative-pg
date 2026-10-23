@@ -12,4 +12,5 @@ const (
 	ComponentEngine         = "engine"
 	ComponentProxy          = "proxy"
 	ComponentTypePostgresql = "postgresql"
+	ComponentTypePgbouncer  = "pgbouncer"
 )
