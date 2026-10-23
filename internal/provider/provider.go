@@ -256,6 +256,10 @@ func (p *Provider) Sync(c *controller.Context) error {
 		return err
 	}
 
+	if err := syncPooler(c); err != nil {
+		return err
+	}
+
 	// The application database and its backups only exist once a restore is done.
 	if !dataSource.Done {
 		return nil
