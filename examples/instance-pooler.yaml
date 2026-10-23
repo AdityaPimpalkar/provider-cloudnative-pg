@@ -1,0 +1,35 @@
+# Instance with a PgBouncer pooler in front of the primary.
+# Connection details (host, port, uri) point at the pooler Service.
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: my-database
+spec:
+  providerRef:
+    name: provider-cloudnative-pg
+  version: "18.6"
+  components:
+    engine:
+      type: postgresql
+      replicas: 3
+      resources:
+        requests:
+          cpu: "1"
+          memory: 1Gi
+        limits:
+          cpu: "1"
+          memory: 1Gi
+      storage:
+        size: 5Gi
+    proxy:
+      type: pgbouncer
+      replicas: 2
+      resources:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+        limits:
+          cpu: 100m
+          memory: 128Mi
+      parameters:
+        poolMode: transaction
