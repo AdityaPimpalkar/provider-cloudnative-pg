@@ -9,6 +9,8 @@ const (
 	// Example:
 	// ComponentDatabase = "provider-cloudnative-pg-db"
 
-	ComponentEngine = "engine"
+	ComponentEngine         = "engine"
+	ComponentProxy          = "proxy"
 	ComponentTypePostgresql = "postgresql"
+	ComponentTypePgbouncer  = "pgbouncer"
 )

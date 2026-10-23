@@ -66,6 +66,7 @@ provider itself is covered under [Installation](#installation).
 | Managed roles | ✅ | CloudNativePG managed roles with readiness gating in `Status()` |
 | Synchronous replication | ✅ | `parameters.postgresql.synchronous`; see [Synchronous replication](#synchronous-replication) |
 | TLS-only connections | ✅ | `parameters.requireTLS: true` rejects unencrypted client connections; see [Require TLS](#require-tls) |
+| Connection pooling | ✅ | optional `proxy` component → CloudNativePG `Pooler` (PgBouncer, type `rw`); see [Connection pooling](#connection-pooling) |
 | Pod scheduling | ✅ | `spec.components.engine.schedulingPolicy` (all fields), or `parameters.affinity` — not both |
 | Pod priority | ✅ | `parameters.priorityClassName` → CloudNativePG `spec.priorityClassName`; the PriorityClass must exist, and changing it rolls the instance pods |
 | Monitoring | ✅ | Prometheus: a PodMonitor for the instance pods via `spec.topology.parameters.monitoring.prometheus`; requires the Prometheus Operator. See [Scrape metrics with Prometheus](#scrape-metrics-with-prometheus) |
@@ -293,7 +294,10 @@ The credentials (`host`, `port`, `username`, `password`, `uri`, `sslmode`,
 `host-r`, `host-ro`) live in the connection Secret named by
 `.status.connectionSecretRef.name`.
 
-- `host` is `<cluster>-rw.<namespace>.svc`, the read-write Service.
+- `host` is `<cluster>-rw.<namespace>.svc`, the read-write Service. With the
+  [`proxy` component](#connection-pooling) set, `host`, `port`, and `uri` point
+  at the pooler Service instead. `host-r` and `host-ro` stay on the PostgreSQL
+  Services.
 - `host-r` is `<cluster>-r.<namespace>.svc`. That Service targets every ready
   instance, including the primary. It is omitted when the read Service is
   disabled.
@@ -302,7 +306,8 @@ The credentials (`host`, `port`, `username`, `password`, `uri`, `sslmode`,
   read-only Service is enabled and `replicas` is at least 2.
 - `port` is the `port` key of the credential Secret. CloudNativePG writes
   `5432` there. A user-supplied basic-auth Secret may omit it, and then the
-  port is `5432`. The Service port is not configurable.
+  port is `5432`. The PostgreSQL Service port is not configurable. With the
+  pooler enabled, `port` is 5432 because PgBouncer's `listen_port` is fixed.
 - `sslmode` is `require`, and `uri` includes it. CloudNativePG always serves
   TLS, so this works whether or not [`requireTLS`](#require-tls) is set.
   libpq's default `prefer` is not published.
@@ -348,8 +353,54 @@ scrape every pod twice; the provider rejects that combination.
 |---|---|---|
 | `replicaSet` | ✅ | A CloudNativePG primary + standby cluster built from the `engine` component (default 3 instances) |
 
-The `backupAgent` component is optional. Prometheus scraping is a topology
+The `backupAgent` and `proxy` components are optional. Prometheus scraping is a topology
 parameter (`spec.topology.parameters.monitoring.prometheus`), not a component.
+
+### Connection pooling
+
+The `proxy` component (type `pgbouncer`) creates one CloudNativePG `Pooler`
+named `<instance>-pooler`. The operator refuses a Pooler whose name matches a
+Cluster, so the name carries that suffix. The Pooler's Service uses the same
+name and listens on port 5432 (`listen_port` is fixed by the operator).
+
+The Pooler is type `rw`: PgBouncer forwards to the primary Service
+(`<instance>-rw`). `poolMode` is `session` or `transaction` (the operator
+default is `session`; it has no statement mode). The component's `replicas`
+is the Pooler's `spec.instances` (default 1). `resources` are set on the
+`pgbouncer` container.
+The operator selects the PgBouncer image. Auth stays on the operator's
+automated integration, which creates the `cnpg_pooler_pgbouncer` role, so
+clients keep using the application username and password.
+
+While the component is set, `host` and `uri` in the connection Secret are the
+pooler (`<instance>-pooler.<namespace>.svc`). Removing the component deletes
+the Pooler and points `host` back at `<instance>-rw`.
+
+The Instance is Ready only once the Pooler is active and its Deployment has
+`replicas` ready PgBouncer pods. Adding the component to a running instance
+returns it to Provisioning until then.
+
+```yaml
+spec:
+  components:
+    proxy:
+      type: pgbouncer
+      replicas: 2
+      resources:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+        limits:
+          cpu: 100m
+          memory: 128Mi
+      parameters:
+        poolMode: transaction
+```
+
+PgBouncer presents the cluster's server certificate. `sslmode=require` works;
+`verify-full` checks a name that certificate is not issued for. See
+[Connection details](#connection-details). With [`requireTLS`](#require-tls)
+the Pooler also refuses unencrypted clients (`client_tls_sslmode=require`).
 
 ## Versions
 
@@ -443,6 +494,9 @@ The provider places `hostnossl all all all reject` before any rules in
 `postgresql.pg_hba`. CloudNativePG applies it with a configuration reload, so
 instances are not restarted. Replication and local connections are unaffected:
 CloudNativePG's own rules for them come first and use TLS or the local socket.
+With the [`proxy` component](#connection-pooling), the provider also sets
+PgBouncer's `client_tls_sslmode` to `require`, so the pooler refuses
+unencrypted clients as well.
 
 Clients must connect with TLS. libpq's default `sslmode=prefer` does;
 `sslmode=disable` is refused. Use `sslmode=verify-full` with the cluster CA to

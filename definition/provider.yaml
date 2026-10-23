@@ -6,4 +6,7 @@ components:
     engine:
         type: postgresql
         parametersSchema: CNPGCustomSpec
+    proxy:
+        type: pgbouncer
+        parametersSchema: PgBouncerParameters
 name: provider-cloudnative-pg

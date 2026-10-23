@@ -2,6 +2,7 @@
 # Do not edit manually. Run `make generate` to update.
 spec:
   componentTypes:
+    pgbouncer: {}
     postgresql:
       defaultVersion: "18.6"
       versions:
@@ -1169,6 +1170,14 @@ spec:
               type: object
           type: object
       type: postgresql
+    proxy:
+      parametersSchema:
+        openAPIV3Schema:
+          properties:
+            poolMode:
+              type: string
+          type: object
+      type: pgbouncer
   defaultVersion: "18.6"
   release:
     version: 0.3.3
@@ -1178,6 +1187,8 @@ spec:
         backupAgent:
           optional: true
         engine: {}
+        proxy:
+          optional: true
       parametersSchema:
         openAPIV3Schema:
           properties:
@@ -1492,6 +1503,115 @@ spec:
               uiType: toggle
           description: Collect PostgreSQL metrics with Prometheus.
           label: Monitoring
+        pooler:
+          components:
+            pgbouncer:
+              components:
+                instances:
+                  fieldParams:
+                    defaultValue: 1
+                    helperText: How many PgBouncer pods to run.
+                    label: PgBouncer instances
+                  path: spec.components.proxy.replicas
+                  uiType: number
+                  validation:
+                    int: true
+                    min: 1
+                    required: true
+                poolMode:
+                  fieldParams:
+                    defaultValue: session
+                    helperText: Session keeps a server connection for the life of the client session. Transaction returns it when the transaction ends. Changing it rolls the PgBouncer pods.
+                    label: Pool mode
+                    options:
+                      - label: Session
+                        value: session
+                      - label: Transaction
+                        value: transaction
+                  path: spec.components.proxy.parameters.poolMode
+                  uiType: select
+                  validation:
+                    required: true
+                resources:
+                  components:
+                    cpu-limits:
+                      fieldParams:
+                        defaultValue: 100m
+                        label: CPU limits
+                        placeholder: e.g. 0.5 or 500m
+                      path: spec.components.proxy.resources.limits.cpu
+                      uiType: text
+                      validation:
+                        regex:
+                          message: Enter cores (e.g. 0.5, 2) or millicores (e.g. 500m), greater than zero
+                          pattern: ^([1-9][0-9]*(\.[0-9]{1,3})?|0?\.([1-9][0-9]{0,2}|0[1-9][0-9]?|00[1-9])|[1-9][0-9]*m)$
+                        required: true
+                    cpu-requests:
+                      fieldParams:
+                        defaultValue: 100m
+                        label: CPU requests
+                        placeholder: e.g. 0.5 or 500m
+                      path: spec.components.proxy.resources.requests.cpu
+                      uiType: text
+                      validation:
+                        regex:
+                          message: Enter cores (e.g. 0.5, 2) or millicores (e.g. 500m), greater than zero
+                          pattern: ^([1-9][0-9]*(\.[0-9]{1,3})?|0?\.([1-9][0-9]{0,2}|0[1-9][0-9]?|00[1-9])|[1-9][0-9]*m)$
+                        required: true
+                    memory-limits:
+                      fieldParams:
+                        badge: Gi
+                        badgeToApi: true
+                        defaultValue: 0.1
+                        label: Memory limits
+                        step: 0.1
+                      path: spec.components.proxy.resources.limits.memory
+                      uiType: number
+                      validation:
+                        min: 0.1
+                        required: true
+                    memory-requests:
+                      fieldParams:
+                        badge: Gi
+                        badgeToApi: true
+                        defaultValue: 0.1
+                        label: Memory requests
+                        step: 0.1
+                      path: spec.components.proxy.resources.requests.memory
+                      uiType: number
+                      validation:
+                        min: 0.1
+                        required: true
+                  componentsOrder:
+                    - cpu-requests
+                    - cpu-limits
+                    - memory-requests
+                    - memory-limits
+                  groupType: line
+                  uiType: group
+                type:
+                  fieldParams:
+                    defaultValue: pgbouncer
+                    label: Pooler
+                    options:
+                      - label: PgBouncer
+                        value: pgbouncer
+                    readOnly: true
+                  path: spec.components.proxy.type
+                  uiType: select
+                  validation:
+                    required: true
+              componentsOrder:
+                - type
+                - poolMode
+                - instances
+                - resources
+              description: A CloudNativePG Pooler of type rw. It forwards to the primary and listens on port 5432. The operator runs its own PgBouncer image.
+              groupType: toggleable
+              label: PgBouncer
+              uiType: group
+          description: PgBouncer in front of the primary. While this is on, clients connect to the pooler.
+          label: Connection pooler
         resources:
           components:
             nodes:
@@ -1698,6 +1818,7 @@ spec:
         - extensions
         - monitoring
         - resources
+        - pooler
         - advanced
   versions:
     - components:

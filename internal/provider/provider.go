@@ -4,11 +4,13 @@ import (
 	"fmt"
 	"os"
 
+	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	barman "github.com/adityapimpalkar/provider-cloudnative-pg/internal/cnpg/barman"
@@ -52,6 +54,9 @@ func New() *Provider {
 			WatchConfigs: []controller.WatchConfig{
 				controller.WatchOwned(&cnpgv1.Cluster{}),
 				controller.WatchOwned(&cnpgv1.Database{}),
+				controller.WatchOwned(&cnpgv1.Pooler{}),
+				controller.WatchExternal(&appsv1.Deployment{},
+					handler.EnqueueRequestsFromMapFunc(instanceOfPoolerDeployment)),
 				controller.WatchOwned(&barmancloudv1.ObjectStore{}),
 				controller.WatchOwned(&cnpgv1.ScheduledBackup{}),
 			},
@@ -60,6 +65,7 @@ func New() *Provider {
 				addBarmanCloudScheme,
 				monitoringv1.AddToScheme,
 				batchv1.AddToScheme,
+				appsv1.AddToScheme,
 			},
 		},
 	}
@@ -130,6 +136,10 @@ func (p *Provider) Validate(c *controller.Context) error {
 	}
 
 	if err := validatePrometheus(c, &custom); err != nil {
+		return err
+	}
+
+	if err := validateProxy(c); err != nil {
 		return err
 	}
 
@@ -251,6 +261,10 @@ func (p *Provider) Sync(c *controller.Context) error {
 		return err
 	}
 
+	if err := syncPooler(c, custom.RequireTLS != nil && *custom.RequireTLS); err != nil {
+		return err
+	}
+
 	// The application database and its backups only exist once a restore is done.
 	if !dataSource.Done {
 		return nil
@@ -350,6 +364,13 @@ func (p *Provider) Status(c *controller.Context) (controller.Status, error) {
 		details, ok := connectionDetails(c, pg)
 		if !ok {
 			return controller.Provisioning("waiting to get CloudNativePG credentials secret"), nil
+		}
+		status, blocked, err := poolerBlocksReady(c, &details)
+		if err != nil {
+			return controller.Status{}, err
+		}
+		if blocked {
+			return status, nil
 		}
 		return controller.ReadyWithConnectionDetails(details), nil
 	}
