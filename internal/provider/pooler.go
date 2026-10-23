@@ -2,8 +2,10 @@ package provider
 
 import (
 	"fmt"
+	"strconv"
 
 	cnpgv1 "github.com/cloudnative-pg/cloudnative-pg/api/v1"
+	pgbouncerconfig "github.com/cloudnative-pg/cloudnative-pg/pkg/management/pgbouncer/config"
 	corev1alpha1 "github.com/openeverest/openeverest/v2/api/core/v1alpha1"
 	"github.com/openeverest/openeverest/v2/provider-runtime/controller"
 	corev1 "k8s.io/api/core/v1"
@@ -108,4 +110,54 @@ func buildPooler(c *controller.Context, proxy corev1alpha1.ComponentSpec, params
 		}}
 	}
 	return pooler
+}
+
+// poolerBlocksReady keeps the Instance from becoming Ready until the Pooler is
+// serving, and points the primary connection at the pooler's Service.
+//
+// The operator sets phase Active once the Pooler's prerequisites exist, then
+// copies the Deployment's replica count into status.instances. That count is
+// pods created, not pods ready. host-r and host-ro stay on the PostgreSQL
+// Services: this Pooler is type rw and does not front them.
+func poolerBlocksReady(c *controller.Context, details *controller.ConnectionDetails) (controller.Status, bool) {
+	if _, ok := c.Instance().Spec.Components[common.ComponentProxy]; !ok {
+		return controller.Status{}, false
+	}
+
+	pooler := &cnpgv1.Pooler{}
+	if err := c.Get(pooler, poolerName(c.Name())); err != nil {
+		return controller.Provisioning("waiting for the CloudNativePG pooler"), true
+	}
+	if pooler.Status.Phase == cnpgv1.PoolerPhaseFailed {
+		message := string(pooler.Status.Phase)
+		if pooler.Status.PhaseReason != "" {
+			message += ": " + pooler.Status.PhaseReason
+		}
+		return controller.Failed(message), true
+	}
+
+	want := int32(1)
+	if pooler.Spec.Instances != nil {
+		want = *pooler.Spec.Instances
+	}
+	if pooler.Status.Phase != cnpgv1.PoolerPhaseActive || pooler.Status.Instances < want {
+		message := "waiting for the CloudNativePG pooler"
+		if pooler.Status.Phase != "" {
+			message = fmt.Sprintf("%s (%s)", message, pooler.Status.Phase)
+		}
+		if pooler.Status.PhaseReason != "" {
+			message += ": " + pooler.Status.PhaseReason
+		}
+		return controller.Provisioning(message), true
+	}
+
+	// listen_port is forced to PgBouncerPort. The credential Secret's port is
+	// the PostgreSQL port, which is not where this Service listens.
+	host := serviceHost(pooler.Name, c.Namespace())
+	port := strconv.Itoa(pgbouncerconfig.PgBouncerPort)
+	details.Host = host
+	details.Port = port
+	details.URI = postgresURI(details.Username, details.Password, host, port,
+		details.AdditionalProperties["database"], details.AdditionalProperties["sslmode"])
+	return controller.Status{}, false
 }

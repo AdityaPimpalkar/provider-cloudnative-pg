@@ -360,6 +360,9 @@ func (p *Provider) Status(c *controller.Context) (controller.Status, error) {
 		if !ok {
 			return controller.Provisioning("waiting to get CloudNativePG credentials secret"), nil
 		}
+		if status, blocked := poolerBlocksReady(c, &details); blocked {
+			return status, nil
+		}
 		return controller.ReadyWithConnectionDetails(details), nil
 	}
 

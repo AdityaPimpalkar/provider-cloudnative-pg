@@ -2,10 +2,12 @@ package provider
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"testing"
 
 	cnpgv1 "github.com/cloudnative-pg/cloudnative-pg/api/v1"
+	pgbouncerconfig "github.com/cloudnative-pg/cloudnative-pg/pkg/management/pgbouncer/config"
 	corev1alpha1 "github.com/openeverest/openeverest/v2/api/core/v1alpha1"
 	"github.com/openeverest/openeverest/v2/provider-runtime/controller"
 	corev1 "k8s.io/api/core/v1"
@@ -135,6 +137,82 @@ func TestSyncPooler(t *testing.T) {
 			t.Fatalf("pooler get err = %v, want not found", err)
 		}
 	})
+}
+
+func TestPoolerConnectionDetails(t *testing.T) {
+	cluster := readyCluster(&cnpgv1.Cluster{Spec: cnpgv1.ClusterSpec{Bootstrap: &cnpgv1.BootstrapConfiguration{
+		InitDB: &cnpgv1.BootstrapInitDB{Database: "app", Owner: "app", Secret: &cnpgv1.LocalObjectReference{Name: "custom-app"}},
+	}}})
+	secret := credentialSecret("custom-app", "app", "secret", "5432")
+	port := strconv.Itoa(pgbouncerconfig.PgBouncerPort)
+
+	t.Run("points at the pooler once it is active", func(t *testing.T) {
+		pooler := &cnpgv1.Pooler{
+			ObjectMeta: metav1.ObjectMeta{Name: "pg-pooler", Namespace: testNamespace},
+			Spec:       cnpgv1.PoolerSpec{Instances: ptr.To(int32(1))},
+			Status:     cnpgv1.PoolerStatus{Phase: cnpgv1.PoolerPhaseActive, Instances: 1},
+		}
+		got := proxyStatus(t, cluster, secret, pooler)
+		if got.Phase != corev1alpha1.InstancePhaseReady {
+			t.Fatalf("phase = %q (%s)", got.Phase, got.Message)
+		}
+		if got.ConnectionDetails.Host != "pg-pooler.ns.svc" || got.ConnectionDetails.Port != port {
+			t.Fatalf("endpoint = %s:%s", got.ConnectionDetails.Host, got.ConnectionDetails.Port)
+		}
+		if got.ConnectionDetails.URI != "postgresql://app:secret@pg-pooler.ns.svc:"+port+"/app?sslmode=require" {
+			t.Fatalf("uri = %s", got.ConnectionDetails.URI)
+		}
+		if got.ConnectionDetails.AdditionalProperties[hostRProperty] != "pg-r.ns.svc" ||
+			got.ConnectionDetails.AdditionalProperties[hostROProperty] != "pg-ro.ns.svc" {
+			t.Fatalf("read endpoints = %#v", got.ConnectionDetails.AdditionalProperties)
+		}
+	})
+
+	t.Run("waits while the pooler has not started its pods", func(t *testing.T) {
+		pooler := &cnpgv1.Pooler{
+			ObjectMeta: metav1.ObjectMeta{Name: "pg-pooler", Namespace: testNamespace},
+			Spec:       cnpgv1.PoolerSpec{Instances: ptr.To(int32(2))},
+			Status:     cnpgv1.PoolerStatus{Phase: cnpgv1.PoolerPhaseActive, Instances: 1},
+		}
+		got := proxyStatus(t, cluster, secret, pooler)
+		if got.Phase != corev1alpha1.InstancePhaseProvisioning {
+			t.Fatalf("phase = %q", got.Phase)
+		}
+	})
+
+	t.Run("reports a failed pooler", func(t *testing.T) {
+		pooler := &cnpgv1.Pooler{
+			ObjectMeta: metav1.ObjectMeta{Name: "pg-pooler", Namespace: testNamespace},
+			Status:     cnpgv1.PoolerStatus{Phase: cnpgv1.PoolerPhaseFailed, PhaseReason: "image catalog missing"},
+		}
+		got := proxyStatus(t, cluster, secret, pooler)
+		if got.Phase != corev1alpha1.InstancePhaseFailed || got.Message != "failed: image catalog missing" {
+			t.Fatalf("status = %s %q", got.Phase, got.Message)
+		}
+	})
+}
+
+func proxyStatus(t *testing.T, cluster *cnpgv1.Cluster, secret *corev1.Secret, pooler *cnpgv1.Pooler) controller.Status {
+	t.Helper()
+	scheme := runtime.NewScheme()
+	for _, add := range []func(*runtime.Scheme) error{cnpgv1.AddToScheme, corev1.AddToScheme} {
+		if err := add(scheme); err != nil {
+			t.Fatal(err)
+		}
+	}
+	instance := &corev1alpha1.Instance{
+		ObjectMeta: metav1.ObjectMeta{Name: "pg", Namespace: testNamespace},
+		Spec: corev1alpha1.InstanceSpec{Components: map[string]corev1alpha1.ComponentSpec{
+			common.ComponentProxy: {},
+		}},
+	}
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cluster, secret, pooler).Build()
+	c := controller.NewContext(context.Background(), cl, instance, common.ProviderName)
+	got, err := (&Provider{}).Status(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return got
 }
 
 func proxyComponent(parameters string, replicas *int32, resources *corev1.ResourceRequirements) corev1alpha1.ComponentSpec {
