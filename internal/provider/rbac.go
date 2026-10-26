@@ -26,6 +26,10 @@ package provider
 // PROVIDER-SPECIFIC RBAC — Add markers for your operator's resources.
 // =============================================================================
 
+// CloudNativePG Pooler CRs (PgBouncer in front of the primary):
+// +kubebuilder:rbac:groups=postgresql.cnpg.io,resources=poolers,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=postgresql.cnpg.io,resources=poolers/status,verbs=get
+
 // CloudNativePG Cluster CRs:
 // +kubebuilder:rbac:groups=postgresql.cnpg.io,resources=clusters,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=postgresql.cnpg.io,resources=clusters/status,verbs=get
@@ -54,6 +58,9 @@ package provider
 
 // Pods (the runtime counts labelled component pods into Instance status.components):
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
+
+// PgBouncer Deployments the operator creates for a Pooler (readiness in Status()):
+// +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch
 
 // Prometheus Operator PodMonitors (spec.topology.parameters.monitoring.prometheus):
 // +kubebuilder:rbac:groups=monitoring.coreos.com,resources=podmonitors,verbs=get;list;watch;create;update;patch;delete
