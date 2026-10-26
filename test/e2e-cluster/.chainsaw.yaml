@@ -10,7 +10,8 @@ spec:
     delete: 60s
     error: 60s
     exec: 60s
-    cleanup: 120s
+    # Deleting a test namespace waits for its pods (PostgreSQL shutdown, S3Mock).
+    cleanup: 300s
   cleanup:
     skipDelete: false
   report:
