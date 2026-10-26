@@ -48,6 +48,16 @@ jobs:
         if: failure()
         run: |
           kubectl get provider,instance,cluster,backups.backup.openeverest.io,restores.backup.openeverest.io,pod -A || true
+          # Namespaces left Terminating by a chainsaw cleanup timeout: what still holds them.
+          for ns in $(kubectl get ns --no-headers | awk '$2 == "Terminating" {print $1}'); do
+            echo "=== Terminating namespace $ns"
+            kubectl get ns "$ns" -o jsonpath='{range .status.conditions[*]}{.type}={.status}: {.message}{"\n"}{end}' || true
+            kubectl api-resources --verbs=list --namespaced -o name | grep -v '^events' \
+              | xargs -I{} kubectl get {} -n "$ns" --ignore-not-found -o custom-columns=KIND:.kind,NAME:.metadata.name,DELETING:.metadata.deletionTimestamp,FINALIZERS:.metadata.finalizers --no-headers || true
+            for pod in $(kubectl get pods -n "$ns" -o name 2>/dev/null); do
+              kubectl logs -n "$ns" "$pod" --all-containers --tail=50 || true
+            done
+          done
           kubectl logs -n everest-system deploy/everest-controller --tail=200 || true
           kubectl logs -n everest-system deploy/everest-controller --previous --tail=100 || true
           kubectl logs -n provider-system --all-containers --tail=300 -l app.kubernetes.io/name=provider-cloudnative-pg || true
