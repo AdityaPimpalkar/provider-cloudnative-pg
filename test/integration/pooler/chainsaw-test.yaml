@@ -61,9 +61,10 @@ spec:
               echo "sslmode=disable through the pooler: $plain"
               case "$plain" in *"SSL required"*) ;; *) exit 1 ;; esac
               for _ in $(seq 1 30); do
+                # text(inet) keeps the netmask (10.0.0.1/32). host() is the address alone.
                 client="$(kubectl exec -n "$NAMESPACE" pooled-1 -c postgres -- \
                   psql "$uri" \
-                  -tAc "SELECT client_addr::text FROM pg_stat_activity WHERE pid = pg_backend_pid()" 2>/dev/null || true)"
+                  -tAc "SELECT host(client_addr) FROM pg_stat_activity WHERE pid = pg_backend_pid()" 2>/dev/null || true)"
                 client="$(printf '%s' "$client" | tr -d '[:space:]')"
                 if [ -n "$client" ] && printf '%s\n' "$ips" | grep -qx "$client"; then
                   echo "backend client_addr $client is a PgBouncer pod"
