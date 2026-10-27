@@ -1,0 +1,43 @@
+# New Instance restored from a succeeded Backup (full restore to that backup ID).
+#
+# Prerequisites:
+#   1. A Succeeded Backup in this namespace (e.g. examples/backup-ondemand.yaml)
+#   2. The Backup's BackupStorage still reachable (examples/backup-storage.yaml)
+#
+# The destination should usually keep using the same storage so WAL continues
+# after restore. dataSource is bootstrap-only; do not change it after create.
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: my-database-restored
+spec:
+  providerRef:
+    name: provider-cloudnative-pg
+  version: "18.6"
+  dataSource:
+    type: Backup
+    backup:
+      backupRef:
+        name: my-database-ondemand
+  components:
+    engine:
+      type: postgresql
+      replicas: 3
+      resources:
+        requests:
+          cpu: "1"
+          memory: 1Gi
+        limits:
+          cpu: "1"
+          memory: 1Gi
+      storage:
+        size: 5Gi
+  backup:
+    enabled: true
+    classRef:
+      name: cnpg-barman-plugin
+    storages:
+      - storageRef:
+          name: my-s3-backups
+        pitr:
+          enabled: true

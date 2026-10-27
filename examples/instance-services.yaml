@@ -1,0 +1,46 @@
+# Instance with CloudNativePG managed Services customized via engine parameters.
+#
+# Connection Secret keys (see README "Connection details"):
+#   host      — read-write Service (<instance>-rw), or the pooler when proxy is set
+#   host-r    — every ready instance (<instance>-r); omitted if "r" is disabled
+#   host-ro   — ready replicas only (<instance>-ro); needs replicas >= 2 and
+#               "ro" not disabled
+#
+# This example keeps the default ClusterIP Services and adds a LoadBalancer in
+# front of the primary (rw). Adjust annotations for your cloud provider.
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: my-database
+spec:
+  providerRef:
+    name: provider-cloudnative-pg
+  version: "18.6"
+  components:
+    engine:
+      type: postgresql
+      replicas: 3
+      resources:
+        requests:
+          cpu: "1"
+          memory: 1Gi
+        limits:
+          cpu: "1"
+          memory: 1Gi
+      storage:
+        size: 5Gi
+      parameters:
+        managed:
+          services:
+            # Optional: drop a default Service. Valid values: r, ro (not rw).
+            # disabledDefaultServices:
+            #   - ro
+            additional:
+              - selectorType: rw
+                serviceTemplate:
+                  metadata:
+                    name: my-database-rw-lb
+                    annotations:
+                      service.beta.kubernetes.io/aws-load-balancer-type: nlb
+                  spec:
+                    type: LoadBalancer

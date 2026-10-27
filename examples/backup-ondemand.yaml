@@ -1,0 +1,22 @@
+# On-demand Backup of an Instance that already has backup storage configured.
+#
+# Prerequisites:
+#   1. examples/backup-storage.yaml
+#   2. examples/instance-backup.yaml (Instance Ready, BackupConfigured)
+#
+# deletionPolicy: Delete removes the Barman base backup when this CR is deleted.
+# Use Retain to drop only the Backup resource and leave objects in the store.
+apiVersion: backup.openeverest.io/v1alpha1
+kind: Backup
+metadata:
+  name: my-database-ondemand
+spec:
+  origin:
+    type: Instance
+    instanceRef:
+      name: my-database
+  classRef:
+    name: cnpg-barman-plugin
+  storageRef:
+    name: my-s3-backups
+  deletionPolicy: Delete
