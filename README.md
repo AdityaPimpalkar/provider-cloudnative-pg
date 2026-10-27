@@ -279,7 +279,14 @@ spec:
 Component names are defined by this provider — see [definition/provider.yaml](definition/provider.yaml).
 `spec.version` and `spec.topology` are optional; the provider defaults apply.
 More examples live in [examples/](examples/), including
-[TimescaleDB](examples/instance-timescaledb.yaml) and [pgvector](examples/instance-pgvector.yaml).
+[TimescaleDB](examples/instance-timescaledb.yaml),
+[pgvector](examples/instance-pgvector.yaml),
+[backups and schedules](examples/instance-backup.yaml),
+[on-demand backup](examples/backup-ondemand.yaml),
+[restore](examples/instance-restore.yaml),
+[PITR](examples/instance-pitr.yaml),
+[pooler](examples/instance-pooler.yaml), and
+[service exposure](examples/instance-services.yaml).
 
 ### Connection details
 

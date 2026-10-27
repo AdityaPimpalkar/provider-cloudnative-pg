@@ -1,0 +1,26 @@
+# Prerequisite BackupStorage for the backup / schedule / restore / PITR examples.
+#
+# Replace bucket, region, endpoint, and credentials for your object store.
+# The BackupStorage name is the storage key on the Instance (storageRef.name).
+apiVersion: v1
+kind: Secret
+metadata:
+  name: my-s3-credentials
+type: Opaque
+stringData:
+  AWS_ACCESS_KEY_ID: CHANGE_ME
+  AWS_SECRET_ACCESS_KEY: CHANGE_ME
+---
+apiVersion: backup.openeverest.io/v1alpha1
+kind: BackupStorage
+metadata:
+  name: my-s3-backups
+spec:
+  type: s3
+  s3:
+    bucket: my-postgres-backups
+    region: us-east-1
+    # endpointURL: https://s3.example.com   # set for S3-compatible stores
+    # forcePathStyle: true
+    credentialsSecretRef:
+      name: my-s3-credentials

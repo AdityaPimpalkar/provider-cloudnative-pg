@@ -1,0 +1,52 @@
+# New Instance recovered to a point in time from another Instance's WAL archive.
+#
+# Prerequisites:
+#   1. Source Instance with backup + pitr.enabled (examples/instance-backup.yaml)
+#   2. At least one base backup and continuous WAL in that BackupStorage
+#
+# recoveryTarget:
+#   - date   — stop at the given RFC 3339 timestamp (offset required)
+#   - latest — recover as far forward as the stream allows
+#
+# instanceRef names the source Instance whose Barman serverName to read.
+# Omit it only when recovering into the same Instance name as the stream.
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: my-database-pitr
+spec:
+  providerRef:
+    name: provider-cloudnative-pg
+  version: "18.6"
+  dataSource:
+    type: PointInTime
+    pointInTime:
+      source:
+        instanceRef:
+          name: my-database
+        storageRef:
+          name: my-s3-backups
+      recoveryTarget: date
+      date: "2026-10-27T12:00:00Z"
+  components:
+    engine:
+      type: postgresql
+      replicas: 3
+      resources:
+        requests:
+          cpu: "1"
+          memory: 1Gi
+        limits:
+          cpu: "1"
+          memory: 1Gi
+      storage:
+        size: 5Gi
+  backup:
+    enabled: true
+    classRef:
+      name: cnpg-barman-plugin
+    storages:
+      - storageRef:
+          name: my-s3-backups
+        pitr:
+          enabled: true
