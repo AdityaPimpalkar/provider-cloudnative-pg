@@ -1288,6 +1288,9 @@ spec:
                   path: spec.components.engine.parameters.bootstrap.initdb.database
                   uiType: text
                   validation:
+                    celExpressions:
+                      - celExpr: '!(has(spec.components.engine.parameters.bootstrap.initdb.database) && spec.components.engine.parameters.bootstrap.initdb.database != "") || (has(spec.components.engine.parameters.bootstrap.initdb.owner) && spec.components.engine.parameters.bootstrap.initdb.owner != "")'
+                        message: Database name and owner must both be specified or both left empty
                     modes:
                       edit:
                         celExpressions:
@@ -1308,6 +1311,9 @@ spec:
                   path: spec.components.engine.parameters.bootstrap.initdb.owner
                   uiType: text
                   validation:
+                    celExpressions:
+                      - celExpr: '!(has(spec.components.engine.parameters.bootstrap.initdb.owner) && spec.components.engine.parameters.bootstrap.initdb.owner != "") || (has(spec.components.engine.parameters.bootstrap.initdb.database) && spec.components.engine.parameters.bootstrap.initdb.database != "")'
+                        message: Database name and owner must both be specified or both left empty
                     regex:
                       message: Must be a valid PostgreSQL identifier (letters, numbers, underscores; cannot start with a number)
                       pattern: ^[a-zA-Z_][a-zA-Z0-9_]*$
@@ -1568,6 +1574,9 @@ spec:
                       path: spec.components.proxy.resources.limits.memory
                       uiType: number
                       validation:
+                        celExpressions:
+                          - celExpr: spec.components.proxy.resources.requests.memory <= spec.components.proxy.resources.limits.memory
+                            message: Memory request cannot be greater than memory limit
                         min: 0.1
                         required: true
                     memory-requests:
@@ -1580,6 +1589,9 @@ spec:
                       path: spec.components.proxy.resources.requests.memory
                       uiType: number
                       validation:
+                        celExpressions:
+                          - celExpr: spec.components.proxy.resources.requests.memory <= spec.components.proxy.resources.limits.memory
+                            message: Memory request cannot be greater than memory limit
                         min: 0.1
                         required: true
                   componentsOrder:
@@ -1689,6 +1701,9 @@ spec:
                       path: spec.components.engine.resources.limits.memory
                       uiType: number
                       validation:
+                        celExpressions:
+                          - celExpr: spec.components.engine.resources.requests.memory <= spec.components.engine.resources.limits.memory
+                            message: Memory request cannot be greater than memory limit
                         min: 0.1
                         required: true
                     memory-requests:
@@ -1701,6 +1716,9 @@ spec:
                       path: spec.components.engine.resources.requests.memory
                       uiType: number
                       validation:
+                        celExpressions:
+                          - celExpr: spec.components.engine.resources.requests.memory <= spec.components.engine.resources.limits.memory
+                            message: Memory request cannot be greater than memory limit
                         min: 0.1
                         required: true
                   componentsOrder:

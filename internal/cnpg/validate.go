@@ -2,6 +2,7 @@ package cnpg
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
 	cnpgv1 "github.com/cloudnative-pg/cloudnative-pg/api/v1"
@@ -14,6 +15,9 @@ import (
 	commonv1alpha1 "github.com/openeverest/openeverest/v2/api/common/v1alpha1"
 	corev1alpha1 "github.com/openeverest/openeverest/v2/api/core/v1alpha1"
 )
+
+// Matches the topology.yaml bootstrap database/owner regex.
+var postgresIdentifier = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
 
 func ValidateCustomSpec(custom *components.CNPGCustomSpec) error {
 	if custom.PriorityClassName != "" {
@@ -65,6 +69,12 @@ func ValidateBootstrap(bootstrap *components.BootstrapConfiguration) error {
 	if (initDB.Database != "" && initDB.Owner == "") || (initDB.Database == "" && initDB.Owner != "") {
 		return fmt.Errorf("bootstrap initdb database and owner must both be specified or both left empty")
 	}
+	if initDB.Database != "" && !postgresIdentifier.MatchString(initDB.Database) {
+		return fmt.Errorf("bootstrap initdb database %q must be a valid PostgreSQL identifier (letters, numbers, underscores; cannot start with a number)", initDB.Database)
+	}
+	if initDB.Owner != "" && !postgresIdentifier.MatchString(initDB.Owner) {
+		return fmt.Errorf("bootstrap initdb owner %q must be a valid PostgreSQL identifier (letters, numbers, underscores; cannot start with a number)", initDB.Owner)
+	}
 	if initDB.Secret != nil && initDB.Secret.Name == "" {
 		return fmt.Errorf("bootstrap initdb secret name cannot be empty")
 	}
@@ -79,33 +89,42 @@ func ValidateEngine(engine corev1alpha1.ComponentSpec) error {
 	if int(*engine.Replicas) < 1 {
 		return fmt.Errorf("replicas must be at least 1")
 	}
-	if engine.Storage == nil || engine.Storage.Size.String() == "" {
+	if engine.Storage == nil || engine.Storage.Size.Sign() <= 0 {
 		return fmt.Errorf("storage size is required")
 	}
 	if engine.Resources == nil {
 		return fmt.Errorf("resources are required")
 	}
-	if engine.Resources.Requests.Cpu().IsZero() || engine.Resources.Requests.Memory().IsZero() {
+	return ValidateResources(engine.Resources)
+}
+
+// ValidateResources checks required CPU and memory requests/limits, CPU
+// notation (positive, millicore precision), and request ≤ limit.
+func ValidateResources(resources *corev1.ResourceRequirements) error {
+	if resources == nil {
+		return fmt.Errorf("resources are required")
+	}
+	if resources.Requests.Cpu().IsZero() || resources.Requests.Memory().IsZero() {
 		return fmt.Errorf("both CPU and memory requests are required")
 	}
-	if engine.Resources.Limits.Cpu().IsZero() || engine.Resources.Limits.Memory().IsZero() {
+	if resources.Limits.Cpu().IsZero() || resources.Limits.Memory().IsZero() {
 		return fmt.Errorf("both CPU and memory limits are required")
 	}
-	if err := validateCPU(corev1.ResourceRequestsCPU, *engine.Resources.Requests.Cpu()); err != nil {
+	if err := validateCPU(corev1.ResourceRequestsCPU, *resources.Requests.Cpu()); err != nil {
 		return err
 	}
-	if err := validateCPU(corev1.ResourceLimitsCPU, *engine.Resources.Limits.Cpu()); err != nil {
+	if err := validateCPU(corev1.ResourceLimitsCPU, *resources.Limits.Cpu()); err != nil {
 		return err
 	}
-	if engine.Resources.Requests.Cpu().Cmp(*engine.Resources.Limits.Cpu()) > 0 {
+	if resources.Requests.Cpu().Cmp(*resources.Limits.Cpu()) > 0 {
 		return fmt.Errorf("CPU request %s is greater than limit %s",
-			engine.Resources.Requests.Cpu().String(),
-			engine.Resources.Limits.Cpu().String())
+			resources.Requests.Cpu().String(),
+			resources.Limits.Cpu().String())
 	}
-	if engine.Resources.Requests.Memory().Cmp(*engine.Resources.Limits.Memory()) > 0 {
+	if resources.Requests.Memory().Cmp(*resources.Limits.Memory()) > 0 {
 		return fmt.Errorf("memory request %s is greater than limit %s",
-			engine.Resources.Requests.Memory().String(),
-			engine.Resources.Limits.Memory().String())
+			resources.Requests.Memory().String(),
+			resources.Limits.Memory().String())
 	}
 	return nil
 }

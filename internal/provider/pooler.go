@@ -19,6 +19,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"github.com/adityapimpalkar/provider-cloudnative-pg/definition/components"
+	"github.com/adityapimpalkar/provider-cloudnative-pg/internal/cnpg"
 	"github.com/adityapimpalkar/provider-cloudnative-pg/internal/common"
 )
 
@@ -75,11 +76,18 @@ func validateProxy(c *controller.Context) error {
 	}
 	switch cnpgv1.PgBouncerPoolMode(params.PoolMode) {
 	case "", cnpgv1.PgBouncerPoolModeSession, cnpgv1.PgBouncerPoolModeTransaction:
-		return nil
 	default:
 		return fmt.Errorf("proxy poolMode %q is invalid: CloudNativePG accepts %q or %q",
 			params.PoolMode, cnpgv1.PgBouncerPoolModeSession, cnpgv1.PgBouncerPoolModeTransaction)
 	}
+	// Resources are optional for API clients (CNPG defaults apply), but when set
+	// they must pass the same checks as the engine.
+	if proxy.Resources != nil {
+		if err := cnpg.ValidateResources(proxy.Resources); err != nil {
+			return fmt.Errorf("proxy: %w", err)
+		}
+	}
+	return nil
 }
 
 // syncPooler creates the rw Pooler for the proxy component, or deletes it once
