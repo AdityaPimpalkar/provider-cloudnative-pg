@@ -124,10 +124,13 @@ func TestStatusUsesInitializedCondition(t *testing.T) {
 			message: "waiting for CloudNativePG cluster to be ready (1/2 instances ready)",
 		},
 		{
+			// CNPG IsInitialized still falls back to LatestGeneratedNode for
+			// clusters upgraded from pre-1.30; keep coverage of that path.
 			name: "pre-1.30 upgrade fallback uses LatestGeneratedNode as initialized",
 			status: cnpgv1.ClusterStatus{
-				Instances:           2,
-				ReadyInstances:      1,
+				Instances:      2,
+				ReadyInstances: 1,
+				//nolint:staticcheck // SA1019: deprecated field still used by IsInitialized upgrade bridge
 				LatestGeneratedNode: 2,
 			},
 			want:    corev1alpha1.InstancePhaseProvisioning,
