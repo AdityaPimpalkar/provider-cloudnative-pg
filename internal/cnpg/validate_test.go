@@ -117,6 +117,36 @@ func TestValidateEngineCPU(t *testing.T) {
 	}
 }
 
+func TestValidateBootstrap(t *testing.T) {
+	tests := []struct {
+		name    string
+		initDB  *cnpgv1.BootstrapInitDB
+		wantErr string
+	}{
+		{name: "empty"},
+		{name: "both set", initDB: &cnpgv1.BootstrapInitDB{Database: "app", Owner: "app"}},
+		{name: "database only", initDB: &cnpgv1.BootstrapInitDB{Database: "app"}, wantErr: "both"},
+		{name: "owner only", initDB: &cnpgv1.BootstrapInitDB{Owner: "app"}, wantErr: "both"},
+		{name: "bad database", initDB: &cnpgv1.BootstrapInitDB{Database: "1app", Owner: "app"}, wantErr: "identifier"},
+		{name: "bad owner", initDB: &cnpgv1.BootstrapInitDB{Database: "app", Owner: "app-user"}, wantErr: "identifier"},
+		{name: "empty secret name", initDB: &cnpgv1.BootstrapInitDB{Secret: &cnpgv1.LocalObjectReference{Name: ""}}, wantErr: "secret name"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateBootstrap(&components.BootstrapConfiguration{InitDB: tt.initDB})
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("error = %v, want %q", err, tt.wantErr)
+			}
+		})
+	}
+}
+
 // The UI regex and validateCPU must agree on values written in the notation the UI accepts.
 func TestCPURuleMatchesUIRegex(t *testing.T) {
 	raw, err := os.ReadFile("../../definition/topologies/replicaSet/topology.yaml")

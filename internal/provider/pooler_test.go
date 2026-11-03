@@ -101,6 +101,29 @@ func TestValidateProxy(t *testing.T) {
 		{name: "zero replicas", proxy: proxyComponent("", ptr.To(int32(0)), nil), wantErr: "at least 1"},
 		{name: "pgbouncer type", proxy: corev1alpha1.ComponentSpec{Type: common.ComponentTypePgbouncer}},
 		{name: "unknown type", proxy: corev1alpha1.ComponentSpec{Type: "pgpool"}, wantErr: "pgpool"},
+		{
+			name: "cpu request greater than limit",
+			proxy: proxyComponent(`{"poolMode":"session"}`, ptr.To(int32(1)), &corev1.ResourceRequirements{
+				Requests: corev1.ResourceList{
+					corev1.ResourceCPU: resource.MustParse("200m"), corev1.ResourceMemory: resource.MustParse("128Mi"),
+				},
+				Limits: corev1.ResourceList{
+					corev1.ResourceCPU: resource.MustParse("100m"), corev1.ResourceMemory: resource.MustParse("128Mi"),
+				},
+			}),
+			wantErr: "greater than limit",
+		},
+		{
+			name: "valid resources",
+			proxy: proxyComponent(`{"poolMode":"session"}`, ptr.To(int32(1)), &corev1.ResourceRequirements{
+				Requests: corev1.ResourceList{
+					corev1.ResourceCPU: resource.MustParse("100m"), corev1.ResourceMemory: resource.MustParse("128Mi"),
+				},
+				Limits: corev1.ResourceList{
+					corev1.ResourceCPU: resource.MustParse("100m"), corev1.ResourceMemory: resource.MustParse("128Mi"),
+				},
+			}),
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

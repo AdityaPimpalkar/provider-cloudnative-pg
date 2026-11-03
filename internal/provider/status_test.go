@@ -59,29 +59,133 @@ func TestStatusOmitsEmptyPhaseReason(t *testing.T) {
 	}
 }
 
-func TestStatusLeavesInProgressPhasesAlone(t *testing.T) {
+func TestStatusMapsAdmissionValidationFailure(t *testing.T) {
+	// CNPG SetAdmissionError writes PhaseDefinitionInvalid + PhaseReason.
+	const detail = "spec.postgresql.synchronous.number must be lower than the number of instances"
+	got, err := statusForCluster(t, cnpgv1.ClusterStatus{
+		Phase:       cnpgv1.PhaseDefinitionInvalid,
+		PhaseReason: detail,
+		Conditions: []metav1.Condition{{
+			Type:   string(cnpgv1.ConditionClusterReady),
+			Status: metav1.ConditionFalse,
+			Reason: string(cnpgv1.ClusterIsNotReady),
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Status: %v", err)
+	}
+	if got.Phase != corev1alpha1.InstancePhaseFailed {
+		t.Fatalf("phase = %q, want Failed", got.Phase)
+	}
+	want := cnpgv1.PhaseDefinitionInvalid + ": " + detail
+	if got.Message != want {
+		t.Fatalf("message = %q, want %q", got.Message, want)
+	}
+}
+
+func TestStatusUsesInitializedCondition(t *testing.T) {
 	tests := []struct {
-		name  string
-		phase string
-		want  corev1alpha1.InstancePhase
+		name    string
+		status  cnpgv1.ClusterStatus
+		want    corev1alpha1.InstancePhase
+		message string
 	}{
-		{name: "creating a replica", phase: cnpgv1.PhaseCreatingReplica, want: corev1alpha1.InstancePhaseProvisioning},
-		{name: "supervised switchover", phase: cnpgv1.PhaseWaitingForUser, want: corev1alpha1.InstancePhaseProvisioning},
-		{name: "not initialized yet", want: corev1alpha1.InstancePhaseInitializing},
+		{
+			name: "Initialized=False reports Initializing with CNPG message",
+			status: cnpgv1.ClusterStatus{
+				Conditions: []metav1.Condition{{
+					Type:    string(cnpgv1.ConditionInitialized),
+					Status:  metav1.ConditionFalse,
+					Reason:  string(cnpgv1.BootstrapPending),
+					Message: "Cluster has not been bootstrapped yet",
+				}},
+			},
+			want:    corev1alpha1.InstancePhaseInitializing,
+			message: "Cluster has not been bootstrapped yet",
+		},
+		{
+			name:    "missing Initialized condition and no generated node is Initializing",
+			status:  cnpgv1.ClusterStatus{},
+			want:    corev1alpha1.InstancePhaseInitializing,
+			message: "waiting for CloudNativePG cluster to initialize",
+		},
+		{
+			name: "Initialized=True with partial readiness is Provisioning",
+			status: cnpgv1.ClusterStatus{
+				Instances:      2,
+				ReadyInstances: 1,
+				Conditions: []metav1.Condition{{
+					Type:   string(cnpgv1.ConditionInitialized),
+					Status: metav1.ConditionTrue,
+					Reason: string(cnpgv1.BootstrapCompleted),
+				}},
+			},
+			want:    corev1alpha1.InstancePhaseProvisioning,
+			message: "waiting for CloudNativePG cluster to be ready (1/2 instances ready)",
+		},
+		{
+			// CNPG IsInitialized still falls back to LatestGeneratedNode for
+			// clusters upgraded from pre-1.30; keep coverage of that path.
+			name: "pre-1.30 upgrade fallback uses LatestGeneratedNode as initialized",
+			status: cnpgv1.ClusterStatus{
+				Instances:      2,
+				ReadyInstances: 1,
+				//nolint:staticcheck // SA1019: deprecated field still used by IsInitialized upgrade bridge
+				LatestGeneratedNode: 2,
+			},
+			want:    corev1alpha1.InstancePhaseProvisioning,
+			message: "waiting for CloudNativePG cluster to be ready (1/2 instances ready)",
+		},
+		{
+			name: "Initialized=True with no instances yet is still Provisioning",
+			status: cnpgv1.ClusterStatus{
+				Conditions: []metav1.Condition{{
+					Type:   string(cnpgv1.ConditionInitialized),
+					Status: metav1.ConditionTrue,
+					Reason: string(cnpgv1.BootstrapCompleted),
+				}},
+			},
+			want:    corev1alpha1.InstancePhaseProvisioning,
+			message: "waiting for CloudNativePG cluster to be ready",
+		},
+		{
+			name: "creating a replica while initialized stays Provisioning",
+			status: cnpgv1.ClusterStatus{
+				Phase:          cnpgv1.PhaseCreatingReplica,
+				Instances:      2,
+				ReadyInstances: 1,
+				Conditions: []metav1.Condition{{
+					Type:   string(cnpgv1.ConditionInitialized),
+					Status: metav1.ConditionTrue,
+				}},
+			},
+			want: corev1alpha1.InstancePhaseProvisioning,
+		},
+		{
+			name: "supervised switchover while initialized stays Provisioning",
+			status: cnpgv1.ClusterStatus{
+				Phase:          cnpgv1.PhaseWaitingForUser,
+				Instances:      2,
+				ReadyInstances: 1,
+				Conditions: []metav1.Condition{{
+					Type:   string(cnpgv1.ConditionInitialized),
+					Status: metav1.ConditionTrue,
+				}},
+			},
+			want: corev1alpha1.InstancePhaseProvisioning,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			status := cnpgv1.ClusterStatus{Phase: tt.phase}
-			if tt.want == corev1alpha1.InstancePhaseProvisioning {
-				status.Instances = 2
-				status.ReadyInstances = 1
-			}
-			got, err := statusForCluster(t, status)
+			got, err := statusForCluster(t, tt.status)
 			if err != nil {
 				t.Fatalf("Status: %v", err)
 			}
 			if got.Phase != tt.want {
 				t.Fatalf("phase = %q, want %q (message: %s)", got.Phase, tt.want, got.Message)
+			}
+			if tt.message != "" && got.Message != tt.message {
+				t.Fatalf("message = %q, want %q", got.Message, tt.message)
 			}
 		})
 	}
