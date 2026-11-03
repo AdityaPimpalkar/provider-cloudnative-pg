@@ -340,6 +340,9 @@ func (p *Provider) Status(c *controller.Context) (controller.Status, error) {
 		return controller.Pending("Waiting to get CloudNativePG cluster resource"), nil
 	}
 
+	// CNPG 1.30 encodes reconcile-time admission/validation failures as
+	// PhaseDefinitionInvalid (via SetAdmissionError) with the detail in
+	// PhaseReason. Other terminal phases are mapped the same way.
 	if status, failed := failedClusterStatus(pg); failed {
 		return status, nil
 	}
@@ -375,6 +378,12 @@ func (p *Provider) Status(c *controller.Context) (controller.Status, error) {
 		return controller.ReadyWithConnectionDetails(details), nil
 	}
 
+	// Prefer CNPG's Initialized condition (with LatestGeneratedNode fallback for
+	// clusters upgraded from pre-1.30) over an Instances==0 heuristic.
+	if !pg.IsInitialized() {
+		return controller.Initializing(initializingMessage(pg)), nil
+	}
+
 	if pg.Status.Instances > 0 {
 		return controller.Provisioning(fmt.Sprintf(
 			"waiting for CloudNativePG cluster to be ready (%d/%d instances ready)",
@@ -383,12 +392,15 @@ func (p *Provider) Status(c *controller.Context) (controller.Status, error) {
 		)), nil
 	}
 
-	return controller.Initializing("waiting for CloudNativePG cluster to initialize"), nil
+	return controller.Provisioning("waiting for CloudNativePG cluster to be ready"), nil
 }
 
 // failedClusterStatus maps CNPG phases that stop reconciliation until someone
 // intervenes. In-progress phases (switchover, failover, upgrade, replica
 // creation, supervised switchover) are left to the caller.
+//
+// PhaseDefinitionInvalid is how CNPG 1.30 surfaces reconcile-time validation
+// failures on the Cluster status.
 func failedClusterStatus(pg *cnpgv1.Cluster) (controller.Status, bool) {
 	switch pg.Status.Phase {
 	case cnpgv1.PhaseUnrecoverable,
@@ -406,6 +418,18 @@ func failedClusterStatus(pg *cnpgv1.Cluster) (controller.Status, bool) {
 	default:
 		return controller.Status{}, false
 	}
+}
+
+func initializingMessage(pg *cnpgv1.Cluster) string {
+	if c := meta.FindStatusCondition(pg.Status.Conditions, string(cnpgv1.ConditionInitialized)); c != nil {
+		if c.Message != "" {
+			return c.Message
+		}
+		if c.Reason != "" {
+			return c.Reason
+		}
+	}
+	return "waiting for CloudNativePG cluster to initialize"
 }
 
 // Cleanup handles deletion of provider-managed resources.
