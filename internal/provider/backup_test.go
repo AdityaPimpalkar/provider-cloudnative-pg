@@ -359,3 +359,169 @@ func TestSyncBackupStorageChecks(t *testing.T) {
 		})
 	}
 }
+
+func TestSyncRestoreInPlaceUnsupported(t *testing.T) {
+	instance := &corev1alpha1.Instance{
+		ObjectMeta: metav1.ObjectMeta{Name: "pg", Namespace: testNamespace},
+	}
+	// Ready Cluster would previously make SyncRestore report Succeeded without restoring.
+	cluster := &cnpgv1.Cluster{
+		ObjectMeta: metav1.ObjectMeta{Name: "pg", Namespace: testNamespace},
+		Status: cnpgv1.ClusterStatus{
+			Instances:      1,
+			ReadyInstances: 1,
+			CurrentPrimary: "pg-1",
+			Conditions: []metav1.Condition{{
+				Type:   string(cnpgv1.ConditionClusterReady),
+				Status: metav1.ConditionTrue,
+			}},
+		},
+	}
+	restore := &backupv1alpha1.Restore{
+		ObjectMeta: metav1.ObjectMeta{Name: "inplace", Namespace: testNamespace},
+		Spec: backupv1alpha1.RestoreSpec{
+			InstanceRef: commonv1alpha1.ObjectRef{Name: "pg"},
+			DataSource: backupv1alpha1.DataSource{
+				Type:   backupv1alpha1.DataSourceTypeBackup,
+				Backup: &backupv1alpha1.DataSourceBackup{BackupRef: commonv1alpha1.ObjectRef{Name: "b"}},
+			},
+		},
+	}
+	cl := fake.NewClientBuilder().WithScheme(cleanupScheme(t)).WithObjects(instance, cluster).Build()
+	c := controller.NewContext(context.Background(), cl, instance, "provider-cloudnative-pg")
+
+	got, err := (&Provider{}).SyncRestore(c, restore)
+	if err != nil {
+		t.Fatalf("SyncRestore: %v", err)
+	}
+	if got.State != backupv1alpha1.RestoreStateFailed {
+		t.Fatalf("state = %q, want Failed", got.State)
+	}
+	if !strings.Contains(got.Message, "Unsupported") {
+		t.Fatalf("message = %q, want Unsupported", got.Message)
+	}
+}
+
+func TestSyncRestoreSeedingTracksCluster(t *testing.T) {
+	completedAt := metav1.Now()
+	tests := []struct {
+		name      string
+		cluster   *cnpgv1.Cluster
+		wantState backupv1alpha1.RestoreState
+		wantMsg   string
+	}{
+		{
+			name:      "cluster missing",
+			wantState: backupv1alpha1.RestoreStatePending,
+			wantMsg:   "Waiting for recovery Cluster",
+		},
+		{
+			name: "cluster still recovering",
+			cluster: &cnpgv1.Cluster{
+				ObjectMeta: metav1.ObjectMeta{Name: "pg", Namespace: testNamespace},
+				Status:     cnpgv1.ClusterStatus{Phase: cnpgv1.PhaseWaitingForUser, PhaseReason: "recovering"},
+			},
+			wantState: backupv1alpha1.RestoreStateRunning,
+			wantMsg:   "recovering",
+		},
+		{
+			name: "cluster ready after recovery",
+			cluster: &cnpgv1.Cluster{
+				ObjectMeta: metav1.ObjectMeta{Name: "pg", Namespace: testNamespace},
+				Status: cnpgv1.ClusterStatus{
+					Instances:      1,
+					ReadyInstances: 1,
+					CurrentPrimary: "pg-1",
+					Conditions: []metav1.Condition{{
+						Type:               string(cnpgv1.ConditionClusterReady),
+						Status:             metav1.ConditionTrue,
+						LastTransitionTime: completedAt,
+					}},
+				},
+			},
+			wantState: backupv1alpha1.RestoreStateSucceeded,
+			wantMsg:   "CloudNativePG recovery completed",
+		},
+		{
+			name: "cluster unrecoverable",
+			cluster: &cnpgv1.Cluster{
+				ObjectMeta: metav1.ObjectMeta{Name: "pg", Namespace: testNamespace},
+				Status: cnpgv1.ClusterStatus{
+					Phase:       cnpgv1.PhaseUnrecoverable,
+					PhaseReason: "backup missing",
+				},
+			},
+			wantState: backupv1alpha1.RestoreStateFailed,
+			wantMsg:   "backup missing",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			instance := &corev1alpha1.Instance{
+				ObjectMeta: metav1.ObjectMeta{Name: "pg", Namespace: testNamespace},
+				Spec: corev1alpha1.InstanceSpec{
+					DataSource: &backupv1alpha1.DataSource{
+						Type:   backupv1alpha1.DataSourceTypeBackup,
+						Backup: &backupv1alpha1.DataSourceBackup{BackupRef: commonv1alpha1.ObjectRef{Name: "b"}},
+					},
+				},
+			}
+			restore := &backupv1alpha1.Restore{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "pg" + controller.DataSourceRestoreNameSuffix,
+					Namespace: testNamespace,
+				},
+				Spec: backupv1alpha1.RestoreSpec{
+					InstanceRef: commonv1alpha1.ObjectRef{Name: "pg"},
+					DataSource:  *instance.Spec.DataSource,
+				},
+			}
+			objects := []client.Object{instance}
+			if tt.cluster != nil {
+				objects = append(objects, tt.cluster)
+			}
+			cl := fake.NewClientBuilder().WithScheme(cleanupScheme(t)).WithObjects(objects...).Build()
+			c := controller.NewContext(context.Background(), cl, instance, "provider-cloudnative-pg")
+
+			got, err := (&Provider{}).SyncRestore(c, restore)
+			if err != nil {
+				t.Fatalf("SyncRestore: %v", err)
+			}
+			if got.State != tt.wantState {
+				t.Fatalf("state = %q, want %q (message: %s)", got.State, tt.wantState, got.Message)
+			}
+			if !strings.Contains(got.Message, tt.wantMsg) {
+				t.Fatalf("message = %q, want substring %q", got.Message, tt.wantMsg)
+			}
+		})
+	}
+}
+
+func TestCleanupRestoreNoOp(t *testing.T) {
+	instance := &corev1alpha1.Instance{
+		ObjectMeta: metav1.ObjectMeta{Name: "pg", Namespace: testNamespace},
+	}
+	restore := &backupv1alpha1.Restore{
+		ObjectMeta: metav1.ObjectMeta{Name: "inplace", Namespace: testNamespace},
+	}
+	cl := fake.NewClientBuilder().WithScheme(cleanupScheme(t)).WithObjects(instance).Build()
+	c := controller.NewContext(context.Background(), cl, instance, "provider-cloudnative-pg")
+
+	done, err := (&Provider{}).CleanupRestore(c, restore)
+	if err != nil || !done {
+		t.Fatalf("done=%t err=%v, want done=true", done, err)
+	}
+}
+
+func TestRestoreWatchesCluster(t *testing.T) {
+	watches := (&Provider{}).RestoreWatches()
+	if len(watches) != 1 {
+		t.Fatalf("RestoreWatches len = %d, want 1", len(watches))
+	}
+	if watches[0].Owned {
+		t.Fatal("Cluster watch must be external; Cluster is owned by the Instance, not the Restore")
+	}
+	if _, ok := watches[0].Object.(*cnpgv1.Cluster); !ok {
+		t.Fatalf("watched object = %T, want *cnpgv1.Cluster", watches[0].Object)
+	}
+}
