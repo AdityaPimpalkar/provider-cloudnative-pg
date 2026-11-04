@@ -26,4 +26,8 @@ const (
 	// BackupDeletionImage contains the Barman Cloud CLI version pinned by this
 	// provider's plugin-barman-cloud dependency.
 	BackupDeletionImage = "ghcr.io/cloudnative-pg/plugin-barman-cloud-sidecar:v0.15.0"
+
+	// ReasonBarmanPluginMissing is published on BackupConfigured / Backup status
+	// when the ObjectStore CRD (Barman Cloud Plugin) is absent from the cluster.
+	ReasonBarmanPluginMissing = "BarmanPluginMissing"
 )

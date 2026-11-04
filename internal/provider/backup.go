@@ -52,6 +52,15 @@ func (p *Provider) SyncBackup(c *controller.Context, backup *backupv1alpha1.Back
 				Message: "CloudNativePG backup is no longer available; it may have expired under Barman retention",
 			}, nil
 		}
+		if err := barman.EnsureObjectStoreAvailable(c); err != nil {
+			if bce := controller.AsBackupConfigError(err); bce != nil {
+				return controller.BackupExecutionStatus{
+					State:   backupv1alpha1.BackupStateFailed,
+					Message: bce.Message,
+				}, nil
+			}
+			return controller.BackupExecutionStatus{}, err
+		}
 		if blocked := backupStorageBlocker(c.Instance(), cluster, backup.Spec.StorageRef.Name); blocked != nil {
 			return *blocked, nil
 		}
