@@ -26,6 +26,10 @@ func SyncBackupInfrastructure(c *controller.Context) ([]cnpgv1.PluginConfigurati
 		return nil, nil
 	}
 
+	if err := EnsureObjectStoreAvailable(c); err != nil {
+		return nil, err
+	}
+
 	mainName := backupCfg.Storages[0].StorageRef.Name
 	for _, strg := range backupCfg.Storages {
 		bg, err := c.BackupStorage(strg.StorageRef.Name)
@@ -82,6 +86,9 @@ func SyncBackupInfrastructure(c *controller.Context) ([]cnpgv1.PluginConfigurati
 		}
 		objStore.Spec.RetentionPolicy = retention
 		if err := c.Apply(objStore); err != nil {
+			if bce := ObjectStoreCRDMissing(err); bce != nil {
+				return nil, bce
+			}
 			return nil, fmt.Errorf("apply ObjectStore %q: %w", strg.StorageRef.Name, err)
 		}
 	}
@@ -131,6 +138,9 @@ func checkSharedRetention(c *controller.Context, storageName, retention string) 
 
 	current := &barmancloudv1.ObjectStore{}
 	if err := c.Get(current, storageName); err != nil {
+		if bce := ObjectStoreCRDMissing(err); bce != nil {
+			return bce
+		}
 		if !apierrors.IsNotFound(err) {
 			return fmt.Errorf("get ObjectStore %q: %w", storageName, err)
 		}
