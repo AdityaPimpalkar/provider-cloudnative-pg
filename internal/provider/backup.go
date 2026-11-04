@@ -1,9 +1,7 @@
 package provider
 
 import (
-	"context"
 	"fmt"
-	"strings"
 
 	"github.com/adityapimpalkar/provider-cloudnative-pg/internal/cnpg/barman"
 	cnpgv1 "github.com/cloudnative-pg/cloudnative-pg/api/v1"
@@ -15,12 +13,9 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/controller-runtime/pkg/client"
+
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
-	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
 // Compile-time interface checks.
@@ -102,45 +97,18 @@ func (p *Provider) SyncBackup(c *controller.Context, backup *backupv1alpha1.Back
 		exec.State = backupv1alpha1.BackupStateSucceeded
 		exec.CompletedAt = cnpgBackup.Status.StoppedAt
 		exec.StartedAt = cnpgBackup.Status.StartedAt
-		exec.Message = backupDetailsMessage(cnpgBackup.Status)
 	case cnpgv1.BackupPhaseRunning:
 		exec.State = backupv1alpha1.BackupStateRunning
-		exec.StartedAt = cnpgBackup.Status.StartedAt
-		exec.CompletedAt = cnpgBackup.Status.StoppedAt
 	case cnpgv1.BackupPhaseStarted, cnpgv1.BackupPhasePending:
 		exec.State = backupv1alpha1.BackupStatePending
-		exec.StartedAt = cnpgBackup.Status.StartedAt
-		exec.CompletedAt = cnpgBackup.Status.StoppedAt
 	case cnpgv1.BackupPhaseFailed, cnpgv1.BackupPhaseWalArchivingFailing:
 		exec.State = backupv1alpha1.BackupStateFailed
-		exec.CompletedAt = cnpgBackup.Status.StoppedAt
-		exec.StartedAt = cnpgBackup.Status.StartedAt
-		if cnpgBackup.Status.Error != "" {
-			exec.Message = cnpgBackup.Status.Error
-		} else {
-			exec.Message = backupDetailsMessage(cnpgBackup.Status)
-		}
+		exec.Message = cnpgBackup.Status.Error
 	default:
 		exec.State = backupv1alpha1.BackupStatePending
 	}
 
 	return exec, nil
-}
-
-// backupDetailsMessage surfaces Barman ID and LSN/WAL range for observability.
-// OpenEverest has no dedicated fields for these, so they go in Message.
-func backupDetailsMessage(status cnpgv1.BackupStatus) string {
-	var parts []string
-	if status.BackupID != "" {
-		parts = append(parts, "backupId="+status.BackupID)
-	}
-	if status.BeginLSN != "" || status.EndLSN != "" {
-		parts = append(parts, "lsn="+status.BeginLSN+".."+status.EndLSN)
-	}
-	if status.BeginWal != "" || status.EndWal != "" {
-		parts = append(parts, "wal="+status.BeginWal+".."+status.EndWal)
-	}
-	return strings.Join(parts, " ")
 }
 
 // backupStorageBlocker returns the status to report instead of creating the CNPG
@@ -176,34 +144,13 @@ func instanceHasBackupStorage(instance *corev1alpha1.Instance, storageName strin
 	return false
 }
 
-// SyncRestore tracks CloudNativePG recovery bootstrap for Instance.spec.dataSource
-// seeding. In-place Restore CRs against an existing Instance are unsupported:
-// CNPG recovery only bootstraps a new Cluster (see CNPG recovery docs).
+// SyncRestore resolves the source Backup CR, creates or updates the operator's
+// restore resource with a controller reference, and maps operator status to
+// OpenEverest states.
 func (p *Provider) SyncRestore(c *controller.Context, restore *backupv1alpha1.Restore) (controller.RestoreExecutionStatus, error) {
 	l := log.FromContext(c.Context())
 	l.Info("Syncing restore", "name", restore.Name)
 
-	if !isSeedingRestore(c, restore) {
-		return controller.RestoreExecutionStatus{
-			State: backupv1alpha1.RestoreStateFailed,
-			Message: "Unsupported: CloudNativePG does not support in-place restore; " +
-				"seed a new Instance from a Backup via spec.dataSource instead",
-		}, nil
-	}
-
-	return seedingRestoreStatus(c, restore)
-}
-
-// isSeedingRestore reports whether the Restore is the one the runtime creates
-// to seed the Instance from its spec.dataSource.
-func isSeedingRestore(c *controller.Context, restore *backupv1alpha1.Restore) bool {
-	return c.Instance().Spec.DataSource != nil &&
-		restore.Name == c.Name()+controller.DataSourceRestoreNameSuffix
-}
-
-// seedingRestoreStatus maps Cluster readiness onto the datasource Restore CR.
-// Sync() configures bootstrap.recovery; there is no separate CNPG Restore object.
-func seedingRestoreStatus(c *controller.Context, _ *backupv1alpha1.Restore) (controller.RestoreExecutionStatus, error) {
 	cluster := &cnpgv1.Cluster{}
 	if err := c.Get(cluster, c.Name()); err != nil {
 		if apierrors.IsNotFound(err) {
@@ -302,12 +249,32 @@ func (p *Provider) CleanupBackup(c *controller.Context, backup *backupv1alpha1.B
 	return false, nil
 }
 
-// CleanupRestore has nothing to delete: CNPG has no Restore CR, and seeding
-// recovery lives on the Instance-owned Cluster. Return true so the Restore
-// finalizer can be removed.
+// CleanupRestore deletes the operator restore resource. Return true when fully
+// deleted, false to requeue.
 func (p *Provider) CleanupRestore(c *controller.Context, restore *backupv1alpha1.Restore) (bool, error) {
 	l := log.FromContext(c.Context())
 	l.Info("Cleaning up restore", "name", restore.Name)
+
+	// TODO: Implement restore cleanup logic.
+	// Typical pattern:
+	//   1. Get the operator restore CR
+	//   2. Delete the operator restore CR
+	//   3. Return true when fully deleted, false to requeue
+	//
+	// Example:
+	//   or := &operatorv1.MyDatabaseRestore{}
+	//   err := c.Get(or, restore.Name)
+	//   if apierrors.IsNotFound(err) {
+	//       return true, nil
+	//   }
+	//   if err != nil {
+	//       return false, err
+	//   }
+	//   if or.DeletionTimestamp.IsZero() {
+	//       return false, c.Delete(or)
+	//   }
+	//   return false, nil
+
 	return true, nil
 }
 
@@ -321,21 +288,14 @@ func (p *Provider) BackupWatches() []controller.WatchConfig {
 	}
 }
 
-// RestoreWatches maps Cluster status changes onto the datasource seeding Restore
-// CR ({instance}-datasource). In-place restores create no watched resources.
+// RestoreWatches implements controller.RestoreWatcher. Register watches so operator
+// restore status changes trigger reconciliation. Use WatchOwned for resources with
+// controller references set by SyncRestore.
 func (p *Provider) RestoreWatches() []controller.WatchConfig {
-	return []controller.WatchConfig{
-		controller.WatchExternal(
-			&cnpgv1.Cluster{},
-			handler.EnqueueRequestsFromMapFunc(func(_ context.Context, obj client.Object) []reconcile.Request {
-				return []reconcile.Request{{
-					NamespacedName: types.NamespacedName{
-						Namespace: obj.GetNamespace(),
-						Name:      obj.GetName() + controller.DataSourceRestoreNameSuffix,
-					},
-				}}
-			}),
-			controller.ResourceVersionChangedPredicate,
-		),
-	}
+	// TODO: Register watches for your operator restore resource.
+	// Example:
+	//   return []controller.WatchConfig{
+	//       controller.WatchOwned(&operatorv1.MyDatabaseRestore{}),
+	//   }
+	return []controller.WatchConfig{}
 }
