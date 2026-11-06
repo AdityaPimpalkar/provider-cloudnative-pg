@@ -65,6 +65,7 @@ provider itself is covered under [Installation](#installation).
 | Bootstrap (`initdb`) | ✅ | database name, owner, and credentials secret |
 | Managed roles | ✅ | CloudNativePG managed roles with readiness gating in `Status()` |
 | Synchronous replication | ✅ | `parameters.postgresql.synchronous`; see [Synchronous replication](#synchronous-replication) |
+| Logical replication slot failover | ✅ | `parameters.replicationSlots.highAvailability.synchronizeLogicalDecoding` (PostgreSQL 17+); see [Logical replication slot failover](#logical-replication-slot-failover) |
 | TLS-only connections | ✅ | `parameters.requireTLS: true` rejects unencrypted client connections; see [Require TLS](#require-tls) |
 | Connection pooling | ✅ | optional `proxy` component → CloudNativePG `Pooler` (PgBouncer, type `rw`); see [Connection pooling](#connection-pooling) |
 | Pod scheduling | ✅ | `spec.components.engine.schedulingPolicy` (all fields), or `parameters.affinity` — not both |
@@ -447,6 +448,7 @@ The technology-specific knobs worth knowing about:
 | `priorityClassName` | `engine` | Kubernetes PriorityClass of the instance pods |
 | `certificates` | `engine` | TLS certificate configuration passthrough |
 | `requireTLS` | `engine` | Reject unencrypted client connections; see [Require TLS](#require-tls) |
+| `replicationSlots` | `engine` | CloudNativePG `ReplicationSlotsConfiguration` (HA slots, user slot synchronization, logical slot failover); see [Logical replication slot failover](#logical-replication-slot-failover) |
 | `monitoring` | `engine` | CloudNativePG monitoring configuration (custom queries, metrics TLS, …) |
 | `monitoring.prometheus` | topology | Create a PodMonitor for the instance; see [Scrape metrics with Prometheus](#scrape-metrics-with-prometheus) |
 
@@ -483,6 +485,54 @@ spec:
   `preferred` falls back to asynchronous replication and restores synchronous
   replication when standbys return. The provider does not alert on that
   fallback; watch the replication metrics.
+
+### Logical replication slot failover
+
+Logical replication slots (used by subscriptions and change data capture tools)
+live on the primary. Without synchronization, a failover promotes a standby that
+has no slots, and consumers lose their position. Set CloudNativePG's
+[`replicationSlots`](https://cloudnative-pg.io/documentation/current/replication/#logical-decoding-slot-synchronization)
+configuration to keep them on the standbys (the UI exposes it as the
+**Logical replication slot failover** toggle under Resources):
+
+```yaml
+spec:
+  components:
+    engine:
+      replicas: 2
+      parameters:
+        replicationSlots:
+          highAvailability:
+            synchronizeLogicalDecoding: true
+```
+
+- Requires PostgreSQL 17 or later, which synchronizes slots natively. The
+  provider turns on `hot_standby_feedback` and `sync_replication_slots` unless
+  they are set in `postgresql.parameters`, and rejects them set to `off`.
+- On PostgreSQL 14–16, use the `pg_failover_slots` extension from the standard
+  images instead: set a `pg_failover_slots.*` parameter (for example
+  `pg_failover_slots.synchronize_slot_names`) in `postgresql.parameters` and the
+  operator preloads it. The provider then leaves the other settings to you.
+- Only slots created with failover enabled are synchronized: `CREATE SUBSCRIPTION
+  ... WITH (failover = true)`, or the `failover` argument of
+  `pg_create_logical_replication_slot()`. A slot is ready for failover once
+  `pg_replication_slots` on the standby shows it `synced` and not `temporary`.
+  A new slot stays temporary there until its consumer has advanced on the
+  primary; temporary slots are dropped when the standby is promoted.
+- HA replication slots (`highAvailability.enabled`, on by default) must stay on.
+  `highAvailability.slotPrefix` cannot change while they are enabled; the
+  provider rejects such a change, including removing a custom prefix.
+- On PostgreSQL 17+, CloudNativePG also manages `synchronized_standby_slots`:
+  logical consumers only receive changes the standbys have already flushed, so
+  a consumer never gets ahead of what survives a failover. While no standby is
+  streaming, logical replication waits.
+- A slot whose consumer stops keeps WAL on the primary until the volume fills.
+  Bound it with `postgresql.parameters.max_slot_wal_keep_size`, and drop slots
+  you no longer use.
+
+The rest of `replicationSlots` is passed through as well, for example
+`synchronizeReplicas.excludePatterns` to keep user-defined physical slots off
+the standbys.
 
 ### Require TLS
 

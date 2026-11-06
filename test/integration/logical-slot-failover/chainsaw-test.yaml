@@ -1,0 +1,136 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/kyverno/chainsaw/main/.schemas/json/test-chainsaw-v1alpha1.json
+# A logical slot created with failover enabled is synchronized to the standby
+# and keeps its position across a failover: the change consumed before the
+# failover is not replayed, the one after it is delivered.
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: logical-slot-failover
+spec:
+  timeouts:
+    cleanup: 3m
+  steps:
+    - name: create-instance
+      try:
+        - apply:
+            file: 00-instance.yaml
+        - script:
+            timeout: 8m
+            content: |
+              set -e
+              kubectl wait --for=create cluster/slot-failover -n "$NAMESPACE" --timeout=60s
+              kubectl wait --for=condition=Ready cluster/slot-failover -n "$NAMESPACE" --timeout=420s
+        - assert:
+            resource:
+              apiVersion: postgresql.cnpg.io/v1
+              kind: Cluster
+              metadata:
+                name: slot-failover
+              spec:
+                replicationSlots:
+                  highAvailability:
+                    enabled: true
+                    synchronizeLogicalDecoding: true
+                postgresql:
+                  parameters:
+                    hot_standby_feedback: "on"
+                    sync_replication_slots: "on"
+      catch:
+        - script:
+            content: kubectl get instance,cluster,pod -n "$NAMESPACE" -o wide
+        - script:
+            content: kubectl get instance/slot-failover -n "$NAMESPACE" -o jsonpath='{.status}'
+
+    - name: sync-slot-to-standby
+      try:
+        - script:
+            timeout: 3m
+            content: |
+              set -eu
+              primary="$(kubectl get cluster slot-failover -n "$NAMESPACE" -o jsonpath='{.status.currentPrimary}')"
+              standby="$(kubectl get pod -n "$NAMESPACE" -l cnpg.io/cluster=slot-failover,cnpg.io/instanceRole=replica -o jsonpath='{.items[0].metadata.name}')"
+              sql() { kubectl exec -n "$NAMESPACE" "$1" -c postgres -- psql -d app -v ON_ERROR_STOP=1 -tAc "$2"; }
+
+              sql "$primary" "SELECT pg_create_logical_replication_slot('cdc', 'test_decoding', false, false, true)"
+              # A synced slot stays temporary on the standby (and would be
+              # dropped on promotion) until the primary's slot moves past the
+              # standby's catalog horizon. Keep the consumer moving until then.
+              for _ in $(seq 1 60); do
+                sql "$primary" "SELECT pg_log_standby_snapshot()" >/dev/null
+                sql "$primary" "SELECT count(*) FROM pg_logical_slot_get_changes('cdc', NULL, NULL)" >/dev/null
+                persisted="$(sql "$standby" "SELECT synced AND NOT temporary FROM pg_replication_slots WHERE slot_name = 'cdc'" || true)"
+                [ "$persisted" = t ] && break
+                sleep 2
+              done
+              echo "standby $standby slot persisted: $persisted"
+              test "$persisted" = t
+
+              sql "$primary" "CREATE TABLE cdc_test (id int PRIMARY KEY); INSERT INTO cdc_test VALUES (1)"
+              consumed="$(sql "$primary" "SELECT count(*) FROM pg_logical_slot_get_changes('cdc', NULL, NULL) WHERE data LIKE '%cdc_test%'")"
+              echo "changes consumed before failover: $consumed"
+              test "$consumed" -ge 1
+              flushed="$(sql "$primary" "SELECT confirmed_flush_lsn FROM pg_replication_slots WHERE slot_name = 'cdc'")"
+              sql "$primary" "INSERT INTO cdc_test VALUES (2)"
+
+              # The standby copy must carry the position after row 1, not just exist.
+              for _ in $(seq 1 60); do
+                out="$(sql "$standby" "SELECT synced AND failover AND NOT temporary AND confirmed_flush_lsn >= '$flushed' FROM pg_replication_slots WHERE slot_name = 'cdc'" || true)"
+                [ "$out" = t ] && break
+                sleep 2
+              done
+              echo "standby $standby slot synced up to $flushed: $out"
+              test "$out" = t
+      catch:
+        - script:
+            content: |
+              for pod in $(kubectl get pod -n "$NAMESPACE" -l cnpg.io/cluster=slot-failover -o name); do
+                echo "== $pod"
+                kubectl exec -n "$NAMESPACE" "${pod#pod/}" -c postgres -- psql -d app -xc 'SELECT * FROM pg_replication_slots' || true
+              done
+
+    - name: failover
+      try:
+        - script:
+            timeout: 5m
+            content: |
+              set -eu
+              old="$(kubectl get cluster slot-failover -n "$NAMESPACE" -o jsonpath='{.status.currentPrimary}')"
+              # A 1s grace period simulates a crash, as in CloudNativePG's own
+              # failover e2e; a graceful delete may restart the primary in place.
+              kubectl delete pod "$old" -n "$NAMESPACE" --grace-period=1 --wait=false
+              for _ in $(seq 1 90); do
+                new="$(kubectl get cluster slot-failover -n "$NAMESPACE" -o jsonpath='{.status.currentPrimary}')"
+                [ -n "$new" ] && [ "$new" != "$old" ] && break
+                sleep 2
+              done
+              echo "primary: $old -> $new"
+              test "$new" != "$old"
+              kubectl wait --for=condition=Ready "pod/$new" -n "$NAMESPACE" --timeout=180s
+              for _ in $(seq 1 60); do
+                role="$(kubectl exec -n "$NAMESPACE" "$new" -c postgres -- psql -tAc 'SELECT NOT pg_is_in_recovery()' || true)"
+                [ "$role" = t ] && break
+                sleep 2
+              done
+              test "$role" = t
+
+    - name: consume-after-failover
+      try:
+        - script:
+            timeout: 2m
+            content: |
+              set -eu
+              primary="$(kubectl get cluster slot-failover -n "$NAMESPACE" -o jsonpath='{.status.currentPrimary}')"
+              changes="$(kubectl exec -n "$NAMESPACE" "$primary" -c postgres -- psql -d app -v ON_ERROR_STOP=1 -tAc \
+                "SELECT string_agg(data, E'\n') FROM pg_logical_slot_get_changes('cdc', NULL, NULL) WHERE data LIKE '%cdc_test%'")"
+              echo "changes after failover on $primary:"
+              echo "$changes"
+              # Row 2 was not consumed before the failover and must arrive now;
+              # row 1 was consumed and must not be replayed.
+              echo "$changes" | grep -q 'INSERT: id\[integer\]:2'
+              if echo "$changes" | grep -q 'INSERT: id\[integer\]:1'; then
+                echo "row 1 was replayed after failover"
+                exit 1
+              fi
+      catch:
+        - script:
+            content: kubectl get cluster/slot-failover -n "$NAMESPACE" -o jsonpath='{.status.instancesStatus}'

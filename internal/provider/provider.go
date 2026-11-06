@@ -115,6 +115,14 @@ func (p *Provider) Validate(c *controller.Context) error {
 		return err
 	}
 
+	if err := cnpg.ValidateReplicationSlots(&custom, engine.Version, c.Instance().Spec.Version); err != nil {
+		return err
+	}
+
+	if err := cnpg.ValidateReplicationSlotsChange(c, &custom); err != nil {
+		return err
+	}
+
 	if err := cnpg.ValidateScheduling(engine.SchedulingPolicy, &custom); err != nil {
 		return err
 	}
@@ -176,6 +184,7 @@ func (p *Provider) Sync(c *controller.Context) error {
 		pg.Spec.PostgresConfiguration = *custom.PostgresConfiguration
 	}
 	cnpg.ApplyRequireTLS(pg, &custom)
+	cnpg.ApplyReplicationSlots(pg, &custom, engine.Version, c.Instance().Spec.Version)
 
 	if custom.Managed != nil {
 		pg.Spec.Managed = custom.Managed
