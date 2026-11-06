@@ -1,0 +1,70 @@
+# Makes requireTLS mandatory for CloudNativePG Instances, including the ones
+# created from Git, which don't get the UI's default. See "Require TLS" in the
+# README.
+#
+# - Creating an Instance without `requireTLS: true`, or turning it off on one
+#   that has it, is refused.
+# - Instances that already accept unencrypted clients keep working: their
+#   updates, including the controllers' own, are allowed until requireTLS is
+#   turned on. The background scan lists them in PolicyReports
+#   (`kubectl get policyreports -A`).
+#
+# A Kyverno ValidatingPolicy (policies.kyverno.io/v1, tested with Kyverno
+# 1.19). Apply it with the rest of the platform's configuration, e.g. from the
+# same Git repository.
+# Lets Kyverno read Instances, so the policy's background scan can report the
+# Instances that don't require TLS yet. It comes first: Kyverno checks its
+# permissions when the policy is created or changed.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kyverno:openeverest-instances
+  labels:
+    rbac.kyverno.io/aggregate-to-admission-controller: "true"
+    rbac.kyverno.io/aggregate-to-reports-controller: "true"
+rules:
+  - apiGroups: [core.openeverest.io]
+    resources: [instances]
+    verbs: [get, list, watch]
+---
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: cloudnative-pg-require-tls
+  annotations:
+    policies.kyverno.io/title: Require TLS for CloudNativePG instances
+    policies.kyverno.io/category: Security
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/description: >-
+      CloudNativePG Instances must refuse unencrypted client connections:
+      spec.components.engine.parameters.requireTLS must be true.
+spec:
+  validationActions: [Deny]
+  evaluation:
+    background:
+      enabled: true
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [core.openeverest.io]
+        apiVersions: [v1alpha1]
+        operations: [CREATE, UPDATE]
+        resources: [instances]
+  matchConditions:
+    - name: cloudnative-pg
+      expression: object.spec.providerRef.name == 'provider-cloudnative-pg'
+  variables:
+    - name: requiresTLS
+      expression: object.spec.?components[?'engine'].?parameters.?requireTLS.orValue(false) == true
+    # An update to an Instance that didn't require TLS before is allowed, so
+    # existing Instances aren't blocked; one that did can't turn it off. On
+    # creation there's no old object (Kyverno passes an empty one).
+    - name: existingViolation
+      expression: >-
+        oldObject != null && has(oldObject.spec) &&
+        oldObject.spec.?components[?'engine'].?parameters.?requireTLS.orValue(false) != true
+  validations:
+    - expression: variables.requiresTLS || variables.existingViolation
+      message: CloudNativePG Instances must set spec.components.engine.parameters.requireTLS to true
+      messageExpression: >-
+        "Instance " + object.metadata.name + " must refuse unencrypted connections:
+        set spec.components.engine.parameters.requireTLS to true"

@@ -516,6 +516,26 @@ that value.
 The UI enables this by default for new instances. Unset means off, so existing
 instances keep accepting unencrypted clients until you turn it on.
 
+#### Making it mandatory
+
+Instances created from Git or with `kubectl` don't get the UI's default. To
+require TLS for every CloudNativePG Instance, apply an admission policy with
+the rest of the platform's configuration.
+[examples/policy-require-tls.yaml](examples/policy-require-tls.yaml) is one
+for Kyverno, a `ValidatingPolicy` tested with Kyverno 1.19:
+
+- Creating an Instance without `requireTLS: true`, or turning it off on one
+  that has it, is refused with a message saying what to set.
+- Instances that already accept unencrypted clients keep working: their
+  updates, including the provider's own, are allowed until you turn
+  `requireTLS` on. The policy's background scan lists them in PolicyReports
+  (`kubectl get policyreports -A`), so they can be found and fixed.
+- Instances of other providers aren't affected.
+
+The file includes a ClusterRole that lets Kyverno read Instances for those
+reports; keep it first, as Kyverno checks its permissions when the policy is
+created.
+
 ## Development
 
 Requires Go (see [go.mod](go.mod)), Docker, Helm, kubectl, and a Kubernetes cluster you can
