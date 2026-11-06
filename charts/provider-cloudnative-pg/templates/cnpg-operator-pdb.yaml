@@ -1,0 +1,18 @@
+{{- $cnpg := index .Values "cloudnative-pg" }}
+{{- $pdb := .Values.cnpgOperatorPodDisruptionBudget }}
+{{- if and $cnpg.enabled $pdb.enabled (gt (int $cnpg.replicaCount) 1) }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ $cnpg.fullnameOverride | default "cnpg-operator" }}
+  namespace: {{ $cnpg.namespaceOverride | default .Release.Namespace }}
+  labels:
+    {{- include "provider-cloudnative-pg.labels" . | nindent 4 }}
+spec:
+  minAvailable: {{ $pdb.minAvailable }}
+  selector:
+    # The CloudNativePG chart's selector labels for its operator pods.
+    matchLabels:
+      app.kubernetes.io/name: {{ $cnpg.nameOverride | default "cloudnative-pg" }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end }}

@@ -242,6 +242,27 @@ helm uninstall provider-cloudnative-pg --namespace everest-system
 
 Uninstalling the chart does **not** delete running `Instance` resources or their data.
 
+### Operator high availability
+
+CloudNativePG performs PostgreSQL failover from the operator, so a primary that fails while
+no operator is running stays down until one returns. It also serves the admission webhooks
+for `Cluster` changes. The chart therefore runs the bundled operator highly available by
+default:
+
+- `cloudnative-pg.replicaCount: 2`. The replicas use leader election; when the leader
+  disappears, the standby takes over once the lease expires (15 seconds by default, sooner
+  if the leader shuts down gracefully) and then carries out any pending failover. Every
+  replica serves the webhooks.
+- Preferred pod anti-affinity across nodes and a preferred spread across zones
+  (`cloudnative-pg.affinity`, `cloudnative-pg.topologySpreadConstraints`). Neither is
+  required, so single-node clusters still schedule both replicas.
+- A PodDisruptionBudget with `minAvailable: 1`, so node drains keep one operator running
+  (`cnpgOperatorPodDisruptionBudget`; rendered only when `replicaCount` is above 1).
+
+Set `cloudnative-pg.replicaCount=1` to go back to a single operator, for example on
+development clusters. When you manage the operator yourself (`cloudnative-pg.enabled=false`),
+apply the same settings there.
+
 ## Usage
 
 Verify that the provider registered itself:

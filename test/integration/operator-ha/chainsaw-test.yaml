@@ -1,0 +1,82 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/kyverno/chainsaw/main/.schemas/json/test-chainsaw-v1alpha1.json
+# CloudNativePG drives failover. With two operator replicas, a primary that
+# crashes together with the operator leader still fails over once the standby
+# operator takes the lease.
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: operator-ha
+spec:
+  # Kills the operator leader: keep other tests out of the way.
+  concurrent: false
+  timeouts:
+    cleanup: 3m
+  steps:
+    - name: operator-replicas
+      try:
+        - script:
+            timeout: 3m
+            content: |
+              set -eu
+              ns="${PROVIDER_NAMESPACE:-provider-system}"
+              kubectl rollout status deploy/cnpg-operator -n "$ns" --timeout=150s
+              test "$(kubectl get deploy cnpg-operator -n "$ns" -o jsonpath='{.status.availableReplicas}')" = 2
+              test "$(kubectl get pdb cnpg-operator -n "$ns" -o jsonpath='{.status.expectedPods}')" = 2
+
+    - name: create-instance
+      try:
+        - apply:
+            file: 00-instance.yaml
+        - script:
+            timeout: 8m
+            content: |
+              set -e
+              kubectl wait --for=create cluster/operator-ha -n "$NAMESPACE" --timeout=60s
+              kubectl wait --for=condition=Ready cluster/operator-ha -n "$NAMESPACE" --timeout=420s
+      catch:
+        - script:
+            content: kubectl get instance,cluster,pod -n "$NAMESPACE" -o wide
+
+    - name: kill-leader-and-primary
+      try:
+        - script:
+            timeout: 5m
+            content: |
+              set -eu
+              ns="${PROVIDER_NAMESPACE:-provider-system}"
+              holder="$(kubectl get lease db9c8771.cnpg.io -n "$ns" -o jsonpath='{.spec.holderIdentity}')"
+              leader="${holder%%_*}"
+              old="$(kubectl get cluster operator-ha -n "$NAMESPACE" -o jsonpath='{.status.currentPrimary}')"
+              echo "operator leader: $leader, primary: $old"
+
+              # A 1s grace period simulates a crash of both pods.
+              start="$(date +%s)"
+              kubectl delete pod "$leader" -n "$ns" --grace-period=1 --wait=false
+              kubectl delete pod "$old" -n "$NAMESPACE" --grace-period=1 --wait=false
+
+              for _ in $(seq 1 120); do
+                new="$(kubectl get cluster operator-ha -n "$NAMESPACE" -o jsonpath='{.status.currentPrimary}')"
+                [ -n "$new" ] && [ "$new" != "$old" ] && break
+                sleep 2
+              done
+              echo "primary: $old -> $new after $(( $(date +%s) - start ))s"
+              test "$new" != "$old"
+
+              holder="$(kubectl get lease db9c8771.cnpg.io -n "$ns" -o jsonpath='{.spec.holderIdentity}')"
+              echo "operator leader now: ${holder%%_*}"
+              test "${holder%%_*}" != "$leader"
+      catch:
+        - script:
+            content: |
+              kubectl get pod -n "${PROVIDER_NAMESPACE:-provider-system}" -l app.kubernetes.io/name=cloudnative-pg -o wide
+              kubectl get cluster/operator-ha -n "$NAMESPACE" -o jsonpath='{.status.phase}{"\n"}{.status.instancesStatus}{"\n"}'
+
+    - name: recover
+      try:
+        - script:
+            timeout: 6m
+            content: |
+              set -eu
+              ns="${PROVIDER_NAMESPACE:-provider-system}"
+              kubectl wait --for=condition=Ready cluster/operator-ha -n "$NAMESPACE" --timeout=300s
+              kubectl rollout status deploy/cnpg-operator -n "$ns" --timeout=60s
