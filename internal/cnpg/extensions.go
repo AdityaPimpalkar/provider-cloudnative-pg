@@ -49,7 +49,10 @@ type extension struct {
 	preloadLibraries   []string
 	// defaultParameters apply unless set in parameters.postgresql.parameters.
 	defaultParameters map[string]string
-	requires          []string
+	// databaseParameters name parameters that must hold the application
+	// database name; they default to it and other values are rejected.
+	databaseParameters []string
+	requires           []string
 	// conflicts lists extensions that cannot be enabled together with this
 	// one, such as the two TimescaleDB editions, which create the same SQL
 	// extension from different images.
@@ -135,14 +138,39 @@ var firstClassExtensions = []extension{
 		// Non-superusers cannot LOAD it from an image volume (only $libdir/plugins).
 		preloadLibraries: []string{"age"},
 		// CREATE EXTENSION creates ag_catalog as the superuser, and AGE refuses a
-		// pre-created one, so grant the owner USAGE on schemas created later.
-		// Default privileges on schemas cannot be narrowed to one schema, so this
-		// covers every schema the superuser creates in the application database.
-		// It runs only at initdb: changing it does not reach existing clusters.
-		bootstrapSQL: func(owner string) string {
-			return "ALTER DEFAULT PRIVILEGES FOR ROLE " + postgresSuperuser + " GRANT USAGE ON SCHEMAS TO " + quoteIdentifier(owner)
-		},
+		// pre-created one.
+		bootstrapSQL: grantOwnerUsageOnSuperuserSchemas,
 	},
+	{
+		field:            "pgcron",
+		toggle:           func(e *components.ExtensionsSpec) *components.ExtensionToggle { return e.PgCron },
+		catalogEntry:     "pg-cron",
+		sqlExtension:     "pg_cron",
+		preloadLibraries: []string{"pg_cron"},
+		// pg_cron only runs jobs in the database it is created in.
+		databaseParameters: []string{"cron.database_name"},
+		// Without background workers pg_cron opens libpq connections to
+		// localhost, which the CloudNativePG pg_hba rules reject without a password.
+		defaultParameters: map[string]string{"cron.use_background_workers": "on"},
+		// CREATE EXTENSION creates the cron schema as the superuser, and pg_cron
+		// refuses a pre-created one.
+		bootstrapSQL: grantOwnerUsageOnSuperuserSchemas,
+	},
+	{
+		field:        "pgrepack",
+		toggle:       func(e *components.ExtensionsSpec) *components.ExtensionToggle { return e.PgRepack },
+		catalogEntry: "pg-repack",
+		sqlExtension: "pg_repack",
+	},
+}
+
+// grantOwnerUsageOnSuperuserSchemas lets the owner use the schemas that CREATE
+// EXTENSION later creates as the superuser (ag_catalog, cron). Default
+// privileges on schemas cannot be narrowed to one schema, so this covers every
+// schema the superuser creates in the application database. It runs only at
+// initdb: changing it does not reach existing clusters.
+func grantOwnerUsageOnSuperuserSchemas(owner string) string {
+	return "ALTER DEFAULT PRIVILEGES FOR ROLE " + postgresSuperuser + " GRANT USAGE ON SCHEMAS TO " + quoteIdentifier(owner)
 }
 
 func (e extension) enabled(custom *components.CNPGCustomSpec) bool {
@@ -171,10 +199,11 @@ func enabledExtensions(custom *components.CNPGCustomSpec) []extension {
 }
 
 // ValidateExtensions checks that image-volume extensions run on PostgreSQL 18
-// (and their minimum minor), that dependencies are enabled too, and that no
-// conflicting extensions are enabled together. ImageVolume support cannot be
-// probed here; the cluster must run Kubernetes 1.35+ (or 1.33/1.34 with the
-// ImageVolume feature gate).
+// (and their minimum minor), that dependencies are enabled too, that no
+// conflicting extensions are enabled together, and that parameters naming the
+// extension's database point to the application database. ImageVolume support
+// cannot be probed here; the cluster must run Kubernetes 1.35+ (or 1.33/1.34
+// with the ImageVolume feature gate).
 func ValidateExtensions(custom *components.CNPGCustomSpec, engineVersion, instanceVersion string) error {
 	version := postgresVersion(engineVersion, instanceVersion)
 	major := postgresMajor(engineVersion, instanceVersion)
@@ -199,8 +228,22 @@ func ValidateExtensions(custom *components.CNPGCustomSpec, engineVersion, instan
 				return fmt.Errorf("extensions.%s and extensions.%s cannot both be enabled", ext.field, conflicting)
 			}
 		}
+		dbName, _ := applicationDatabaseIdentity(custom)
+		for _, name := range ext.databaseParameters {
+			if value, set := userParameter(custom, name); set && value != dbName {
+				return fmt.Errorf("extensions.%s requires %s to be the application database %q (got %q)", ext.field, name, dbName, value)
+			}
+		}
 	}
 	return nil
+}
+
+func userParameter(custom *components.CNPGCustomSpec, name string) (string, bool) {
+	if custom == nil || custom.PostgresConfiguration == nil {
+		return "", false
+	}
+	value, set := custom.PostgresConfiguration.Parameters[name]
+	return value, set
 }
 
 func postgresVersion(engineVersion, instanceVersion string) string {
@@ -305,12 +348,17 @@ func ApplyExtensions(pg *cnpgv1.Cluster, custom *components.CNPGCustomSpec, imag
 			}
 		}
 
-		if len(ext.defaultParameters) > 0 && cfg.Parameters == nil {
+		if (len(ext.defaultParameters) > 0 || len(ext.databaseParameters) > 0) && cfg.Parameters == nil {
 			cfg.Parameters = map[string]string{}
 		}
 		for name, value := range ext.defaultParameters {
 			if _, set := cfg.Parameters[name]; !set {
 				cfg.Parameters[name] = value
+			}
+		}
+		for _, name := range ext.databaseParameters {
+			if _, set := cfg.Parameters[name]; !set {
+				cfg.Parameters[name], _ = applicationDatabaseIdentity(custom)
 			}
 		}
 
