@@ -162,11 +162,11 @@ extensionCatalog:
         - name: pg-cron
           sqlVersion: "1.6"
           image:
-            reference: ghcr.io/solanicaio/pg-cron:1.6.8-18-trixie
+            reference: ghcr.io/solanicaio/pg-cron:1.6.8-202611071500-18-trixie@sha256:671b15442f7d492f1c855b37c3973d1366eccce1a8cd543990e6bdc8471944ca
         - name: pg-repack
           sqlVersion: "1.5.3"
           image:
-            reference: ghcr.io/solanicaio/pg-repack:1.5.3-18-trixie
+            reference: ghcr.io/solanicaio/pg-repack:1.5.3-202611071500-18-trixie@sha256:40c3ab6c3497e7db91211be9c63a2a66ecb4f4431ebc08acb72268cc5c861872
 
 # -- Additional environment variables to set on the provider container
 extraEnv: []
