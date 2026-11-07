@@ -162,6 +162,13 @@ ui:
             label: "pgAudit"
             helperText: "Audit logging of DDL and role changes (pgaudit.log = 'ddl, role'); set pgaudit.* PostgreSQL parameters to change it. Restarts the instances."
             defaultValue: false
+        pgStatStatements:
+          uiType: toggle
+          path: spec.components.engine.parameters.extensions.pgStatStatements.enabled
+          fieldParams:
+            label: "Query statistics (pg_stat_statements)"
+            helperText: "Tracks execution statistics of all SQL statements and exports the top statements as metrics. Set pg_stat_statements.* PostgreSQL parameters to tune it. Turning it on or off restarts the instances."
+            defaultValue: true
         postgis:
           uiType: toggle
           path: spec.components.engine.parameters.extensions.postgis.enabled
@@ -251,6 +258,7 @@ ui:
       componentsOrder:
         - pgvector
         - pgaudit
+        - pgStatStatements
         - timescaledb
         - timescaledbCommunity
         - postgis

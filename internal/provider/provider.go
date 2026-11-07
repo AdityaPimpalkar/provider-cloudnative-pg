@@ -123,6 +123,10 @@ func (p *Provider) Validate(c *controller.Context) error {
 		return err
 	}
 
+	if err := cnpg.ValidatePgStatStatements(&custom); err != nil {
+		return err
+	}
+
 	if _, err := cnpg.ResolveExtensionImages(c, p.extensionCatalog, &custom, engine.Version, c.Instance().Spec.Version); err != nil {
 		return err
 	}
@@ -165,6 +169,9 @@ func (p *Provider) Sync(c *controller.Context) error {
 		if err := c.DecodeComponentParameters(engine, &custom); err != nil {
 			return fmt.Errorf("failed to decode component custom spec: %w", err)
 		}
+	}
+	if err := cnpg.DefaultPgStatStatements(c, &custom); err != nil {
+		return err
 	}
 
 	pg := &cnpgv1.Cluster{
@@ -231,6 +238,7 @@ func (p *Provider) Sync(c *controller.Context) error {
 		return err
 	}
 	cnpg.ApplyExtensions(pg, &custom, extensionImages)
+	cnpg.ApplyQueryStatisticsMonitoring(pg, &custom)
 
 	if c.Instance().Spec.DataSource != nil {
 		recovery, externalCluster, err := barman.BuildRecoveryConfig(c, custom)
@@ -253,7 +261,15 @@ func (p *Provider) Sync(c *controller.Context) error {
 		pg.Spec.Plugins = plugins
 	}
 
+	if err := cnpg.ApplyQueryStatisticsConfigMap(c, &custom); err != nil {
+		return err
+	}
+
 	if err := c.Apply(pg); err != nil {
+		return err
+	}
+
+	if err := cnpg.DeleteQueryStatisticsConfigMap(c, &custom); err != nil {
 		return err
 	}
 

@@ -123,6 +123,13 @@ var firstClassExtensions = []extension{
 		defaultParameters: map[string]string{"pgaudit.log": "ddl, role"},
 	},
 	{
+		// Like pgaudit, managed by the operator through any
+		// pg_stat_statements.* parameter. track = top is the PostgreSQL default.
+		field:             "pgStatStatements",
+		toggle:            func(e *components.ExtensionsSpec) *components.ExtensionToggle { return e.PgStatStatements },
+		defaultParameters: map[string]string{pgStatStatementsParameterPrefix + "track": "top"},
+	},
+	{
 		field:        "wal2json",
 		toggle:       func(e *components.ExtensionsSpec) *components.ExtensionToggle { return e.Wal2JSON },
 		catalogEntry: "wal2json",

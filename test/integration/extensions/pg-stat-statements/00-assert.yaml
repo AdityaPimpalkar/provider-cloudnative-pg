@@ -1,0 +1,27 @@
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: ext-pgss
+status:
+  phase: Ready
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: ext-pgss
+spec:
+  postgresql:
+    parameters:
+      pg_stat_statements.track: top
+  monitoring:
+    (customQueriesConfigMap[?name == 'ext-pgss-pg-stat-statements']):
+      - key: queries
+status:
+  readyInstances: 1
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ext-pgss-pg-stat-statements
+  labels:
+    cnpg.io/reload: ""

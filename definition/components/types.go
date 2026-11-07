@@ -78,6 +78,15 @@ type ExtensionsSpec struct {
 	// set, so the provider defaults pgaudit.log to "ddl, role". Can be turned off.
 	PgAudit *ExtensionToggle `json:"pgaudit,omitempty"`
 
+	// PgStatStatements tracks planning and execution statistics of all SQL
+	// statements (pg_stat_statements) and exports the top statements as
+	// metrics. It ships in the standard images; the operator preloads and
+	// creates it in every database while a pg_stat_statements.* parameter is
+	// set, so the provider defaults pg_stat_statements.track to "top". Enabled
+	// by default on new instances; instances created without it keep it off
+	// until it is enabled. Turning it on or off restarts the instances.
+	PgStatStatements *ExtensionToggle `json:"pgStatStatements,omitempty"`
+
 	// PostGIS (image volume) runs CREATE EXTENSION postgis in the application
 	// database. Cannot be turned off once enabled.
 	PostGIS *ExtensionToggle `json:"postgis,omitempty"`

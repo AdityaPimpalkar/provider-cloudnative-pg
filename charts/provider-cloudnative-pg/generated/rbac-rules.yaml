@@ -1,6 +1,16 @@
 - apiGroups:
     - ""
   resources:
+    - configmaps
+  verbs:
+    - create
+    - delete
+    - get
+    - patch
+    - update
+- apiGroups:
+    - ""
+  resources:
     - events
   verbs:
     - create

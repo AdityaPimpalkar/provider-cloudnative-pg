@@ -1,0 +1,82 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/kyverno/chainsaw/main/.schemas/json/test-chainsaw-v1alpha1.json
+# pg_stat_statements is on by default for new instances, and its statistics are
+# exported as metrics. Uses the oldest supported major to cover the columns the
+# exporter queries read.
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: extensions-pg-stat-statements
+spec:
+  timeouts:
+    assert: 6m
+    cleanup: 3m
+  steps:
+    - name: create-instance
+      try:
+        - apply:
+            file: 00-instance.yaml
+        - assert:
+            file: 00-assert.yaml
+      catch:
+        - script:
+            content: kubectl get instance,cluster,configmap,pod -n $NAMESPACE -o wide
+        - script:
+            content: kubectl get cluster/ext-pgss -n $NAMESPACE -o yaml
+
+    - name: statistics-and-metrics
+      try:
+        - script:
+            timeout: 3m
+            content: |
+              set -e
+              q() { kubectl exec -n "$NAMESPACE" ext-pgss-1 -c postgres -- psql -v ON_ERROR_STOP=1 -d app -tAc "$1"; }
+              expect() { got="$(q "$1")"; [ "$got" = "$2" ] || { echo "query: $1"; echo "got: $got, want: $2"; exit 1; }; }
+
+              expect "SELECT current_setting('shared_preload_libraries') ~ 'pg_stat_statements'" "t"
+              expect "SELECT count(*) FROM pg_extension WHERE extname = 'pg_stat_statements'" "1"
+              q "CREATE TABLE pgss_probe (id int)"
+              for i in 1 2 3; do q "INSERT INTO pgss_probe VALUES ($i)"; done
+              expect "SELECT sum(calls) >= 3 FROM pg_stat_statements WHERE query LIKE 'INSERT INTO pgss_probe%'" "t"
+
+              # The exporter caches the queries for 30s; retry until they are scraped.
+              for i in $(seq 1 30); do
+                metrics="$(kubectl get --raw "/api/v1/namespaces/$NAMESPACE/pods/ext-pgss-1:9187/proxy/metrics")"
+                echo "$metrics" | grep -q '^cnpg_pg_stat_statements_top_calls{' && break
+                sleep 5
+              done
+              for metric in cnpg_pg_stat_statements_top_calls cnpg_pg_stat_statements_top_exec_seconds \
+                  cnpg_pg_stat_statements_database_calls cnpg_pg_stat_statements_info_dealloc; do
+                echo "$metrics" | grep -q "^$metric" || { echo "missing $metric"; echo "$metrics" | grep -i 'pg_stat_statements\|user_queries\|error'; exit 1; }
+              done
+              echo "$metrics" | grep -q '^cnpg_pg_stat_statements_database_calls{datname="app"}' || { echo "no totals for app"; exit 1; }
+              if echo "$metrics" | grep -q '^cnpg_collector_last_collection_error 1'; then
+                echo "$metrics" | grep cnpg_collector_; exit 1
+              fi
+
+    - name: opt-out
+      try:
+        - patch:
+            file: 10-disable.yaml
+        - script:
+            timeout: 5m
+            content: |
+              set -e
+              # The setting is empty once nothing else is preloaded.
+              for i in $(seq 1 60); do
+                if preload="$(kubectl exec -n "$NAMESPACE" ext-pgss-1 -c postgres -- psql -d app -tAc "SELECT current_setting('shared_preload_libraries')" 2>/dev/null)" \
+                    && ! echo "$preload" | grep -q pg_stat_statements \
+                    && [ "$(kubectl get cluster ext-pgss -n "$NAMESPACE" -o jsonpath='{.status.readyInstances}')" = "1" ] \
+                    && [ "$(kubectl exec -n "$NAMESPACE" ext-pgss-1 -c postgres -- psql -d app -tAc "SELECT count(*) FROM pg_extension WHERE extname = 'pg_stat_statements'" 2>/dev/null)" = "0" ]; then
+                  break
+                fi
+                sleep 5
+              done
+              echo "shared_preload_libraries: $preload"
+              if echo "$preload" | grep -q pg_stat_statements; then echo "still preloaded"; exit 1; fi
+              [ "$(kubectl exec -n "$NAMESPACE" ext-pgss-1 -c postgres -- psql -d app -tAc "SELECT count(*) FROM pg_extension WHERE extname = 'pg_stat_statements'")" = "0" ]
+              [ -z "$(kubectl get cluster ext-pgss -n "$NAMESPACE" -o jsonpath='{.spec.postgresql.parameters.pg_stat_statements\.track}')" ]
+              [ -z "$(kubectl get cluster ext-pgss -n "$NAMESPACE" -o jsonpath='{.spec.monitoring.customQueriesConfigMap[?(@.name=="ext-pgss-pg-stat-statements")].name}')" ]
+              if kubectl get configmap ext-pgss-pg-stat-statements -n "$NAMESPACE" >/dev/null 2>&1; then echo "ConfigMap not deleted"; exit 1; fi
+      catch:
+        - script:
+            content: kubectl get cluster/ext-pgss -n $NAMESPACE -o yaml

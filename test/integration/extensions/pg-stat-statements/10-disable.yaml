@@ -1,0 +1,11 @@
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: ext-pgss
+spec:
+  components:
+    engine:
+      parameters:
+        extensions:
+          pgStatStatements:
+            enabled: false

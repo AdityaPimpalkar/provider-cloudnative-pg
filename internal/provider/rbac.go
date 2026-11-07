@@ -65,6 +65,9 @@ package provider
 // Prometheus Operator PodMonitors (spec.topology.parameters.monitoring.prometheus):
 // +kubebuilder:rbac:groups=monitoring.coreos.com,resources=podmonitors,verbs=get;list;watch;create;update;patch;delete
 
+// ConfigMaps with the exporter queries for pg_stat_statements:
+// +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;create;update;patch;delete
+
 // Examples for other resources:
 //
 //   - Access Kubernetes core resources:
