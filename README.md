@@ -81,7 +81,7 @@ ImageVolume (1.35+, or 1.33/1.34 + feature gate), and adding one restarts the in
 
 The image-volume images come from a CloudNativePG `ClusterImageCatalog` that the chart renders
 from `extensionCatalog` in its values (default: the official CloudNativePG trixie builds plus
-AGE and TimescaleDB Community from solanicaio/postgresql-extensions). The provider copies the
+AGE, TimescaleDB Community, pg_cron and pg_repack from solanicaio/postgresql-extensions). The provider copies the
 catalog entry of each enabled extension (image,
 paths, env) into the Cluster and passes the `sqlVersion` value to `CREATE EXTENSION`, so admins
 can bump or mirror images with `helm upgrade`, or set `extensionCatalog.create=false` and point
@@ -100,6 +100,8 @@ provider. A new image restarts the instances that use it.
 | pg_ivm | `pgivm` | ✅ | ❌ creation only ¹ | ❌ | Image volume, preloaded |
 | wal2json | `wal2json` | ✅ | ✅ restarts | ✅ restarts | Image volume; a logical decoding output plugin (no `CREATE EXTENSION`) — drop the replication slots that use it before disabling |
 | Apache AGE | `age` | ✅ | ❌ creation only ² | ❌ | Image volume from [solanicaio/postgresql-extensions](https://github.com/solanicaio/postgresql-extensions), preloaded. Run `SET search_path = ag_catalog, "$user", public` before using it |
+| pg_cron | `pgcron` | ✅ | ❌ creation only ¹ ² | ❌ | Image volume from [solanicaio/postgresql-extensions](https://github.com/solanicaio/postgresql-extensions), preloaded. See [pg_cron](#pg_cron) |
+| pg_repack | `pgrepack` | ✅ | ✅ restarts | ❌ | Image volume from [solanicaio/postgresql-extensions](https://github.com/solanicaio/postgresql-extensions). See [pg_repack](#pg_repack) |
 
 Extensions that are created in the database (everything but pgAudit and wal2json) cannot be
 disabled: dropping them would fail or destroy data, so the provider rejects it.
@@ -108,10 +110,10 @@ disabled: dropping them would fail or destroy data, so the provider rejects it.
 `shared_preload_libraries` change together, and enabling them on a running instance does exactly
 that.
 
-² Enforced by the provider: the application owner gets `USAGE` on `ag_catalog` through default
-privileges set in `postInitApplicationSQL`, which only runs at bootstrap. Default privileges on
-schemas cannot be limited to one schema, so the owner also gets `USAGE` on any other schema the
-`postgres` superuser creates later in the application database.
+² Enforced by the provider: the application owner gets `USAGE` on `ag_catalog` (AGE) or `cron`
+(pg_cron) through default privileges set in `postInitApplicationSQL`, which only runs at
+bootstrap. Default privileges on schemas cannot be limited to one schema, so the owner also gets
+`USAGE` on any other schema the `postgres` superuser creates later in the application database.
 
 ³ TimescaleDB Community adds the features licensed under the
 [Timescale License (TSL)](https://github.com/timescale/timescaledb/blob/main/tsl/LICENSE-TIMESCALE):
@@ -121,6 +123,39 @@ Timescale. It prohibits offering TimescaleDB to third parties as a database serv
 toggle is your acceptance of the TSL; the provider itself remains Apache-2.0. Timescale builds
 these binaries against the latest PostgreSQL minor, so they need PostgreSQL 18.6 or later. The
 editions use different binaries, so an instance cannot switch between them.
+
+#### pg_cron
+
+The provider sets `cron.database_name` to the application database, where it creates the
+extension, and `cron.use_background_workers: "on"`: otherwise pg_cron opens libpq connections to
+`localhost`, which the CloudNativePG `pg_hba` rules reject without a password. Setting
+`cron.database_name` to another database is rejected. The application owner schedules jobs, which
+run as the user who scheduled them:
+
+```sql
+SELECT cron.schedule('nightly-vacuum', '0 3 * * *', 'VACUUM ANALYZE');
+SELECT * FROM cron.job_run_details ORDER BY start_time DESC LIMIT 10;
+SELECT cron.unschedule('nightly-vacuum');
+```
+
+Schedules use GMT unless `cron.timezone` is set. Jobs run only on the primary. Their definitions
+are rows in the database, not part of the Instance spec, so they are replicated, kept in backups,
+and resume on the new primary after a switchover or failover. Each running job uses a background
+worker, shared with parallel queries and logical replication through `max_worker_processes`
+(default 8). Raise it in `postgresql.parameters` if many jobs run at once.
+
+#### pg_repack
+
+pg_repack rebuilds bloated tables and indexes online, holding an exclusive lock only briefly. The
+provider creates the extension in the application database. Run the client as the `postgres`
+superuser in the primary's pod, where the image is mounted (tables need a primary key or a unique
+index on `NOT NULL` columns):
+
+```sh
+PRIMARY=$(kubectl get cluster <instance> -o jsonpath='{.status.currentPrimary}')
+kubectl exec -it "$PRIMARY" -c postgres -- \
+  /extensions/pg-repack/bin/pg_repack --dbname=app --table=public.my_table
+```
 
 Stateful workloads additionally report:
 
@@ -558,7 +593,7 @@ code generation, and the backup/restore interfaces are documented once for all p
 | `definition/` | Provider identity, component types, versions, topologies, backup classes |
 | `charts/provider-cloudnative-pg/` | Helm chart (`generated/` is produced by `make generate`) |
 | `config/rbac/role.yaml` | Generated `ClusterRole` — do not edit |
-| `test/integration/` | Chainsaw suites: `core/replicaset`, `backup`, `extensions/bundled`, `extensions/imagevolume`, `tls-only`, `wal-storage` |
+| `test/integration/` | Chainsaw suites: `core/replicaset`, `backup`, `extensions/bundled`, `extensions/imagevolume`, `extensions/pgcron-pgrepack`, `tls-only`, `wal-storage` |
 | `test/e2e-cluster/` | Chainsaw e2e suites on the full OpenEverest platform: `backup-restore`, `backup-deletion` |
 | `test/testdata/` | Fixtures shared by the suites (S3Mock object store) |
 | `test/e2e/` | Playwright UI tests against the OpenEverest UI |
@@ -573,10 +608,12 @@ code generation, and the backup/restore interfaces are documented once for all p
 - **Integration tests** — chainsaw suites under [test/integration/](test/integration/).
   Individual suites are also exposed as make targets (`make test-integration-core`,
   `make test-integration-backup`, `make test-integration-core-replicaset`, `make test-integration-extensions`, …).
-  The extension suites run a one-instance PostgreSQL and use each extension through `psql`.
-  `extensions/imagevolume` needs Kubernetes ImageVolume (1.35+ with containerd 2.1+); the dev
+  The extension suites run a one-instance PostgreSQL and use each extension through `psql`;
+  `extensions/pgcron-pgrepack` runs two instances to check that pg_cron jobs resume after a
+  switchover. `extensions/imagevolume` and `extensions/pgcron-pgrepack` need Kubernetes
+  ImageVolume (1.35+ with containerd 2.1+); the dev
   and CI k3d cluster ([dev/k3d_config.yaml](dev/k3d_config.yaml)) runs k3s 1.36, so
-  `make test-integration` covers it (alone: `make test-integration-imagevolume`).
+  `make test-integration` covers them (alone: `make test-integration-imagevolume`).
   `wal-storage` (`make test-integration-wal`, needs `jq`) grows the WAL volume. On a StorageClass
   without expansion, such as k3d's `local-path`, it uses an expandable copy and checks that the
   resize request reaches the WAL PVC; the physical resize is checked only where the default

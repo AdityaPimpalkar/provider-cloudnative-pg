@@ -117,8 +117,9 @@ extensionCatalog:
   images:
     # Trixie builds from the upstream catalog
     # image-catalogs-extensions/catalog-minimal-trixie.yaml in
-    # https://github.com/cloudnative-pg/artifacts; AGE and TimescaleDB
-    # Community from https://github.com/solanicaio/postgresql-extensions.
+    # https://github.com/cloudnative-pg/artifacts; AGE, TimescaleDB
+    # Community, pg_cron and pg_repack from
+    # https://github.com/solanicaio/postgresql-extensions.
     - major: 18
       image: ghcr.io/cloudnative-pg/postgresql:18.4-standard-trixie
       extensions:
@@ -158,6 +159,14 @@ extensionCatalog:
           sqlVersion: "1.8.0"
           image:
             reference: ghcr.io/solanicaio/age:1.8.0-202610141050-18-trixie@sha256:2fb13aed71690dc127fb8ecb0eb1145c2acf8d4fe8fe25467818f484570f3601
+        - name: pg-cron
+          sqlVersion: "1.6"
+          image:
+            reference: ghcr.io/solanicaio/pg-cron:1.6.8-202611071500-18-trixie@sha256:671b15442f7d492f1c855b37c3973d1366eccce1a8cd543990e6bdc8471944ca
+        - name: pg-repack
+          sqlVersion: "1.5.3"
+          image:
+            reference: ghcr.io/solanicaio/pg-repack:1.5.3-202611071500-18-trixie@sha256:40c3ab6c3497e7db91211be9c63a2a66ecb4f4431ebc08acb72268cc5c861872
 
 # -- Additional environment variables to set on the provider container
 extraEnv: []

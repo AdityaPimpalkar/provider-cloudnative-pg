@@ -248,6 +248,41 @@ ui:
             celExpressions:
               - celExpr: '!(has(spec.components.engine.parameters.extensions.age.enabled) && spec.components.engine.parameters.extensions.age.enabled) || (spec.version >= "18." && spec.version < "19.")'
                 message: "Apache AGE requires PostgreSQL 18. Select a 18.x database version to enable it."
+        pgcron:
+          uiType: toggle
+          path: spec.components.engine.parameters.extensions.pgcron.enabled
+          fieldParams:
+            label: "pg_cron"
+            helperText: "Job scheduler (cron.schedule). Jobs run in the application database on the primary and resume after a failover. PostgreSQL 18 only; can only be enabled at creation and cannot be disabled."
+            defaultValue: false
+            modes:
+              edit:
+                disabled: true
+              restore:
+                disabled: true
+          validation:
+            celExpressions:
+              - celExpr: '!(has(spec.components.engine.parameters.extensions.pgcron.enabled) && spec.components.engine.parameters.extensions.pgcron.enabled) || (spec.version >= "18." && spec.version < "19.")'
+                message: "pg_cron requires PostgreSQL 18. Select a 18.x database version to enable it."
+        pgrepack:
+          uiType: toggle
+          path: spec.components.engine.parameters.extensions.pgrepack.enabled
+          fieldParams:
+            label: "pg_repack"
+            helperText: "Removes table and index bloat with minimal locking. Run the client in an instance pod: /extensions/pg-repack/bin/pg_repack. PostgreSQL 18 only; enabling it restarts the instances; cannot be disabled once enabled."
+            defaultValue: false
+            modes:
+              restore:
+                disabled: true
+          validation:
+            celExpressions:
+              - celExpr: '!(has(spec.components.engine.parameters.extensions.pgrepack.enabled) && spec.components.engine.parameters.extensions.pgrepack.enabled) || (spec.version >= "18." && spec.version < "19.")'
+                message: "pg_repack requires PostgreSQL 18. Select a 18.x database version to enable it."
+            modes:
+              edit:
+                celExpressions:
+                  - celExpr: '!(has(original.spec.components.engine.parameters.extensions.pgrepack.enabled) && original.spec.components.engine.parameters.extensions.pgrepack.enabled) || (has(spec.components.engine.parameters.extensions.pgrepack.enabled) && spec.components.engine.parameters.extensions.pgrepack.enabled)'
+                    message: "pg_repack cannot be disabled once enabled"
       componentsOrder:
         - pgvector
         - pgaudit
@@ -258,6 +293,8 @@ ui:
         - pgivm
         - wal2json
         - age
+        - pgcron
+        - pgrepack
     monitoring:
       label: "Monitoring"
       description: "Collect PostgreSQL metrics with Prometheus."
