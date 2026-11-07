@@ -589,7 +589,17 @@ spec:
                     enabled:
                       type: boolean
                   type: object
+                pgcron:
+                  properties:
+                    enabled:
+                      type: boolean
+                  type: object
                 pgivm:
+                  properties:
+                    enabled:
+                      type: boolean
+                  type: object
+                pgrepack:
                   properties:
                     enabled:
                       type: boolean

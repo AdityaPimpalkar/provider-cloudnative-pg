@@ -26,6 +26,16 @@ func withExtensions(extensions components.ExtensionsSpec) *components.CNPGCustom
 	return &components.CNPGCustomSpec{Extensions: &extensions}
 }
 
+func withBootstrapDatabase(custom *components.CNPGCustomSpec, name string) *components.CNPGCustomSpec {
+	custom.Bootstrap = &components.BootstrapConfiguration{InitDB: &cnpgv1.BootstrapInitDB{Database: name, Owner: name}}
+	return custom
+}
+
+func withCronDatabase(custom *components.CNPGCustomSpec, name string) *components.CNPGCustomSpec {
+	custom.PostgresConfiguration = &cnpgv1.PostgresConfiguration{Parameters: map[string]string{"cron.database_name": name}}
+	return custom
+}
+
 func newExtensionsTestContext(t *testing.T, objects ...client.Object) (*controller.Context, client.Client) {
 	t.Helper()
 	scheme := runtime.NewScheme()
@@ -84,6 +94,12 @@ func TestValidateExtensions(t *testing.T) {
 		{name: "timescaledb community on PG 18.6 from spec.version", custom: withExtensions(components.ExtensionsSpec{TimescaleDBCommunity: on}), instanceVersion: "18.6"},
 		{name: "timescaledb community on PG 18.4", custom: withExtensions(components.ExtensionsSpec{TimescaleDBCommunity: on}), engineVersion: "18.4", wantErr: true},
 		{name: "both timescaledb editions", custom: withExtensions(components.ExtensionsSpec{TimescaleDB: on, TimescaleDBCommunity: on}), engineVersion: "18.6", wantErr: true},
+		{name: "pg_cron and pg_repack on PG 18", custom: withExtensions(components.ExtensionsSpec{PgCron: on, PgRepack: on}), engineVersion: "18.4"},
+		{name: "pg_repack on PG 17", custom: withExtensions(components.ExtensionsSpec{PgRepack: on}), engineVersion: "17.10", wantErr: true},
+		{name: "pg_cron in the application database", custom: withCronDatabase(withExtensions(components.ExtensionsSpec{PgCron: on}), "app"), engineVersion: "18.4"},
+		{name: "pg_cron in the custom application database", custom: withCronDatabase(withBootstrapDatabase(withExtensions(components.ExtensionsSpec{PgCron: on}), "jobs"), "jobs"), engineVersion: "18.4"},
+		{name: "pg_cron in another database", custom: withCronDatabase(withExtensions(components.ExtensionsSpec{PgCron: on}), "postgres"), engineVersion: "18.4", wantErr: true},
+		{name: "cron.database_name without pg_cron", custom: withCronDatabase(withExtensions(components.ExtensionsSpec{PgVector: on}), "postgres"), engineVersion: "18.4"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -229,6 +245,72 @@ func TestApplyExtensionsBootstrapSQL(t *testing.T) {
 	}
 }
 
+func TestApplyExtensionsPgCron(t *testing.T) {
+	images := ExtensionImages{
+		"pg-cron": {Config: cnpgv1.ExtensionConfiguration{Name: "pg-cron"}, SQLVersion: "1.6"},
+		"age":     {Config: cnpgv1.ExtensionConfiguration{Name: "age"}},
+	}
+	custom := withBootstrapDatabase(withExtensions(components.ExtensionsSpec{PgCron: on, AGE: on}), "jobs")
+	pg := &cnpgv1.Cluster{}
+	ApplyExtensions(pg, custom, images)
+
+	cfg := pg.Spec.PostgresConfiguration
+	if want := []string{"age", "pg_cron"}; !slices.Equal(cfg.AdditionalLibraries, want) {
+		t.Errorf("shared_preload_libraries = %v, want %v", cfg.AdditionalLibraries, want)
+	}
+	for name, want := range map[string]string{
+		"cron.database_name":          "jobs",
+		"cron.use_background_workers": "on",
+	} {
+		if got := cfg.Parameters[name]; got != want {
+			t.Errorf("parameter %s = %q, want %q", name, got, want)
+		}
+	}
+	// AGE and pg_cron share the grant, so it is added once.
+	if want := []string{`ALTER DEFAULT PRIVILEGES FOR ROLE postgres GRANT USAGE ON SCHEMAS TO "jobs"`}; !slices.Equal(pg.Spec.Bootstrap.InitDB.PostInitApplicationSQL, want) {
+		t.Errorf("postInitApplicationSQL = %q, want %q", pg.Spec.Bootstrap.InitDB.PostInitApplicationSQL, want)
+	}
+
+	db := BuildExtensionsDatabase("pg", custom, images)
+	if db.Spec.Name != "jobs" {
+		t.Errorf("database = %q, want jobs", db.Spec.Name)
+	}
+	want := cnpgv1.ExtensionSpec{DatabaseObjectSpec: cnpgv1.DatabaseObjectSpec{Name: "pg_cron", Ensure: cnpgv1.EnsurePresent}, Version: "1.6"}
+	if !slices.Contains(db.Spec.Extensions, want) {
+		t.Errorf("extensions = %+v, want %+v", db.Spec.Extensions, want)
+	}
+
+	userSet := withCronDatabase(withExtensions(components.ExtensionsSpec{PgCron: on}), "app")
+	userSet.PostgresConfiguration.Parameters["cron.use_background_workers"] = "off"
+	pg = &cnpgv1.Cluster{}
+	pg.Spec.PostgresConfiguration = *userSet.PostgresConfiguration
+	ApplyExtensions(pg, userSet, images)
+	if got := pg.Spec.PostgresConfiguration.Parameters["cron.use_background_workers"]; got != "off" {
+		t.Errorf("cron.use_background_workers = %q, want the user's off", got)
+	}
+}
+
+func TestApplyExtensionsPgRepack(t *testing.T) {
+	images := ExtensionImages{"pg-repack": {Config: cnpgv1.ExtensionConfiguration{Name: "pg-repack"}, SQLVersion: "1.5.3"}}
+	custom := withExtensions(components.ExtensionsSpec{PgRepack: on})
+	pg := &cnpgv1.Cluster{}
+	ApplyExtensions(pg, custom, images)
+
+	cfg := pg.Spec.PostgresConfiguration
+	if len(cfg.Extensions) != 1 || cfg.Extensions[0].Name != "pg-repack" {
+		t.Errorf("extension images = %+v, want pg-repack", cfg.Extensions)
+	}
+	if cfg.AdditionalLibraries != nil || cfg.Parameters != nil || pg.Spec.Bootstrap != nil {
+		t.Errorf("expected only the image, got %+v, bootstrap %+v", cfg, pg.Spec.Bootstrap)
+	}
+
+	db := BuildExtensionsDatabase("pg", custom, images)
+	want := cnpgv1.ExtensionSpec{DatabaseObjectSpec: cnpgv1.DatabaseObjectSpec{Name: "pg_repack", Ensure: cnpgv1.EnsurePresent}, Version: "1.5.3"}
+	if len(db.Spec.Extensions) != 1 || db.Spec.Extensions[0] != want {
+		t.Errorf("extensions = %+v, want %+v", db.Spec.Extensions, want)
+	}
+}
+
 func TestValidateExtensionsAtCreation(t *testing.T) {
 	age := withExtensions(components.ExtensionsSpec{AGE: on})
 	clusterWith := func(images ...string) *cnpgv1.Cluster {
@@ -254,6 +336,9 @@ func TestValidateExtensionsAtCreation(t *testing.T) {
 		{name: "switched from timescaledb to community", custom: withExtensions(components.ExtensionsSpec{TimescaleDBCommunity: on}), cluster: clusterWith("timescaledb-oss"), wantReject: true},
 		{name: "switched from community to timescaledb", custom: withExtensions(components.ExtensionsSpec{TimescaleDB: on}), cluster: clusterWith("timescaledb"), wantReject: true},
 		{name: "other extensions on an existing instance", custom: withExtensions(components.ExtensionsSpec{PostGIS: on, PgRouting: on, Wal2JSON: on, PgVector: on, PgAudit: on}), cluster: clusterWith()},
+		{name: "pg_cron enabled on an existing instance", custom: withExtensions(components.ExtensionsSpec{PgCron: on}), cluster: clusterWith(), wantReject: true},
+		{name: "created with pg_cron", custom: withExtensions(components.ExtensionsSpec{PgCron: on}), cluster: clusterWith("pg-cron")},
+		{name: "pg_repack enabled on an existing instance", custom: withExtensions(components.ExtensionsSpec{PgRepack: on}), cluster: clusterWith()},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
