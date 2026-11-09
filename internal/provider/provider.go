@@ -108,6 +108,9 @@ func (p *Provider) Sync(c *controller.Context) error {
 	if custom.PostgresConfiguration != nil {
 		pg.Spec.PostgresConfiguration = *custom.PostgresConfiguration
 	}
+	if err := cnpg.ApplyPgHBA(pg, &custom); err != nil {
+		return err
+	}
 	cnpg.ApplyRequireTLS(pg, &custom)
 	cnpg.ApplyReplicationSlots(pg, &custom, engine.Version, c.Instance().Spec.Version)
 

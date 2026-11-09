@@ -887,6 +887,8 @@ spec:
                       type: boolean
                   type: object
               type: object
+            pgHBA:
+              type: string
             postgresql:
               properties:
                 enableAlterSystem:
@@ -1261,6 +1263,22 @@ spec:
                     slowOpThresholdMs: 200
               path: spec.components.engine.parameters.postgresql.parameters
               uiType: text
+            pgHBA:
+              fieldParams:
+                helperText: 'Optional. One pg_hba.conf record per line, checked in order before the default rule that admits every user with a password; end with a reject record to allow only what is listed. Methods: scram-sha-256, md5, cert, ldap, radius, reject. Applied without a restart.'
+                label: Client access rules (pg_hba)
+                maxRows: 10
+                minRows: 3
+                multiline: true
+                placeholder: |
+                  hostssl orders orders_app 10.0.0.0/8 scram-sha-256
+                  host    orders all        all        reject
+              path: spec.components.engine.parameters.pgHBA
+              uiType: text
+              validation:
+                regex:
+                  message: 'Each line must be a host, hostssl or hostnossl record (or a # comment), e.g. hostssl orders orders_app 10.0.0.0/8 scram-sha-256'
+                  pattern: ^([ \t]*(#.*)?|[ \t]*(host|hostssl|hostnossl)[ \t]+\S.*)(\r?\n([ \t]*(#.*)?|[ \t]*(host|hostssl|hostnossl)[ \t]+\S.*))*[ \t\r\n]*$
             priorityClassName:
               fieldParams:
                 helperText: Optional. Name of an existing Kubernetes PriorityClass for the instance pods. Changing it restarts the instances one at a time.
@@ -1300,6 +1318,7 @@ spec:
             - storageClass
             - priorityClassName
             - requireTLS
+            - pgHBA
             - configuration
           description: Configure advanced settings for your database
           label: Advanced configuration

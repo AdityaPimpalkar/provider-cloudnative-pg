@@ -67,6 +67,7 @@ provider itself is covered under [Installation](#installation).
 | Synchronous replication | ✅ | `parameters.postgresql.synchronous`; see [Synchronous replication](#synchronous-replication) |
 | Logical replication slot failover | ✅ | `parameters.replicationSlots.highAvailability.synchronizeLogicalDecoding` (PostgreSQL 17+); see [Logical replication slot failover](#logical-replication-slot-failover) |
 | TLS-only connections | ✅ | `parameters.requireTLS: true` rejects unencrypted client connections; see [Require TLS](#require-tls) |
+| Client access rules (pg_hba) | ✅ | `parameters.pgHBA` declares which clients may connect to which databases as which users; see [Client access rules](#client-access-rules-pg_hba) |
 | Connection pooling | ✅ | optional `proxy` component → CloudNativePG `Pooler` (PgBouncer, type `rw`); see [Connection pooling](#connection-pooling) |
 | Pod scheduling | ✅ | `spec.components.engine.schedulingPolicy` (all fields), or `parameters.affinity` — not both |
 | Pod priority | ✅ | `parameters.priorityClassName` → CloudNativePG `spec.priorityClassName`; the PriorityClass must exist, and changing it rolls the instance pods |
@@ -599,6 +600,7 @@ The technology-specific knobs worth knowing about:
 | `certificates` | `engine` | TLS certificate configuration passthrough |
 | `requireTLS` | `engine` | Reject unencrypted client connections; see [Require TLS](#require-tls) |
 | `replicationSlots` | `engine` | CloudNativePG `ReplicationSlotsConfiguration` (HA slots, user slot synchronization, logical slot failover); see [Logical replication slot failover](#logical-replication-slot-failover) |
+| `pgHBA` | `engine` | `pg_hba.conf` records, one per line; see [Client access rules](#client-access-rules-pg_hba) |
 | `monitoring` | `engine` | CloudNativePG monitoring configuration (custom queries, metrics TLS, …) |
 | `monitoring.prometheus` | topology | Create a PodMonitor for the instance; see [Scrape metrics with Prometheus](#scrape-metrics-with-prometheus) |
 
@@ -717,6 +719,48 @@ The UI enables this by default for new instances. Unset means off, so existing
 instances keep accepting unencrypted clients until you turn it on. When editing an
 instance, the UI shows the value in its spec, off when unset, so saving the section
 doesn't turn it on.
+
+### Client access rules (pg_hba)
+
+`pgHBA` declares which clients may connect to which databases as which users,
+as [`pg_hba.conf`](https://www.postgresql.org/docs/current/auth-pg-hba-conf.html)
+records, one per line (the UI has it under **Advanced configuration**). Who may
+do what inside a database is granted with roles, for example by the
+user-management plugin.
+
+```yaml
+spec:
+  components:
+    engine:
+      parameters:
+        pgHBA: |
+          # orders: only the orders service, only from the application network
+          hostssl orders orders_app 10.42.0.0/16 scram-sha-256
+          host    orders all        all          reject
+```
+
+- Records are checked in order, first match wins. CloudNativePG's own rules
+  come first (local connections, and certificate authentication for
+  replication and the pooler), so `pgHBA` can't lock the operator out. Its
+  default rule, `host all all all scram-sha-256`, comes last: anything no
+  record matches is still let in with a password. To allow only what is
+  listed, end with a `reject` record, such as `host all all all reject`.
+- With [`requireTLS`](#require-tls), `hostnossl all all all reject` goes before
+  the records, so a `host` record can't admit unencrypted clients.
+- Allowed: `host`, `hostssl` and `hostnossl` records; an address that is `all`,
+  `samehost`, `samenet`, a CIDR range, an IP address and netmask, or a host
+  name; the methods `scram-sha-256`, `md5`, `cert` (`hostssl` only), `ldap`,
+  `radius` and `reject`, with `NAME=VALUE` options. The provider refuses the
+  Instance otherwise: `trust` and `password` (cleartext), `local` records,
+  `include` directives and `@file` references are not allowed.
+- CloudNativePG applies changes with a configuration reload, without a restart.
+- Connections through the [`proxy` component](#connection-pooling) reach
+  PostgreSQL from the PgBouncer pods, so address ranges must include them.
+- Components that connect over the network, such as the user-management
+  plugin (as the superuser and as database owners), are subject to the
+  records too: don't reject them.
+- `pgHBA` replaces `postgresql.pg_hba`, the raw CloudNativePG passthrough;
+  setting both is refused.
 
 ## Development
 

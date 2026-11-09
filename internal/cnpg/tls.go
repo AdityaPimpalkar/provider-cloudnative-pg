@@ -13,7 +13,7 @@ import (
 const RejectNonTLSRule = "hostnossl all all all reject"
 
 // ApplyRequireTLS places RejectNonTLSRule ahead of the user's pg_hba rules
-// when TLS is required.
+// when TLS is required, so no user rule can admit an unencrypted client.
 func ApplyRequireTLS(pg *cnpgv1.Cluster, custom *components.CNPGCustomSpec) {
 	if custom.RequireTLS == nil || !*custom.RequireTLS {
 		return
