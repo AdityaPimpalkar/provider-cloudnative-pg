@@ -1,0 +1,11 @@
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: test-cnpg-admission
+status:
+  (conditions[?type == 'Ready'] | [0].reason != 'ValidationFailed'): true
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: test-cnpg-admission

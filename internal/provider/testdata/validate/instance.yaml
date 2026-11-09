@@ -1,0 +1,21 @@
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: orders
+spec:
+  providerRef:
+    name: provider-cloudnative-pg
+  topology:
+    type: replicaSet
+  components:
+    engine:
+      replicas: 3
+      storage:
+        size: 10Gi
+      resources:
+        requests:
+          cpu: "1"
+          memory: 2Gi
+        limits:
+          cpu: "1"
+          memory: 2Gi

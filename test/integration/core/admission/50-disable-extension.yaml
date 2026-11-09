@@ -1,0 +1,33 @@
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: test-cnpg-admission
+spec:
+  providerRef:
+    name: provider-cloudnative-pg
+  components:
+    engine:
+      type: postgresql
+      replicas: 2
+      resources:
+        requests:
+          cpu: 600m
+          memory: 256Mi
+        limits:
+          cpu: "1"
+          memory: 256Mi
+      storage:
+        size: 1Gi
+      parameters:
+        extensions:
+          pgvector:
+            enabled: false
+        postgresql:
+          synchronous:
+            method: any
+            number: 1
+    proxy:
+      type: pgbouncer
+      replicas: 1
+      parameters:
+        poolMode: session

@@ -1,0 +1,14 @@
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: test-cnpg-admission
+spec:
+  components:
+    engine:
+      resources:
+        requests:
+          cpu: 600m
+status:
+  (conditions[?type == 'Ready']):
+    - status: "False"
+      reason: ValidationFailed

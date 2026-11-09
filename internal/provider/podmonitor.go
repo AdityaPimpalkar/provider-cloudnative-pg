@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"encoding/json"
 	"fmt"
 	"maps"
 
@@ -10,11 +11,12 @@ import (
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
-	metav1validation "k8s.io/apimachinery/pkg/apis/meta/v1/validation"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	metav1validation "k8s.io/apimachinery/pkg/apis/meta/v1/validation"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
+	corev1alpha1 "github.com/openeverest/openeverest/v2/api/core/v1alpha1"
 	"github.com/openeverest/openeverest/v2/provider-runtime/controller"
 
 	"github.com/adityapimpalkar/provider-cloudnative-pg/definition/components"
@@ -35,13 +37,13 @@ func podMonitorName(instance string) string {
 
 // prometheusParameters returns spec.topology.parameters.monitoring.prometheus,
 // or the zero value (disabled) when it is not set.
-func prometheusParameters(c *controller.Context) (replicaset.PrometheusParameters, error) {
-	raw := c.Instance().GetTopologyParameters()
+func prometheusParameters(instance *corev1alpha1.Instance) (replicaset.PrometheusParameters, error) {
+	raw := instance.GetTopologyParameters()
 	if raw == nil || raw.Raw == nil {
 		return replicaset.PrometheusParameters{}, nil
 	}
 	var params replicaset.ReplicaSetTopologyParameters
-	if err := c.DecodeTopologyParameters(&params); err != nil {
+	if err := json.Unmarshal(raw.Raw, &params); err != nil {
 		return replicaset.PrometheusParameters{}, fmt.Errorf("failed to decode topology parameters: %w", err)
 	}
 	if params.Monitoring == nil || params.Monitoring.Prometheus == nil {
@@ -50,8 +52,8 @@ func prometheusParameters(c *controller.Context) (replicaset.PrometheusParameter
 	return *params.Monitoring.Prometheus, nil
 }
 
-func validatePrometheus(c *controller.Context, custom *components.CNPGCustomSpec) error {
-	prometheus, err := prometheusParameters(c)
+func validatePrometheus(instance *corev1alpha1.Instance, custom *components.CNPGCustomSpec) error {
+	prometheus, err := prometheusParameters(instance)
 	if err != nil {
 		return err
 	}
@@ -73,7 +75,7 @@ func validatePrometheus(c *controller.Context, custom *components.CNPGCustomSpec
 // pods, or removes it once Prometheus monitoring is turned off. Without the
 // Prometheus Operator CRDs the PodMonitor is skipped.
 func syncPodMonitor(c *controller.Context, pg *cnpgv1.Cluster) error {
-	prometheus, err := prometheusParameters(c)
+	prometheus, err := prometheusParameters(c.Instance())
 	if err != nil {
 		return err
 	}

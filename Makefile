@@ -33,8 +33,12 @@ CNPG_HELM_REPO ?= https://cloudnative-pg.github.io/charts
 HELM_NAMESPACE ?= default
 
 # Released OpenEverest core used by the e2e tests; follows the API version pinned in go.mod.
+# While go.mod pins an unreleased commit (a pseudo-version, which has no chart),
+# the latest release is installed instead, with its own CRDs.
 OPENEVEREST_HELM_REPO ?= https://openeverest.github.io/helm-charts/
-OPENEVEREST_CHART_VERSION ?= $(shell go list -m -f '{{.Version}}' github.com/openeverest/openeverest/v2 2>/dev/null | sed 's/^v//')
+OPENEVEREST_GO_VERSION := $(shell go list -m -f '{{.Version}}' github.com/openeverest/openeverest/v2 2>/dev/null | sed 's/^v//')
+OPENEVEREST_LATEST_RELEASE ?= 2.0.0-dev.4
+OPENEVEREST_CHART_VERSION ?= $(if $(shell echo '$(OPENEVEREST_GO_VERSION)' | grep -E '[0-9]{14}-[0-9a-f]{12}$$'),$(OPENEVEREST_LATEST_RELEASE),$(OPENEVEREST_GO_VERSION))
 EVEREST_NAMESPACE ?= everest-system
 EVEREST_ADMIN_PASSWORD ?= admin
 
@@ -45,8 +49,8 @@ help: ## Display this help.
 ##@ Development
 
 .PHONY: run
-run: generate ## Run the provider locally.
-	go run cmd/provider/main.go
+run: generate ## Run the provider locally, without the admission webhook (it needs the chart's certificate).
+	go run cmd/provider/main.go --admission=false
 
 .PHONY: lint
 lint: golangci-lint ## Run golangci-lint.
@@ -161,6 +165,10 @@ test-integration-core: ## Run core integration tests (chainsaw).
 .PHONY: test-integration-backup
 test-integration-backup: ## Run backup integration tests (requires CNPG, the Barman plugin, and BackupClasses).
 	. ./test/vars.sh && chainsaw test --config ./test/integration/.chainsaw.yaml ./test/integration/backup
+
+.PHONY: test-integration-core-admission
+test-integration-core-admission: ## Run the admission webhook integration test (scales the provider down; not concurrent).
+	. ./test/vars.sh && chainsaw test --config ./test/integration/.chainsaw.yaml ./test/integration/core/admission
 
 .PHONY: test-integration-core-replicaset
 test-integration-core-replicaset: ## Run core replicaset integration tests (chainsaw).

@@ -138,7 +138,7 @@ func TestValidatePrometheus(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			c, _ := newPodMonitorTestContext(t, tt.parameters)
-			err := validatePrometheus(c, tt.custom)
+			err := validatePrometheus(c.Instance(), tt.custom)
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("validatePrometheus() error = %v, wantErr %t", err, tt.wantErr)
 			}
