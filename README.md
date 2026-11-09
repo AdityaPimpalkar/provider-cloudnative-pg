@@ -393,6 +393,12 @@ for one of them, or off for any instance, set `extensions.pgStatStatements.enabl
 the instances). While it is set to `false`, the provider rejects `pg_stat_statements.*`
 parameters, which would turn it back on.
 
+The UI writes the toggle explicitly when it creates an instance. When editing an instance whose
+spec doesn't set it, the UI shows it off, as it is on instances created before the default, and
+saving the Extensions section writes `false`. For an instance created from Git or `kubectl`
+without the toggle (which runs the extension), set `enabled: true` in its spec before editing
+that section in the UI.
+
 ```yaml
 spec:
   components:
