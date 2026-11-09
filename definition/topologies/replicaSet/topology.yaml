@@ -638,6 +638,11 @@ ui:
             label: "Require TLS for client connections"
             helperText: "Rejects unencrypted connections. Clients must connect with TLS; libpq's default sslmode=prefer does, sslmode=disable is refused. Applied without a restart."
             defaultValue: true
+            modes:
+              edit:
+                # Edit forms leave unset fields undefined, so the toggle would fall back to
+                # true and saving the section would turn TLS-only on. Unset means off.
+                defaultValue: false
         configuration:
           uiType: text
           path: spec.components.engine.parameters.postgresql.parameters
