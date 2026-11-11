@@ -70,6 +70,7 @@ provider itself is covered under [Installation](#installation).
 | Connection pooling | ✅ | optional `proxy` component → CloudNativePG `Pooler` (PgBouncer, type `rw`); see [Connection pooling](#connection-pooling) |
 | Pod scheduling | ✅ | `spec.components.engine.schedulingPolicy` (all fields), or `parameters.affinity` — not both |
 | Pod priority | ✅ | `parameters.priorityClassName` → CloudNativePG `spec.priorityClassName`; the PriorityClass must exist, and changing it rolls the instance pods |
+| Suspend and resume | ✅ | `spec.suspend.suspended`: CloudNativePG hibernation stops the instances and PgBouncer, keeping the volumes; see [Suspend an instance](#suspend-an-instance) |
 | Monitoring | ✅ | Prometheus: a PodMonitor for the instance pods via `spec.topology.parameters.monitoring.prometheus`; requires the Prometheus Operator. See [Scrape metrics with Prometheus](#scrape-metrics-with-prometheus) |
 
 ### Extensions
@@ -316,8 +317,37 @@ More examples live in [examples/](examples/), including
 [on-demand backup](examples/backup-ondemand.yaml),
 [restore](examples/instance-restore.yaml),
 [PITR](examples/instance-pitr.yaml),
-[pooler](examples/instance-pooler.yaml), and
+[pooler](examples/instance-pooler.yaml),
+[suspended instance](examples/instance-suspended.yaml), and
 [service exposure](examples/instance-services.yaml).
+
+### Suspend an instance
+
+Stop an instance's compute and keep its data, to save cost, with
+`spec.suspend.suspended: true`; set it back to `false` to resume:
+
+```bash
+kubectl patch instance my-instance --type merge -p '{"spec":{"suspend":{"suspended":true}}}'
+```
+
+- The provider sets CloudNativePG's `cnpg.io/hibernation: "on"` on the
+  Cluster: the operator shuts PostgreSQL down cleanly (a checkpoint), deletes
+  the instance pods and keeps their PVCs. The Pooler, which CloudNativePG
+  doesn't hibernate, is scaled to 0.
+- The Instance shows `Suspending`, then `Suspended` once the Cluster reports
+  hibernated and no PgBouncer pod is left, then `Resuming` and `Ready` after
+  resuming. CloudNativePG hibernates only a healthy cluster: until then the
+  Instance stays `Suspending` with the operator's reason.
+- While suspended, other spec changes are rejected, scheduled backups don't
+  run (their ScheduledBackups are removed and come back on resume),
+  disruptive maintenance is held, and new Backups and Restores wait.
+- The annotation is applied only while suspended; on resume the provider
+  stops applying it and server-side apply removes it. A hibernation set on
+  the Cluster by someone else is left alone, and the Instance then shows
+  `Provisioning`.
+
+On LKE with OpenEBS ZFS LocalPV, a 2-node instance with PgBouncer was
+suspended in 4 s and ready again 25 s after resuming.
 
 ### Connection details
 

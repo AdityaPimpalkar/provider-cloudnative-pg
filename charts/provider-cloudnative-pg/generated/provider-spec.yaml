@@ -1210,6 +1210,7 @@ spec:
   defaultVersion: "18.6"
   release:
     version: 0.3.3
+  suspend: {}
   topologies:
     replicaSet:
       components:

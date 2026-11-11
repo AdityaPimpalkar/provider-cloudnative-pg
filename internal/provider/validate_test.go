@@ -8,6 +8,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/utils/ptr"
 
 	corev1alpha1 "github.com/openeverest/openeverest/v2/api/core/v1alpha1"
 	"github.com/openeverest/openeverest/v2/provider-runtime/controller/validationtest"
@@ -188,6 +189,49 @@ func TestValidateUpdate(t *testing.T) {
 				warned = append(warned, strings.SplitN(w, ":", 2)[0])
 			}
 			assert.Equal(t, tt.wantWarnings, warned, "warnings: %v", got.Warnings)
+		})
+	}
+}
+
+// The provider declares suspend in its spec, so the runtime accepts it and
+// enforces its rules at admission.
+func TestValidateSuspend(t *testing.T) {
+	t.Parallel()
+	v := validationtest.New(t, New(), providerSpecPath)
+	suspend := func(suspended bool) func(*corev1alpha1.Instance) {
+		return func(in *corev1alpha1.Instance) { in.Spec.Suspend = &corev1alpha1.SuspendSpec{Suspended: suspended} }
+	}
+	replicas := func(in *corev1alpha1.Instance) {
+		engine := in.Spec.Components[common.ComponentEngine]
+		engine.Replicas = ptr.To(*engine.Replicas + 1)
+		in.Spec.Components[common.ComponentEngine] = engine
+	}
+
+	tests := []struct {
+		name    string
+		old     []func(*corev1alpha1.Instance)
+		updated []func(*corev1alpha1.Instance)
+		wantErr bool
+	}{
+		{name: "suspend", updated: []func(*corev1alpha1.Instance){suspend(true)}},
+		{name: "suspend with another change", updated: []func(*corev1alpha1.Instance){suspend(true), replicas}, wantErr: true},
+		{name: "change while suspended", old: []func(*corev1alpha1.Instance){suspend(true)}, updated: []func(*corev1alpha1.Instance){suspend(true), replicas}, wantErr: true},
+		{name: "resume", old: []func(*corev1alpha1.Instance){suspend(true)}, updated: []func(*corev1alpha1.Instance){suspend(false)}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			old := validationtest.Load(t, instanceFixture)
+			old.Spec.Version = "18.6"
+			for _, f := range tt.old {
+				f(old)
+			}
+			updated := old.DeepCopy()
+			for _, f := range tt.updated {
+				f(updated)
+			}
+			got := v.Run(updated, old)
+			assert.Equal(t, tt.wantErr, len(got.Errors) > 0, "errors: %v", got.Errors)
 		})
 	}
 }

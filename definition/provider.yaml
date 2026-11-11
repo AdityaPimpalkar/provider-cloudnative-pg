@@ -10,3 +10,6 @@ components:
         type: pgbouncer
         parametersSchema: PgBouncerParameters
 name: provider-cloudnative-pg
+# Instances can be suspended: CloudNativePG hibernation stops the instances
+# and keeps their volumes.
+suspend: {}

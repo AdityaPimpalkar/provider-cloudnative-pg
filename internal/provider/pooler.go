@@ -120,6 +120,10 @@ func buildPooler(c *controller.Context, proxy corev1alpha1.ComponentSpec, params
 	if proxy.Replicas != nil {
 		instances = *proxy.Replicas
 	}
+	// CloudNativePG doesn't hibernate poolers: stop PgBouncer with the cluster.
+	if c.Instance().SuspendRequested() {
+		instances = 0
+	}
 	pooler := &cnpgv1.Pooler{
 		ObjectMeta: c.ObjectMeta(poolerName(c.Name())),
 		Spec: cnpgv1.PoolerSpec{
