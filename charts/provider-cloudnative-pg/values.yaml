@@ -213,10 +213,12 @@ cnpgOperatorPodDisruptionBudget:
   minAvailable: 1
 
 # CNPG-I Barman Cloud Plugin — WAL archiving and base backups.
-# Installs into the same namespace as this release. Requires a cluster-wide
-# cert-manager (not bundled: it is shared cluster infrastructure).
+# Enabled by default so backups work out of the box. Installs into the same
+# namespace as this release. Requires a cluster-wide cert-manager (not bundled:
+# it is shared cluster infrastructure). Without the plugin, Instances surface
+# BackupConfigured=False / BarmanPluginMissing when backups are enabled.
 plugin-barman-cloud:
-  # -- Install the Barman Cloud Plugin as a chart dependency
+  # -- Install the Barman Cloud Plugin as a chart dependency (default: true)
   enabled: true
   crds:
     create: true

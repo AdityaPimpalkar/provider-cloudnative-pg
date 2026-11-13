@@ -226,13 +226,16 @@ helm install provider-cloudnative-pg \
 ```
 
 - The CloudNativePG operator and the Barman Cloud Plugin (and their CRDs) are bundled as chart
-  dependencies and are installed automatically. Set `cloudnative-pg.enabled=false` or
-  `plugin-barman-cloud.enabled=false` to use externally managed installs instead.
+  dependencies and are installed automatically (`cloudnative-pg.enabled` and
+  `plugin-barman-cloud.enabled` both default to `true`). Set either to `false` to use an
+  externally managed install instead.
 
 > [!IMPORTANT]
-> The Barman Cloud Plugin's admission webhooks require [cert-manager](https://cert-manager.io)
-> to be installed in the cluster before installing this chart (when the plugin subchart is
-> enabled).
+> Backups need the Barman Cloud Plugin. The plugin subchart is **enabled by default** and its
+> admission webhooks require [cert-manager](https://cert-manager.io) in the cluster before
+> installing this chart. Without the plugin (or its `ObjectStore` CRD), Instances report
+> `BackupConfigured=False` with reason `BarmanPluginMissing`, and new Backups fail with that
+> message instead of an opaque operator error.
 
 Upgrade and uninstall:
 
@@ -743,6 +746,7 @@ kubectl logs -n everest-system deploy/provider-cloudnative-pg -f
 | `Instance` ignored entirely | `spec.providerRef.name` must be `provider-cloudnative-pg` |
 | `Cluster` created but not reconciled | Confirm CloudNativePG is running; for Barman, confirm cert-manager is installed |
 | `Cluster` created but no pods | Inspect the CloudNativePG `Cluster` status — the failure is upstream in the operator |
+| `BackupConfigured=False` / reason `BarmanPluginMissing` | Install cert-manager, then install/upgrade with `plugin-barman-cloud.enabled=true` (the chart default) |
 | Backup / restore stuck | Check Barman plugin pods, `ObjectStore` / Backup CRs, and BackupStorage credentials |
 
 ## Contributing
