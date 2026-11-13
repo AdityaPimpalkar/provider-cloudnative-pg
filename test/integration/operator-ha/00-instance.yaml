@@ -1,0 +1,21 @@
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: operator-ha
+spec:
+  providerRef:
+    name: provider-cloudnative-pg
+  version: "17.10"
+  components:
+    engine:
+      type: postgresql
+      replicas: 2
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          cpu: 500m
+          memory: 512Mi
+      storage:
+        size: 1Gi

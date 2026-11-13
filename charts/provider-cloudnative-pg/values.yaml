@@ -179,8 +179,38 @@ cloudnative-pg:
   # -- Install the CloudNativePG operator as a chart dependency
   enabled: true
   fullnameOverride: cnpg-operator
+  # -- CloudNativePG operator replicas. The operator drives PostgreSQL failover
+  # and serves the Cluster admission webhooks; with a second replica (leader
+  # election is always on) both stay available while one pod is rescheduled.
+  replicaCount: 2
+  # -- Prefer placing the operator replicas on different nodes.
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            topologyKey: kubernetes.io/hostname
+            labelSelector:
+              matchLabels:
+                app.kubernetes.io/name: cloudnative-pg
+  # -- Prefer spreading the operator replicas across zones.
+  topologySpreadConstraints:
+    - maxSkew: 1
+      topologyKey: topology.kubernetes.io/zone
+      whenUnsatisfiable: ScheduleAnyway
+      labelSelector:
+        matchLabels:
+          app.kubernetes.io/name: cloudnative-pg
   crds:
     create: true
+
+# PodDisruptionBudget for the bundled CloudNativePG operator. Rendered only
+# when cloudnative-pg.enabled is true and cloudnative-pg.replicaCount > 1.
+cnpgOperatorPodDisruptionBudget:
+  # -- Create a PodDisruptionBudget for the CloudNativePG operator pods
+  enabled: true
+  # -- Operator pods that must stay available during voluntary disruptions
+  minAvailable: 1
 
 # CNPG-I Barman Cloud Plugin — WAL archiving and base backups.
 # Installs into the same namespace as this release. Requires a cluster-wide
