@@ -162,6 +162,19 @@ ui:
             label: "pgAudit"
             helperText: "Audit logging of DDL and role changes (pgaudit.log = 'ddl, role'); set pgaudit.* PostgreSQL parameters to change it. Restarts the instances."
             defaultValue: false
+        pgStatStatements:
+          uiType: toggle
+          path: spec.components.engine.parameters.extensions.pgStatStatements.enabled
+          fieldParams:
+            label: "Query statistics (pg_stat_statements)"
+            helperText: "Tracks execution statistics of all SQL statements and exports the top statements as metrics. Set pg_stat_statements.* PostgreSQL parameters to tune it. Turning it on or off restarts the instances."
+            defaultValue: true
+            modes:
+              edit:
+                # Edit forms leave unset fields undefined, so the toggle would fall back to
+                # true and saving the section would restart instances created before this
+                # toggle existed to turn it on.
+                defaultValue: false
         postgis:
           uiType: toggle
           path: spec.components.engine.parameters.extensions.postgis.enabled
@@ -251,6 +264,7 @@ ui:
       componentsOrder:
         - pgvector
         - pgaudit
+        - pgStatStatements
         - timescaledb
         - timescaledbCommunity
         - postgis

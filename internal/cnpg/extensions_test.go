@@ -29,7 +29,7 @@ func withExtensions(extensions components.ExtensionsSpec) *components.CNPGCustom
 func newExtensionsTestContext(t *testing.T, objects ...client.Object) (*controller.Context, client.Client) {
 	t.Helper()
 	scheme := runtime.NewScheme()
-	for _, add := range []func(*runtime.Scheme) error{cnpgv1.AddToScheme, corev1alpha1.AddToScheme} {
+	for _, add := range []func(*runtime.Scheme) error{cnpgv1.AddToScheme, corev1alpha1.AddToScheme, corev1.AddToScheme} {
 		if err := add(scheme); err != nil {
 			t.Fatal(err)
 		}

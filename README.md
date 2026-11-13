@@ -94,6 +94,7 @@ provider. A new image restarts the instances that use it.
 |---|---|---|---|---|---|
 | pgvector | `pgvector` | ✅ | ✅ no restart | ❌ | PG 14–18, bundled in the `standard` images: no image change. See [examples/instance-pgvector.yaml](examples/instance-pgvector.yaml) |
 | pgAudit | `pgaudit` | ✅ | ✅ restarts | ✅ the operator drops it | PG 14–18, bundled; sets `pgaudit.log: "ddl, role"` unless a value is set in `postgresql.parameters`, and the operator then preloads it and creates it in every database |
+| pg_stat_statements | `pgStatStatements` | ✅ on by default | ✅ restarts | ✅ restarts, the operator drops it | PG 14–18, bundled; on for new instances and exported as metrics. See [Query statistics](#query-statistics) |
 | TimescaleDB OSS | `timescaledb` | ✅ | ❌ creation only ¹ | ❌ | Image volume, preloaded. See [examples/instance-timescaledb.yaml](examples/instance-timescaledb.yaml) |
 | TimescaleDB Community ³ | `timescaledbCommunity` | ✅ | ❌ creation only ¹ | ❌ | Image volume from [solanicaio/postgresql-extensions](https://github.com/solanicaio/postgresql-extensions), preloaded; PostgreSQL **18.6+**; not together with `timescaledb`. See [examples/instance-timescaledb-community.yaml](examples/instance-timescaledb-community.yaml) |
 | PostGIS | `postgis` | ✅ | ✅ restarts | ❌ | Image volume |
@@ -376,6 +377,60 @@ The PodMonitor carries `app.kubernetes.io/managed-by=everest` and
 Don't combine it with CloudNativePG's deprecated `monitoring.enablePodMonitor`, which would
 scrape every pod twice; the provider rejects that combination.
 
+### Query statistics
+
+New instances run [`pg_stat_statements`](https://www.postgresql.org/docs/current/pgstatstatements.html):
+the provider sets `pg_stat_statements.track: top`, and the operator then preloads the extension
+and creates it in every database. Query it in SQL, for example the statements that took the
+most time:
+
+```sql
+SELECT queryid, calls, round(total_exec_time) AS total_ms, round(mean_exec_time, 2) AS mean_ms, query
+FROM pg_stat_statements ORDER BY total_exec_time DESC LIMIT 10;
+```
+
+The provider also adds exporter queries (ConfigMap `<instance>-pg-stat-statements`, through
+`monitoring.customQueriesConfigMap`), so the statistics are scraped with the other metrics:
+
+| Metric | Labels | Content |
+|---|---|---|
+| `cnpg_pg_stat_statements_top_{calls,exec_seconds,rows,shared_blks_hit,shared_blks_read,temp_blks_written}` | `datname`, `username`, `queryid` | the 20 statements with the most execution time on each instance |
+| `cnpg_pg_stat_statements_database_{statements,calls,exec_seconds,rows}` | `datname` | totals per database |
+| `cnpg_pg_stat_statements_info_{dealloc,stats_reset_time}` | | statements evicted for lack of room, and the last reset |
+
+Statement metrics carry the `queryid`, never the query text; look a statement up with
+`SELECT query FROM pg_stat_statements WHERE queryid = <queryid>`. Each instance (primary and
+replicas) tracks the statements it runs.
+
+The overhead is small for most workloads. The extension keeps up to `pg_stat_statements.max`
+statements (default 5000) in shared memory; when `cnpg_pg_stat_statements_info_dealloc` grows,
+less frequent statements are being evicted, and raising the limit keeps them at the cost of more
+shared memory. `pg_stat_statements.track: all` also tracks statements inside functions.
+Set these in `spec.components.engine.parameters.postgresql.parameters`; changing
+`pg_stat_statements.max` restarts the instances.
+
+Instances created before the provider enabled it by default keep running without it, so an
+upgrade does not restart them, unless they set `pg_stat_statements.*` parameters. To turn it on
+for one of them, or off for any instance, set `extensions.pgStatStatements.enabled` (both restart
+the instances). While it is set to `false`, the provider rejects `pg_stat_statements.*`
+parameters, which would turn it back on.
+
+The UI writes the toggle explicitly when it creates an instance. When editing an instance whose
+spec doesn't set it, the UI shows it off, as it is on instances created before the default, and
+saving the Extensions section writes `false`. For an instance created from Git or `kubectl`
+without the toggle (which runs the extension), set `enabled: true` in its spec before editing
+that section in the UI.
+
+```yaml
+spec:
+  components:
+    engine:
+      parameters:
+        extensions:
+          pgStatStatements:
+            enabled: false
+```
+
 ## Topologies
 
 | Topology | Default | Description |
@@ -631,7 +686,7 @@ code generation, and the backup/restore interfaces are documented once for all p
 | `definition/` | Provider identity, component types, versions, topologies, backup classes |
 | `charts/provider-cloudnative-pg/` | Helm chart (`generated/` is produced by `make generate`) |
 | `config/rbac/role.yaml` | Generated `ClusterRole` — do not edit |
-| `test/integration/` | Chainsaw suites: `core/replicaset`, `backup`, `extensions/bundled`, `extensions/imagevolume`, `tls-only`, `wal-storage` |
+| `test/integration/` | Chainsaw suites: `core/replicaset`, `backup`, `extensions/bundled`, `extensions/imagevolume`, `extensions/pg-stat-statements`, `tls-only`, `wal-storage` |
 | `test/e2e-cluster/` | Chainsaw e2e suites on the full OpenEverest platform: `backup-restore`, `backup-deletion` |
 | `test/testdata/` | Fixtures shared by the suites (S3Mock object store) |
 | `test/e2e/` | Playwright UI tests against the OpenEverest UI |

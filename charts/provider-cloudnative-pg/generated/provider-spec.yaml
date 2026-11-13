@@ -579,6 +579,11 @@ spec:
                     enabled:
                       type: boolean
                   type: object
+                pgStatStatements:
+                  properties:
+                    enabled:
+                      type: boolean
+                  type: object
                 pgaudit:
                   properties:
                     enabled:
@@ -1389,6 +1394,16 @@ spec:
                 celExpressions:
                   - celExpr: '!(has(spec.components.engine.parameters.extensions.age.enabled) && spec.components.engine.parameters.extensions.age.enabled) || (spec.version >= "18." && spec.version < "19.")'
                     message: Apache AGE requires PostgreSQL 18. Select a 18.x database version to enable it.
+            pgStatStatements:
+              fieldParams:
+                defaultValue: true
+                helperText: Tracks execution statistics of all SQL statements and exports the top statements as metrics. Set pg_stat_statements.* PostgreSQL parameters to tune it. Turning it on or off restarts the instances.
+                label: Query statistics (pg_stat_statements)
+                modes:
+                  edit:
+                    defaultValue: false
+              path: spec.components.engine.parameters.extensions.pgStatStatements.enabled
+              uiType: toggle
             pgaudit:
               fieldParams:
                 defaultValue: false
@@ -1516,6 +1531,7 @@ spec:
           componentsOrder:
             - pgvector
             - pgaudit
+            - pgStatStatements
             - timescaledb
             - timescaledbCommunity
             - postgis

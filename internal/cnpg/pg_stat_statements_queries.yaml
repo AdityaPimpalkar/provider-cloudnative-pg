@@ -1,0 +1,96 @@
+# Metrics from pg_stat_statements for the CloudNativePG exporter, mounted
+# through monitoring.customQueriesConfigMap. Each metric is named
+# cnpg_<query>_<column>. Statement metrics use the queryid as a label, never the
+# query text; look a statement up with
+#   SELECT query FROM pg_stat_statements WHERE queryid = <queryid>;
+# Only the top statements are exported, to bound the number of series.
+pg_stat_statements_top:
+  query: |
+    SELECT d.datname,
+           r.rolname AS username,
+           s.queryid::text AS queryid,
+           s.calls,
+           s.total_exec_time / 1000 AS exec_seconds,
+           s.rows,
+           s.shared_blks_hit,
+           s.shared_blks_read,
+           s.temp_blks_written
+    FROM pg_stat_statements s
+    JOIN pg_catalog.pg_database d ON d.oid = s.dbid
+    JOIN pg_catalog.pg_roles r ON r.oid = s.userid
+    WHERE s.queryid IS NOT NULL
+    ORDER BY s.total_exec_time DESC
+    LIMIT 20
+  predicate_query: SELECT EXISTS (SELECT FROM pg_catalog.pg_extension WHERE extname = 'pg_stat_statements')
+  cache_seconds: 30
+  metrics:
+    - datname:
+        usage: LABEL
+        description: Database of the statement
+    - username:
+        usage: LABEL
+        description: Role that ran the statement
+    - queryid:
+        usage: LABEL
+        description: Query identifier in pg_stat_statements
+    - calls:
+        usage: COUNTER
+        description: Number of times the statement was executed
+    - exec_seconds:
+        usage: COUNTER
+        description: Total time spent executing the statement, in seconds
+    - rows:
+        usage: COUNTER
+        description: Total number of rows retrieved or affected by the statement
+    - shared_blks_hit:
+        usage: COUNTER
+        description: Shared block cache hits by the statement
+    - shared_blks_read:
+        usage: COUNTER
+        description: Shared blocks read from disk by the statement
+    - temp_blks_written:
+        usage: COUNTER
+        description: Temporary blocks written by the statement
+
+pg_stat_statements_database:
+  query: |
+    SELECT d.datname,
+           count(*) AS statements,
+           sum(s.calls) AS calls,
+           sum(s.total_exec_time) / 1000 AS exec_seconds,
+           sum(s.rows) AS rows
+    FROM pg_stat_statements s
+    JOIN pg_catalog.pg_database d ON d.oid = s.dbid
+    GROUP BY d.datname
+  predicate_query: SELECT EXISTS (SELECT FROM pg_catalog.pg_extension WHERE extname = 'pg_stat_statements')
+  cache_seconds: 30
+  metrics:
+    - datname:
+        usage: LABEL
+        description: Database
+    - statements:
+        usage: GAUGE
+        description: Number of distinct statements tracked for the database
+    - calls:
+        usage: COUNTER
+        description: Executions of the tracked statements in the database
+    - exec_seconds:
+        usage: COUNTER
+        description: Time spent executing the tracked statements in the database, in seconds
+    - rows:
+        usage: COUNTER
+        description: Rows retrieved or affected by the tracked statements in the database
+
+pg_stat_statements_info:
+  query: |
+    SELECT dealloc,
+           EXTRACT(EPOCH FROM stats_reset) AS stats_reset_time
+    FROM pg_stat_statements_info
+  predicate_query: SELECT EXISTS (SELECT FROM pg_catalog.pg_extension WHERE extname = 'pg_stat_statements')
+  metrics:
+    - dealloc:
+        usage: COUNTER
+        description: Statements evicted because more than pg_stat_statements.max were tracked; raise it if this grows
+    - stats_reset_time:
+        usage: GAUGE
+        description: Time of the last reset of all statistics, as a Unix timestamp
