@@ -316,6 +316,10 @@ spec:
 
 Component names are defined by this provider — see [definition/provider.yaml](definition/provider.yaml).
 `spec.version` and `spec.topology` are optional; the provider defaults apply.
+CPU and memory requests and limits are required, CPU at most millicore precision, and a request
+above its limit is rejected. The UI takes CPU in cores, fractions included (`0.5`), PostgreSQL
+memory and the disks in Gi, and PgBouncer memory in Mi, and writes them as quantity strings; a
+value it did not change keeps its stored form (for example `3584Mi`).
 More examples live in [examples/](examples/), including
 [TimescaleDB](examples/instance-timescaledb.yaml),
 [pgvector](examples/instance-pgvector.yaml),

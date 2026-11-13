@@ -3499,57 +3499,59 @@ spec:
                   components:
                     cpu-limits:
                       fieldParams:
-                        defaultValue: 100m
+                        defaultValue: 0.1
                         label: CPU limits
-                        placeholder: e.g. 0.5 or 500m
+                        unitLabel: CPU
                       path: spec.components.proxy.resources.limits.cpu
-                      uiType: text
+                      uiType: quantity
                       validation:
-                        regex:
-                          message: Enter cores (e.g. 0.5, 2) or millicores (e.g. 500m), greater than zero
-                          pattern: ^([1-9][0-9]*(\.[0-9]{1,3})?|0?\.([1-9][0-9]{0,2}|0[1-9][0-9]?|00[1-9])|[1-9][0-9]*m)$
+                        celExpressions:
+                          - celExpr: double(spec.components.proxy.resources.requests.cpu) <= double(spec.components.proxy.resources.limits.cpu)
+                            message: CPU request cannot be greater than CPU limit
+                        min: 0.01
+                        multipleOf: 0.001
                         required: true
                     cpu-requests:
                       fieldParams:
-                        defaultValue: 100m
+                        defaultValue: 0.1
                         label: CPU requests
-                        placeholder: e.g. 0.5 or 500m
+                        unitLabel: CPU
                       path: spec.components.proxy.resources.requests.cpu
-                      uiType: text
+                      uiType: quantity
                       validation:
-                        regex:
-                          message: Enter cores (e.g. 0.5, 2) or millicores (e.g. 500m), greater than zero
-                          pattern: ^([1-9][0-9]*(\.[0-9]{1,3})?|0?\.([1-9][0-9]{0,2}|0[1-9][0-9]?|00[1-9])|[1-9][0-9]*m)$
+                        celExpressions:
+                          - celExpr: double(spec.components.proxy.resources.requests.cpu) <= double(spec.components.proxy.resources.limits.cpu)
+                            message: CPU request cannot be greater than CPU limit
+                        min: 0.01
+                        multipleOf: 0.001
                         required: true
                     memory-limits:
                       fieldParams:
-                        badge: Gi
-                        badgeToApi: true
-                        defaultValue: 0.1
+                        defaultValue: 128
                         label: Memory limits
-                        step: 0.1
+                        unit: Mi
                       path: spec.components.proxy.resources.limits.memory
-                      uiType: number
+                      uiType: quantity
                       validation:
                         celExpressions:
-                          - celExpr: spec.components.proxy.resources.requests.memory <= spec.components.proxy.resources.limits.memory
+                          - celExpr: double(spec.components.proxy.resources.requests.memory) <= double(spec.components.proxy.resources.limits.memory)
                             message: Memory request cannot be greater than memory limit
-                        min: 0.1
+                        int: true
+                        min: 32
                         required: true
                     memory-requests:
                       fieldParams:
-                        badge: Gi
-                        badgeToApi: true
-                        defaultValue: 0.1
+                        defaultValue: 128
                         label: Memory requests
-                        step: 0.1
+                        unit: Mi
                       path: spec.components.proxy.resources.requests.memory
-                      uiType: number
+                      uiType: quantity
                       validation:
                         celExpressions:
-                          - celExpr: spec.components.proxy.resources.requests.memory <= spec.components.proxy.resources.limits.memory
+                          - celExpr: double(spec.components.proxy.resources.requests.memory) <= double(spec.components.proxy.resources.limits.memory)
                             message: Memory request cannot be greater than memory limit
-                        min: 0.1
+                        int: true
+                        min: 32
                         required: true
                   componentsOrder:
                     - cpu-requests
@@ -3618,76 +3620,75 @@ spec:
                   components:
                     cpu-limits:
                       fieldParams:
-                        defaultValue: "1"
+                        defaultValue: 1
                         label: CPU limits
-                        placeholder: e.g. 0.5 or 500m
+                        unitLabel: CPU
                       path: spec.components.engine.resources.limits.cpu
-                      uiType: text
+                      uiType: quantity
                       validation:
-                        regex:
-                          message: Enter cores (e.g. 0.5, 2) or millicores (e.g. 500m), greater than zero
-                          pattern: ^([1-9][0-9]*(\.[0-9]{1,3})?|0?\.([1-9][0-9]{0,2}|0[1-9][0-9]?|00[1-9])|[1-9][0-9]*m)$
+                        celExpressions:
+                          - celExpr: double(spec.components.engine.resources.requests.cpu) <= double(spec.components.engine.resources.limits.cpu)
+                            message: CPU request cannot be greater than CPU limit
+                        min: 0.1
+                        multipleOf: 0.001
                         required: true
                     cpu-requests:
                       fieldParams:
-                        defaultValue: "1"
+                        defaultValue: 1
                         label: CPU requests
-                        placeholder: e.g. 0.5 or 500m
+                        unitLabel: CPU
                       path: spec.components.engine.resources.requests.cpu
-                      uiType: text
+                      uiType: quantity
                       validation:
-                        regex:
-                          message: Enter cores (e.g. 0.5, 2) or millicores (e.g. 500m), greater than zero
-                          pattern: ^([1-9][0-9]*(\.[0-9]{1,3})?|0?\.([1-9][0-9]{0,2}|0[1-9][0-9]?|00[1-9])|[1-9][0-9]*m)$
+                        celExpressions:
+                          - celExpr: double(spec.components.engine.resources.requests.cpu) <= double(spec.components.engine.resources.limits.cpu)
+                            message: CPU request cannot be greater than CPU limit
+                        min: 0.1
+                        multipleOf: 0.001
                         required: true
                     disk:
                       fieldParams:
-                        badge: Gi
-                        badgeToApi: true
                         defaultValue: 25
                         label: Disk
+                        unit: Gi
                       path: spec.components.engine.storage.size
-                      uiType: number
+                      uiType: quantity
                       validation:
                         int: true
                         min: 1
                         modes:
                           edit:
                             celExpressions:
-                              - celExpr: spec.components.engine.storage.size >= original.spec.components.engine.storage.size
+                              - celExpr: double(spec.components.engine.storage.size) >= double(original.spec.components.engine.storage.size)
                                 message: Disk size cannot be decreased
                               - celExpr: '!has(original.spec.components.engine.parameters.walStorage.size) || has(spec.components.engine.parameters.walStorage.size)'
                                 message: Separate WAL storage cannot be disabled once configured
                         required: true
                     memory-limits:
                       fieldParams:
-                        badge: Gi
-                        badgeToApi: true
                         defaultValue: 4
                         label: Memory limits
-                        step: 0.1
+                        unit: Gi
                       path: spec.components.engine.resources.limits.memory
-                      uiType: number
+                      uiType: quantity
                       validation:
                         celExpressions:
-                          - celExpr: spec.components.engine.resources.requests.memory <= spec.components.engine.resources.limits.memory
+                          - celExpr: double(spec.components.engine.resources.requests.memory) <= double(spec.components.engine.resources.limits.memory)
                             message: Memory request cannot be greater than memory limit
-                        min: 0.1
+                        min: 0.5
                         required: true
                     memory-requests:
                       fieldParams:
-                        badge: Gi
-                        badgeToApi: true
                         defaultValue: 4
                         label: Memory requests
-                        step: 0.1
+                        unit: Gi
                       path: spec.components.engine.resources.requests.memory
-                      uiType: number
+                      uiType: quantity
                       validation:
                         celExpressions:
-                          - celExpr: spec.components.engine.resources.requests.memory <= spec.components.engine.resources.limits.memory
+                          - celExpr: double(spec.components.engine.resources.requests.memory) <= double(spec.components.engine.resources.limits.memory)
                             message: Memory request cannot be greater than memory limit
-                        min: 0.1
+                        min: 0.5
                         required: true
                   componentsOrder:
                     - cpu-requests
@@ -3756,19 +3757,18 @@ spec:
               components:
                 size:
                   fieldParams:
-                    badge: Gi
-                    badgeToApi: true
                     helperText: The WAL disk cannot be shrunk. Growing it requires an expandable StorageClass.
                     label: WAL disk size
+                    unit: Gi
                   path: spec.components.engine.parameters.walStorage.size
-                  uiType: number
+                  uiType: quantity
                   validation:
                     int: true
                     min: 1
                     modes:
                       edit:
                         celExpressions:
-                          - celExpr: '!has(original.spec.components.engine.parameters.walStorage.size) || spec.components.engine.parameters.walStorage.size >= original.spec.components.engine.parameters.walStorage.size'
+                          - celExpr: '!has(original.spec.components.engine.parameters.walStorage.size) || double(spec.components.engine.parameters.walStorage.size) >= double(original.spec.components.engine.parameters.walStorage.size)'
                             message: WAL disk size cannot be decreased
                     required: true
                 storageClass:
