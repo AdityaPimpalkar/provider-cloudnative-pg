@@ -100,6 +100,39 @@ affinity: {}
 provider:
   # -- The name to register for the Provider custom resource
   name: provider-cloudnative-pg
+  # -- Short provider identifier, used as the prefix of preset names
+  # (e.g. 'postgresql-replicaset').
+  shortName: postgresql
+
+# -- ClusterInstancePresets installed with the provider: well-known starting
+# points users pick when they create an Instance in any namespace. Each entry
+# has a 'name' (prefixed with provider.shortName), 'enabled', and a 'spec' (an
+# Instance spec; providerRef is set by the chart). Presets are cluster-scoped,
+# so a spec must not reference namespaced objects such as Secrets or backup
+# storages. version is the provider's default version bundle; keep it in step
+# with definition/versions.yaml (a unit test checks it).
+presets:
+  - name: replicaset
+    enabled: true
+    spec:
+      version: "18.6"
+      topology:
+        type: replicaSet
+      components:
+        engine:
+          type: postgresql
+          replicas: 3
+          resources:
+            requests:
+              cpu: "1"
+              memory: 4Gi
+            limits:
+              cpu: "1"
+              memory: 4Gi
+          storage:
+            size: 25Gi
+          parameters:
+            requireTLS: true
 
 # Images of the first-class image-volume extensions (PostgreSQL 18+), as a
 # CloudNativePG ClusterImageCatalog. The provider copies the entry of each

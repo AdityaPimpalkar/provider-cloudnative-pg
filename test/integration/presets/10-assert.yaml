@@ -1,0 +1,22 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: itest-pg-preset
+spec:
+  instances: 1
+  (ends_with(imageName, '18.6-standard-trixie')): true
+  postgresql:
+    (contains(pg_hba, 'hostnossl all all all reject')): true
+status:
+  readyInstances: 1
+---
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: itest-pg-preset
+  annotations:
+    openeverest.io/cluster-instance-preset: postgresql-replicaset
+spec:
+  version: "18.6"
+status:
+  phase: Ready
