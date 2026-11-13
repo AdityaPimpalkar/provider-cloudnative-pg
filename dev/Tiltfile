@@ -1,7 +1,8 @@
 # Tiltfile for developing provider-cloudnative-pg.
 #
-# Installs the latest released OpenEverest v2 core, then builds and deploys this
-# provider with live-reload. You do NOT need a local checkout of the core.
+# Installs the latest released OpenEverest v2 core (or an unreleased one from a
+# local chart and image), then builds and deploys this provider with
+# live-reload. You do NOT need a local checkout of the core.
 #
 # Usage:
 #   make dev-up            # create the k3d cluster and run `tilt up`
@@ -42,6 +43,17 @@ openeverest_version = os.getenv('OPENEVEREST_VERSION', '')
 # Helm repository that hosts the OpenEverest core chart.
 openeverest_helm_repo = os.getenv(
     'OPENEVEREST_HELM_REPO', 'https://openeverest.github.io/helm-charts/')
+
+# Local OpenEverest core chart to install instead of the released one, e.g.
+# the charts/everest directory of an openeverest/helm-charts checkout; a
+# relative path is taken from the repository root. Its dependencies must be
+# built (`helm dependency build`). Overrides OPENEVEREST_VERSION and
+# OPENEVEREST_HELM_REPO.
+openeverest_chart_dir = os.getenv('OPENEVEREST_CHART_DIR', '')
+
+# OpenEverest core image (repository:tag) to run instead of the chart's, e.g.
+# ghcr.io/openeverest/openeverest-dev:0.0.0, built from core main (amd64 only).
+openeverest_image = os.getenv('OPENEVEREST_IMAGE', '')
 
 # Namespaces.
 everest_namespace = os.getenv('EVEREST_NAMESPACE', 'everest-system')
@@ -88,16 +100,29 @@ load('ext://helm_resource', 'helm_resource', 'helm_repo')
 load('ext://restart_process', 'docker_build_with_restart')
 
 # ===========================
-# OpenEverest core (released)
+# OpenEverest core (released, or a local chart)
 # ===========================
 # Installed with a real `helm upgrade --install` (via the helm_resource
 # extension) so that the core CRDs bundled in the chart are applied correctly.
 if install_openeverest:
-    helm_repo(
-        'openeverest-repo',
-        openeverest_helm_repo,
-        labels=['openeverest'],
-    )
+    core_chart = 'openeverest-repo/openeverest'
+    core_deps = ['openeverest-repo']
+    if openeverest_chart_dir:
+        # Relative to the repository root, like the rest of the dev commands.
+        core_chart = openeverest_chart_dir
+        if not core_chart.startswith('/'):
+            core_chart = os.path.join(provider_dir, core_chart)
+        if not os.path.exists(core_chart):
+            fail('OPENEVEREST_CHART_DIR does not exist: {0}'.format(core_chart))
+        core_chart = os.path.realpath(core_chart)
+        core_deps = []
+        print('Using OpenEverest core chart dir: {0}'.format(core_chart))
+    else:
+        helm_repo(
+            'openeverest-repo',
+            openeverest_helm_repo,
+            labels=['openeverest'],
+        )
 
     core_flags = [
         '--create-namespace',
@@ -110,17 +135,24 @@ if install_openeverest:
         '--set', 'kube-state-metrics.enabled=false',
         '--set', 'createMonitoringResources=false',
     ]
-    if openeverest_version:
+    if openeverest_version and not openeverest_chart_dir:
         core_flags = core_flags + ['--version', openeverest_version]
+    if openeverest_image:
+        repository, tag = openeverest_image.rsplit(':', 1)
+        core_flags = core_flags + [
+            '--set', 'server.image.repository={0}'.format(repository),
+            '--set', 'server.image.tag={0}'.format(tag),
+            '--set', 'server.image.pullPolicy=Always',
+        ]
 
     helm_resource(
         'openeverest',
-        'openeverest-repo/openeverest',
+        core_chart,
         release_name='everest',
         namespace=everest_namespace,
         flags=core_flags,
         port_forwards=[port_forward(8080, 8080, 'Everest UI/API')],
-        resource_deps=['openeverest-repo'],
+        resource_deps=core_deps,
         labels=['openeverest'],
     )
 

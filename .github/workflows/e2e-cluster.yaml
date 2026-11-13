@@ -1,5 +1,6 @@
 # E2E cluster tests: chainsaw suites under test/e2e-cluster run against the
-# released OpenEverest core (server and controller, version from go.mod) and
+# OpenEverest core (server and controller; core main until the next core
+# release, see OPENEVEREST_CHARTS_REF in the Makefile) and
 # this provider built from source, on a k3d cluster.
 name: E2E Cluster Tests
 
