@@ -1,0 +1,41 @@
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: pg-mon
+spec:
+  providerRef:
+    name: provider-cloudnative-pg
+  version: "17.10"
+  topology:
+    type: replicaSet
+    parameters:
+      # Deprecated and ignored, still accepted: earlier releases created a
+      # PodMonitor for it.
+      monitoring:
+        prometheus:
+          enabled: true
+          podMonitorLabels:
+            release: kube-prometheus-stack
+  components:
+    engine:
+      type: postgresql
+      replicas: 1
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          cpu: 500m
+          memory: 512Mi
+      storage:
+        size: 1Gi
+      parameters:
+        # Ignored: CloudNativePG's own PodMonitor would scrape every pod a
+        # second time.
+        monitoring:
+          enablePodMonitor: true
+  monitoring:
+    destinations:
+      - name: metrics
+        destinationRef:
+          name: metrics-e2e

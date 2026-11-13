@@ -1,0 +1,15 @@
+# Monitoring contract, published by `provider-sdk generate` as
+# Provider.spec.monitoring.
+#
+# componentTypes: what each component type from provider.yaml exposes (its
+# kind is declared in provider.yaml). The CloudNativePG instance manager serves
+# OpenMetrics on every PostgreSQL pod (port "metrics", 9187, /metrics; https
+# when spec.components.engine.parameters.monitoring.tls.enabled is set), so no
+# exporter is switched on or off. PgBouncer's endpoint (port "metrics", 9127)
+# is not published yet. There are no operator-native integrations: monitoring
+# extensions scrape the endpoints the provider publishes in
+# Instance.status.monitoring.sources.
+
+componentTypes:
+  postgresql:
+    metrics: Native

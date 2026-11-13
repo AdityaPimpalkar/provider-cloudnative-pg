@@ -71,7 +71,7 @@ provider itself is covered under [Installation](#installation).
 | Pod scheduling | ✅ | `spec.components.engine.schedulingPolicy` (all fields), or `parameters.affinity` — not both |
 | Pod priority | ✅ | `parameters.priorityClassName` → CloudNativePG `spec.priorityClassName`; the PriorityClass must exist, and changing it rolls the instance pods |
 | Suspend and resume | ✅ | `spec.suspend.suspended`: CloudNativePG hibernation stops the instances and PgBouncer, keeping the volumes; see [Suspend an instance](#suspend-an-instance) |
-| Monitoring | ✅ | Prometheus: a PodMonitor for the instance pods via `spec.topology.parameters.monitoring.prometheus`; requires the Prometheus Operator. See [Scrape metrics with Prometheus](#scrape-metrics-with-prometheus) |
+| Monitoring | ✅ | Metrics of the PostgreSQL pods published for monitoring extensions through `spec.monitoring.destinations`. See [Monitoring](#monitoring) |
 
 ### Extensions
 
@@ -399,31 +399,44 @@ is the `ca.crt` key in the `<cluster>-ca` Secret, or in the Secret named by
 `pg-connection-string` also accepts `sslmode=no-verify`, which encrypts
 without checking the certificate. That value is not a libpq `sslmode`.
 
-### Scrape metrics with Prometheus
+### Monitoring
 
-Every CloudNativePG instance pod serves its metrics exporter on port `metrics` (9187).
-With the [Prometheus Operator](https://prometheus-operator.dev/) in the cluster, enable
-Prometheus (the **Monitoring → Prometheus** toggle in the UI) to get a PodMonitor
-(`<instance>-metrics`) that scrapes it, over HTTPS when
-`spec.components.engine.parameters.monitoring.tls.enabled` is set. `podMonitorLabels` lets
-your Prometheus `podMonitorSelector` pick it up. Turning it off removes the PodMonitor.
+Monitoring is an OpenEverest extension. Every PostgreSQL pod serves the CloudNativePG metrics
+exporter on port `metrics` (9187, `/metrics`), over HTTPS when
+`spec.components.engine.parameters.monitoring.tls.enabled` is set. Once CloudNativePG has
+initialized the cluster, the provider publishes that endpoint in
+`Instance.status.monitoring.sources.metrics`, and a monitoring extension creates the scrape
+objects from it. To send an Instance's metrics somewhere:
+
+1. Install a monitoring extension, such as
+   [monitoring-prometheus](https://github.com/openeverest/monitoring-prometheus), which
+   installs its `MonitoringClass`.
+2. Create a `MonitoringDestination` of that class (in the UI: **Settings → Monitoring**).
+3. List it on the Instance (in the UI: the wizard's monitoring step, or **Edit monitoring** on
+   the overview):
 
 ```yaml
 spec:
-  topology:
-    type: replicaSet
-    parameters:
-      monitoring:
-        prometheus:
-          enabled: true
-          podMonitorLabels:
-            release: kube-prometheus-stack
+  monitoring:
+    destinations:
+      - name: metrics
+        destinationRef:
+          name: prometheus
 ```
 
-The PodMonitor carries `app.kubernetes.io/managed-by=everest` and
-`app.kubernetes.io/instance=<instance>`, which the OpenEverest metrics plugin uses to find it.
-Don't combine it with CloudNativePG's deprecated `monitoring.enablePodMonitor`, which would
-scrape every pod twice; the provider rejects that combination.
+The exporter always runs, so adding or removing a destination restarts nothing. The endpoint
+stays published without a destination, so a scraper OpenEverest doesn't configure (your own
+`PodMonitor`, a Datadog agent, Grafana Alloy) can read its pod selector, port, path, scheme and
+TLS settings from the Instance status. PgBouncer's metrics endpoint is not published yet.
+
+> [!IMPORTANT]
+> **Upgrading from 0.3.x.** The provider no longer creates a `PodMonitor` for
+> `spec.topology.parameters.monitoring.prometheus`, and deletes the one earlier releases created
+> (`<instance>-metrics`). The parameter is still accepted, with a deprecation warning, so
+> existing Instances keep working. CloudNativePG's deprecated
+> `spec.components.engine.parameters.monitoring.enablePodMonitor` is ignored too: its
+> `PodMonitor` would scrape every pod a second time. To keep collecting metrics, list a
+> destination in `spec.monitoring.destinations`.
 
 ### Query statistics
 
@@ -485,8 +498,8 @@ spec:
 |---|---|---|
 | `replicaSet` | ✅ | A CloudNativePG primary + standby cluster built from the `engine` component (default 3 instances) |
 
-The `backupAgent` and `proxy` components are optional. Prometheus scraping is a topology
-parameter (`spec.topology.parameters.monitoring.prometheus`), not a component.
+The `backupAgent` and `proxy` components are optional. Monitoring is configured on the Instance
+(`spec.monitoring.destinations`), not as a component; see [Monitoring](#monitoring).
 
 ### Connection pooling
 
@@ -572,7 +585,8 @@ The Instance "orders" is invalid: spec.components[engine].parameters.postgresql.
 
 - **Checked at admission:** the published parameter schemas, the version catalog and the
   provider's rules (resources, synchronous replication, extensions and the PostgreSQL version
-  they need, scheduling, proxy, backup schedules and retention, the data source, Prometheus).
+  they need, scheduling, proxy, backup schedules and retention, the data source). The deprecated
+  monitoring parameters are accepted with a warning; see [Monitoring](#monitoring).
   Rules about changes are checked against the stored `Instance`: an extension created in the
   database cannot be turned off, and creation-only extensions cannot be turned on later.
 - **Warnings:** changes that restart the instances, such as turning on an image-volume or
@@ -604,8 +618,8 @@ The technology-specific knobs worth knowing about:
 | `certificates` | `engine` | TLS certificate configuration passthrough |
 | `requireTLS` | `engine` | Reject unencrypted client connections; see [Require TLS](#require-tls) |
 | `replicationSlots` | `engine` | CloudNativePG `ReplicationSlotsConfiguration` (HA slots, user slot synchronization, logical slot failover); see [Logical replication slot failover](#logical-replication-slot-failover) |
-| `monitoring` | `engine` | CloudNativePG monitoring configuration (custom queries, metrics TLS, …) |
-| `monitoring.prometheus` | topology | Create a PodMonitor for the instance; see [Scrape metrics with Prometheus](#scrape-metrics-with-prometheus) |
+| `monitoring` | `engine` | CloudNativePG monitoring configuration (custom queries, metrics TLS, …); `enablePodMonitor` is ignored, see [Monitoring](#monitoring) |
+| `monitoring.prometheus` | topology | Deprecated, no effect; see [Monitoring](#monitoring) |
 
 ### Synchronous replication
 
@@ -766,7 +780,7 @@ code generation, and the backup/restore interfaces are documented once for all p
 | `charts/provider-cloudnative-pg/` | Helm chart (`generated/` is produced by `make generate`) |
 | `config/rbac/role.yaml` | Generated `ClusterRole` — do not edit |
 | `test/integration/` | Chainsaw suites: `core/admission`, `core/replicaset`, `backup`, `extensions/bundled`, `extensions/imagevolume`, `extensions/pg-stat-statements`, `presets`, `tls-only`, `wal-storage` |
-| `test/e2e-cluster/` | Chainsaw e2e suites on the full OpenEverest platform: `backup-restore`, `backup-deletion` |
+| `test/e2e-cluster/` | Chainsaw e2e suites on the full OpenEverest platform: `backup-restore`, `backup-deletion`, `monitoring` |
 | `test/testdata/` | Fixtures shared by the suites (S3Mock object store) |
 | `test/e2e/` | Playwright UI tests against the OpenEverest UI |
 | `test/vars.sh` | Pinned versions used by tests |
@@ -802,7 +816,12 @@ code generation, and the backup/restore interfaces are documented once for all p
   `backup-restore` writes data, takes a Backup, restores it into a new Instance through
   `spec.dataSource`, and checks the data. `backup-deletion` checks that schedule retention reaches
   the Barman ObjectStore, that deleting a `Retain` Backup keeps its objects in the object store, and
-  that deleting a `Delete` Backup removes them. Run with `make test-e2e-cluster`.
+  that deleting a `Delete` Backup removes them. `monitoring` (`make test-e2e-cluster-monitoring`)
+  binds an Instance to a test metrics class, standing in for the extension, and checks the class
+  compatibility, the binding, the published endpoint (scraped through the API server's pod
+  proxy), that the PodMonitor of earlier releases is deleted and none is created, and that
+  dropping the destination deletes the binding. It installs a minimal `PodMonitor` CRD only when
+  the Prometheus Operator's is absent. Run with `make test-e2e-cluster`.
 - **E2E UI tests** — Playwright tests under [test/e2e/](test/e2e/) drive the OpenEverest UI: they
   create a PostgreSQL instance through the provider's generated form, wait for it to be Ready, and
   delete it; a second test turns on **Separate WAL storage** and checks the WAL volume. Run with `make test-e2e` (installs Chromium for Playwright) against a UI at `EVEREST_URL` (default

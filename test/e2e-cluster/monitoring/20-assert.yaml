@@ -1,0 +1,13 @@
+# Native metrics stay published without a destination, for any scraper.
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: pg-mon
+status:
+  phase: Ready
+  monitoring:
+    (destinations == null): true
+    sources:
+      metrics:
+        - component: engine
+          port: metrics

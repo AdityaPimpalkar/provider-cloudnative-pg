@@ -5,22 +5,27 @@ package replicaset
 
 // ReplicaSetTopologyParameters is validated against spec.topology.parameters.
 type ReplicaSetTopologyParameters struct {
+	// Deprecated: Monitoring has no effect. Metrics are collected by listing
+	// a MonitoringDestination in spec.monitoring.destinations: a monitoring
+	// extension creates the scrape objects. It is still accepted because
+	// Instances created by earlier releases carry it.
 	Monitoring *MonitoringParameters `json:"monitoring,omitempty"`
 }
 
-// MonitoringParameters configures how the instance's metrics are collected.
+// MonitoringParameters is deprecated and has no effect; see
+// ReplicaSetTopologyParameters.Monitoring.
 type MonitoringParameters struct {
+	// Deprecated: Prometheus has no effect.
 	Prometheus *PrometheusParameters `json:"prometheus,omitempty"`
 }
 
-// PrometheusParameters configures scraping of the CloudNativePG metrics
-// exporter (port "metrics" on every instance pod) by the Prometheus Operator.
+// PrometheusParameters is deprecated and has no effect. Earlier releases
+// created a PodMonitor named <instance>-metrics for it; the provider now
+// deletes that PodMonitor.
 type PrometheusParameters struct {
-	// Enabled creates a PodMonitor named <instance>-metrics; disabling it
-	// removes the PodMonitor.
+	// Deprecated: Enabled has no effect.
 	Enabled bool `json:"enabled,omitempty"`
 
-	// PodMonitorLabels are added to the PodMonitor so that a Prometheus
-	// podMonitorSelector picks it up, e.g. release: kube-prometheus-stack.
+	// Deprecated: PodMonitorLabels has no effect.
 	PodMonitorLabels map[string]string `json:"podMonitorLabels,omitempty"`
 }

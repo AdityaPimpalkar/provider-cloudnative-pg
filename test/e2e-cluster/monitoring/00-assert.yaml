@@ -1,0 +1,11 @@
+# Core matches the class to the provider: the instance manager serves metrics
+# natively, so binding it restarts nothing.
+apiVersion: monitoring.openeverest.io/v1alpha1
+kind: MonitoringClass
+metadata:
+  name: cnpg-metrics-e2e
+status:
+  (conditions[?type == 'Accepted'].status | [0]): "True"
+  (providers[?name == 'provider-cloudnative-pg'] | [0]):
+    mode: ExtensionManaged
+    disruption: None

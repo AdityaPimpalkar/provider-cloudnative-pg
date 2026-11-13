@@ -1,0 +1,17 @@
+# The PodMonitor a release before the monitoring contract created for
+# spec.topology.parameters.monitoring.prometheus. The provider deletes it.
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: pg-mon-metrics
+  labels:
+    app.kubernetes.io/managed-by: everest
+    app.kubernetes.io/instance: pg-mon
+    core.openeverest.io/provider: provider-cloudnative-pg
+spec:
+  selector:
+    matchLabels:
+      cnpg.io/cluster: pg-mon
+      cnpg.io/podRole: instance
+  podMetricsEndpoints:
+    - port: metrics

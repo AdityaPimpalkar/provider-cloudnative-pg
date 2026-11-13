@@ -1,0 +1,85 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/kyverno/chainsaw/main/.schemas/json/test-chainsaw-v1alpha1.json
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: monitoring
+spec:
+  description: |
+    Monitoring through Instance.spec.monitoring.destinations[]: core matches a
+    metrics class to the provider (native metrics, no disruption) and binds an
+    Instance listing a destination of it. The provider publishes the instance
+    manager's endpoint in Instance.status.monitoring.sources, which serves
+    OpenMetrics; it deletes the PodMonitor earlier releases created, and
+    neither it nor CloudNativePG creates one, although the Instance still
+    carries the deprecated parameters. Dropping the entry deletes the binding
+    and keeps the endpoint. No extension controller runs here, so the class
+    is claimed by hand and the binding is never Configured; what the provider
+    owns is asserted.
+  catch:
+    - script:
+        content: kubectl get instance,cluster,monitoringdestination,monitoringbinding,podmonitor,pod -n "$NAMESPACE" -o yaml
+    - script:
+        content: kubectl get monitoringclass cnpg-metrics-e2e -o yaml
+    - podLogs:
+        namespace: provider-system
+        selector: app.kubernetes.io/name=provider-cloudnative-pg
+        tail: 200
+  steps:
+    - name: setup
+      try:
+        # Only where the Prometheus Operator's CRD is absent: never replace it.
+        - script:
+            content: |
+              kubectl get crd podmonitors.monitoring.coreos.com >/dev/null 2>&1 || {
+                kubectl apply -f 00-podmonitor-crd.yaml &&
+                kubectl wait --for=condition=Established --timeout=60s crd/podmonitors.monitoring.coreos.com
+              }
+        - apply:
+            file: 00-install.yaml
+        # Stand in for the extension controller: a class is usable only once
+        # its controller has claimed it at its current generation.
+        - script:
+            content: |
+              gen=$(kubectl get monitoringclass/cnpg-metrics-e2e -o jsonpath='{.metadata.generation}')
+              kubectl patch monitoringclass/cnpg-metrics-e2e --subresource status --type merge \
+                -p '{"status":{"conditions":[{"type":"Accepted","status":"True","reason":"Accepted","message":"claimed by the test","observedGeneration":'"$gen"',"lastTransitionTime":"2026-01-01T00:00:00Z"}]}}'
+        - assert:
+            file: 00-assert.yaml
+        - apply:
+            file: 05-legacy-podmonitor.yaml
+
+    - name: create-instance-with-destination
+      try:
+        - apply:
+            file: 10-instance.yaml
+        - script:
+            timeout: 600s
+            content: |
+              set -e
+              kubectl wait --for=create cluster/pg-mon -n "$NAMESPACE" --timeout=60s
+              kubectl wait --for=condition=Ready cluster/pg-mon -n "$NAMESPACE" --timeout=480s
+        - assert:
+            file: 10-assert.yaml
+        - error:
+            file: 10-errors.yaml
+        # The published endpoint serves OpenMetrics: scrape it through the
+        # API server's pod proxy.
+        - script:
+            content: |
+              set -eu
+              pod=$(kubectl get pods -n "$NAMESPACE" \
+                -l core.openeverest.io/instance=pg-mon,core.openeverest.io/component=engine \
+                -o jsonpath='{.items[0].metadata.name}')
+              kubectl get --raw "/api/v1/namespaces/$NAMESPACE/pods/$pod:9187/proxy/metrics" > /tmp/e2e-pg-metrics
+              grep -q '^cnpg_collector_up' /tmp/e2e-pg-metrics
+              grep -q '^cnpg_pg_postmaster_start_time' /tmp/e2e-pg-metrics
+              echo "scraped $(wc -l < /tmp/e2e-pg-metrics) lines from $pod"
+
+    - name: drop-destination
+      try:
+        - patch:
+            file: 20-drop-destination.yaml
+        - assert:
+            file: 20-assert.yaml
+        - error:
+            file: 20-errors.yaml

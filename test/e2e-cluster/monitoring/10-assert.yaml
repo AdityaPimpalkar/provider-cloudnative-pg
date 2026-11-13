@@ -1,0 +1,46 @@
+# Core creates the binding; no extension runs here, so it stays unconfigured.
+apiVersion: monitoring.openeverest.io/v1alpha1
+kind: MonitoringBinding
+metadata:
+  labels:
+    core.openeverest.io/instance: pg-mon
+    monitoring.openeverest.io/entry: metrics
+spec:
+  destinationRef:
+    name: metrics-e2e
+  classRef:
+    name: cnpg-metrics-e2e
+  executionMode: ExtensionManaged
+status:
+  (conditions[?type == 'Accepted'].status | [0]): "True"
+---
+# The Cluster gets the rest of the monitoring parameters, not CloudNativePG's
+# PodMonitor.
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: pg-mon
+spec:
+  monitoring:
+    (enablePodMonitor || `false`): false
+---
+# The provider publishes the instance manager's endpoint for the extension.
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: pg-mon
+status:
+  phase: Ready
+  monitoring:
+    (destinations[?name == 'metrics'] | [0]):
+      mode: ExtensionManaged
+    sources:
+      metrics:
+        - component: engine
+          kind: postgresql
+          podSelector:
+            core.openeverest.io/instance: pg-mon
+            core.openeverest.io/component: engine
+          port: metrics
+          path: /metrics
+          scheme: http

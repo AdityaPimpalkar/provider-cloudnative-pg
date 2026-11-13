@@ -1,0 +1,7 @@
+# Dropping the entry deletes its binding.
+apiVersion: monitoring.openeverest.io/v1alpha1
+kind: MonitoringBinding
+metadata:
+  labels:
+    core.openeverest.io/instance: pg-mon
+    monitoring.openeverest.io/entry: metrics

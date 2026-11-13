@@ -1,0 +1,11 @@
+# The PodMonitor earlier releases created is gone, and neither the provider
+# nor CloudNativePG creates one.
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: pg-mon-metrics
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: pg-mon

@@ -23,7 +23,6 @@ import (
 	"github.com/openeverest/openeverest/v2/provider-runtime/controller"
 
 	cnpgv1 "github.com/cloudnative-pg/cloudnative-pg/api/v1"
-	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 
 	"github.com/adityapimpalkar/provider-cloudnative-pg/definition/components"
 	"github.com/adityapimpalkar/provider-cloudnative-pg/internal/cnpg"
@@ -63,7 +62,6 @@ func New() *Provider {
 			SchemeFuncs: []func(*runtime.Scheme) error{
 				cnpgv1.SchemeBuilder.AddToScheme,
 				addBarmanCloudScheme,
-				monitoringv1.AddToScheme,
 				batchv1.AddToScheme,
 				appsv1.AddToScheme,
 			},
@@ -166,6 +164,7 @@ func (p *Provider) Sync(c *controller.Context) error {
 	}
 	cnpg.ApplyExtensions(pg, &custom, extensionImages)
 	cnpg.ApplyQueryStatisticsMonitoring(pg, &custom)
+	disableOperatorPodMonitor(pg)
 
 	if c.Instance().Spec.DataSource != nil {
 		recovery, externalCluster, err := barman.BuildRecoveryConfig(c, custom)
@@ -202,7 +201,8 @@ func (p *Provider) Sync(c *controller.Context) error {
 		return err
 	}
 
-	if err := syncPodMonitor(c, pg); err != nil {
+	// Releases before the monitoring contract created a PodMonitor.
+	if err := deleteLegacyPodMonitor(c); err != nil {
 		return err
 	}
 
@@ -390,8 +390,8 @@ func (p *Provider) Cleanup(c *controller.Context) error {
 	l := log.FromContext(c.Context())
 	l.Info("Cleaning up instance", "name", c.Name())
 
-	// TODO: Implement cleanup logic if needed.
-	// Resources with owner references set via c.Apply() are automatically
-	// garbage collected. Only implement this if you need custom cleanup.
-	return nil
+	// Resources with owner references set via c.Apply() are garbage
+	// collected. The PodMonitor of earlier releases is deleted explicitly, in
+	// case it never got another Sync after the upgrade.
+	return deleteLegacyPodMonitor(c)
 }

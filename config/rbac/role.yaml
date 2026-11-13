@@ -17,6 +17,12 @@ rules:
 - apiGroups:
   - ""
   resources:
+  - namespaces
+  verbs:
+  - get
+- apiGroups:
+  - ""
+  resources:
   - pods
   verbs:
   - get
@@ -156,13 +162,23 @@ rules:
   resources:
   - podmonitors
   verbs:
-  - create
   - delete
+- apiGroups:
+  - monitoring.openeverest.io
+  resources:
+  - monitoringbindings
+  - monitoringclasses
+  - monitoringdestinations
+  verbs:
   - get
   - list
-  - patch
-  - update
   - watch
+- apiGroups:
+  - monitoring.openeverest.io
+  resources:
+  - monitoringbindings/status
+  verbs:
+  - patch
 - apiGroups:
   - postgresql.cnpg.io
   resources:
