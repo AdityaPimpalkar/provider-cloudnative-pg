@@ -46,6 +46,15 @@ type CNPGCustomSpec struct {
 
 	Monitoring *cnpgv1.MonitoringConfiguration `json:"monitoring,omitempty"`
 
+	// ReplicationSlots configures CNPG replication slots: the physical slots of
+	// the HA standbys, synchronization of user-defined physical slots to the
+	// standbys, and failover of logical decoding slots
+	// (highAvailability.synchronizeLogicalDecoding). With synchronizeLogicalDecoding
+	// on PostgreSQL 17+, the provider turns on hot_standby_feedback and
+	// sync_replication_slots unless they are set explicitly.
+	// highAvailability.slotPrefix cannot change while HA slots are enabled.
+	ReplicationSlots *cnpgv1.ReplicationSlotsConfiguration `json:"replicationSlots,omitempty"`
+
 	// Extensions configures first-class PostgreSQL extensions managed by this provider.
 	Extensions *ExtensionsSpec `json:"extensions,omitempty"`
 }

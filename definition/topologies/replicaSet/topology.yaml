@@ -436,6 +436,17 @@ ui:
             - number
             - method
             - dataDurability
+        logicalSlotFailover:
+          uiType: toggle
+          path: spec.components.engine.parameters.replicationSlots.highAvailability.synchronizeLogicalDecoding
+          fieldParams:
+            label: "Logical replication slot failover"
+            helperText: "Keeps logical replication slots (change data capture) in sync on the standbys, so consumers continue from their position after a failover. PostgreSQL 17+; turns on hot_standby_feedback and sync_replication_slots. Create slots with failover enabled, e.g. CREATE SUBSCRIPTION ... WITH (failover = true); a slot is protected once the standby shows it synced and not temporary."
+            defaultValue: false
+          validation:
+            celExpressions:
+              - celExpr: '!(has(spec.components.engine.parameters.replicationSlots.highAvailability.synchronizeLogicalDecoding) && spec.components.engine.parameters.replicationSlots.highAvailability.synchronizeLogicalDecoding) || spec.version >= "17."'
+                message: "Logical replication slot failover requires PostgreSQL 17 or later."
         walStorage:
           uiType: group
           groupType: toggleable
@@ -483,6 +494,7 @@ ui:
         - nodes
         - walStorage
         - synchronousReplication
+        - logicalSlotFailover
     pooler:
       label: "Connection pooler"
       description: "PgBouncer in front of the primary. While this is on, clients connect to the pooler."

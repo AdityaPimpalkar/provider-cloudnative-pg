@@ -1083,6 +1083,30 @@ spec:
                 volumeName:
                   type: string
               type: object
+            replicationSlots:
+              properties:
+                highAvailability:
+                  properties:
+                    enabled:
+                      type: boolean
+                    slotPrefix:
+                      type: string
+                    synchronizeLogicalDecoding:
+                      type: boolean
+                  type: object
+                synchronizeReplicas:
+                  properties:
+                    enabled:
+                      type: boolean
+                    excludePatterns:
+                      items:
+                        type: string
+                      type: array
+                  type: object
+                updateInterval:
+                  format: int64
+                  type: integer
+              type: object
             requireTLS:
               type: boolean
             resizeInUseVolumes:
@@ -1626,6 +1650,17 @@ spec:
           label: Connection pooler
         resources:
           components:
+            logicalSlotFailover:
+              fieldParams:
+                defaultValue: false
+                helperText: Keeps logical replication slots (change data capture) in sync on the standbys, so consumers continue from their position after a failover. PostgreSQL 17+; turns on hot_standby_feedback and sync_replication_slots. Create slots with failover enabled, e.g. CREATE SUBSCRIPTION ... WITH (failover = true); a slot is protected once the standby shows it synced and not temporary.
+                label: Logical replication slot failover
+              path: spec.components.engine.parameters.replicationSlots.highAvailability.synchronizeLogicalDecoding
+              uiType: toggle
+              validation:
+                celExpressions:
+                  - celExpr: '!(has(spec.components.engine.parameters.replicationSlots.highAvailability.synchronizeLogicalDecoding) && spec.components.engine.parameters.replicationSlots.highAvailability.synchronizeLogicalDecoding) || spec.version >= "17."'
+                    message: Logical replication slot failover requires PostgreSQL 17 or later.
             nodes:
               components:
                 numberOfnodes:
@@ -1828,6 +1863,7 @@ spec:
             - nodes
             - walStorage
             - synchronousReplication
+            - logicalSlotFailover
           description: Configure the resources your new database will have access to.
           label: Resources details
       sectionsOrder:
