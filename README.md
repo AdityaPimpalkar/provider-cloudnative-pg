@@ -585,7 +585,9 @@ see [Connection details](#connection-details) for how `node-postgres` treats
 that value.
 
 The UI enables this by default for new instances. Unset means off, so existing
-instances keep accepting unencrypted clients until you turn it on.
+instances keep accepting unencrypted clients until you turn it on. When editing an
+instance, the UI shows the value in its spec, off when unset, so saving the section
+doesn't turn it on.
 
 ## Development
 
