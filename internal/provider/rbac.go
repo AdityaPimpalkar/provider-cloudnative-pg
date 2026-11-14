@@ -63,8 +63,15 @@ package provider
 // PgBouncer Deployments the operator creates for a Pooler (readiness in Status()):
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch
 
-// Prometheus Operator PodMonitors (spec.topology.parameters.monitoring.prometheus):
-// +kubebuilder:rbac:groups=monitoring.coreos.com,resources=podmonitors,verbs=get;list;watch;create;update;patch;delete
+// Monitoring contract: the runtime watches the Instances' bindings and the
+// destinations and classes they reference, and reads the kube-system
+// namespace UID that identifies the cluster in the published sources.
+// +kubebuilder:rbac:groups=monitoring.openeverest.io,resources=monitoringclasses;monitoringdestinations;monitoringbindings,verbs=get;list;watch
+// +kubebuilder:rbac:groups=monitoring.openeverest.io,resources=monitoringbindings/status,verbs=patch
+// +kubebuilder:rbac:groups="",resources=namespaces,verbs=get
+
+// The PodMonitor earlier releases created, deleted on upgrade:
+// +kubebuilder:rbac:groups=monitoring.coreos.com,resources=podmonitors,verbs=delete
 
 // ConfigMaps with the exporter queries for pg_stat_statements:
 // +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;create;update;patch;delete

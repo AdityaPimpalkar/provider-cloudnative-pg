@@ -5,6 +5,7 @@ spec:
     pgbouncer: {}
     postgresql:
       defaultVersion: "18.6"
+      kind: postgresql
       versions:
         - image: ghcr.io/cloudnative-pg/postgresql:14.23-standard-trixie
           version: "14.23"
@@ -3109,6 +3110,10 @@ spec:
           type: object
       type: pgbouncer
   defaultVersion: "18.6"
+  monitoring:
+    componentTypes:
+      postgresql:
+        metrics: Native
   release:
     version: 0.3.3
   suspend: {}
@@ -3125,24 +3130,22 @@ spec:
           description: ReplicaSetTopologyParameters is validated against spec.topology.parameters.
           properties:
             monitoring:
-              description: MonitoringParameters configures how the instance's metrics are collected.
+              description: |-
+                Deprecated: Monitoring has no effect. Metrics are collected by listing
+                a MonitoringDestination in spec.monitoring.destinations: a monitoring
+                extension creates the scrape objects. It is still accepted because
+                Instances created by earlier releases carry it.
               properties:
                 prometheus:
-                  description: |-
-                    PrometheusParameters configures scraping of the CloudNativePG metrics
-                    exporter (port "metrics" on every instance pod) by the Prometheus Operator.
+                  description: 'Deprecated: Prometheus has no effect.'
                   properties:
                     enabled:
-                      description: |-
-                        Enabled creates a PodMonitor named <instance>-metrics; disabling it
-                        removes the PodMonitor.
+                      description: 'Deprecated: Enabled has no effect.'
                       type: boolean
                     podMonitorLabels:
                       additionalProperties:
                         type: string
-                      description: |-
-                        PodMonitorLabels are added to the PodMonitor so that a Prometheus
-                        podMonitorSelector picks it up, e.g. release: kube-prometheus-stack.
+                      description: 'Deprecated: PodMonitorLabels has no effect.'
                       type: object
                   type: object
               type: object
@@ -3455,17 +3458,6 @@ spec:
             - age
           description: Optional PostgreSQL extensions to install and enable on this instance.
           label: Extensions
-        monitoring:
-          components:
-            prometheus:
-              fieldParams:
-                defaultValue: false
-                helperText: Creates a PodMonitor that scrapes the CloudNativePG metrics exporter. Requires the Prometheus Operator.
-                label: Prometheus
-              path: spec.topology.parameters.monitoring.prometheus.enabled
-              uiType: toggle
-          description: Collect PostgreSQL metrics with Prometheus.
-          label: Monitoring
         pooler:
           components:
             pgbouncer:
@@ -3803,7 +3795,6 @@ spec:
         - databaseVersion
         - bootstrap
         - extensions
-        - monitoring
         - resources
         - pooler
         - advanced

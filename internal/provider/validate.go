@@ -53,9 +53,8 @@ func (p *Provider) Validate(in controller.ValidationInput) controller.Validation
 	errs = append(errs, invalid(enginePath.Child("schedulingPolicy"), cnpg.ValidateScheduling(engine.SchedulingPolicy, &custom))...)
 	errs = append(errs, invalid(engineParams.Child("extensions"), cnpg.ValidateExtensions(&custom, engine.Version, instance.Spec.Version))...)
 	errs = append(errs, invalid(engineParams.Child("extensions", "pgStatStatements"), cnpg.ValidatePgStatStatements(&custom))...)
-	errs = append(errs, invalid(field.NewPath("spec", "topology", "parameters", "monitoring", "prometheus"), validatePrometheus(instance, &custom))...)
 
-	var warnings []string
+	warnings := monitoringWarnings(instance, &custom)
 	if in.Old != nil {
 		old, err := engineCustomSpec(in.Old.Spec.Components[common.ComponentEngine])
 		if err == nil {

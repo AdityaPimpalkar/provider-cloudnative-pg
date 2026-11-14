@@ -205,6 +205,10 @@ test-e2e-cluster-backup-deletion: ## Run the backup retention and deletion e2e-c
 test-e2e-cluster-backup-restore: ## Run the restore-into-a-new-Instance e2e-cluster suite.
 	. ./test/vars.sh && chainsaw test --config ./test/e2e-cluster/.chainsaw.yaml ./test/e2e-cluster/backup-restore
 
+.PHONY: test-e2e-cluster-monitoring
+test-e2e-cluster-monitoring: ## Run the monitoring contract e2e-cluster suite.
+	. ./test/vars.sh && chainsaw test --config ./test/e2e-cluster/.chainsaw.yaml ./test/e2e-cluster/monitoring
+
 .PHONY: test-e2e
 test-e2e: ## Run Playwright UI tests against a running OpenEverest UI (EVEREST_URL, default http://localhost:8080).
 	cd test/e2e && npm ci && npx playwright install chromium && npx playwright test

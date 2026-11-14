@@ -235,3 +235,66 @@ func TestValidateSuspend(t *testing.T) {
 		})
 	}
 }
+
+// The monitoring parameters of earlier releases are accepted, so Instances
+// that carry them keep working, and ignored with a warning.
+func TestValidateDeprecatedMonitoring(t *testing.T) {
+	t.Parallel()
+	v := validationtest.New(t, New(), providerSpecPath)
+	topology := func(raw string) func(*corev1alpha1.Instance) {
+		return func(in *corev1alpha1.Instance) {
+			in.Spec.Topology = &corev1alpha1.TopologySpec{Type: "replicaSet", Parameters: &runtime.RawExtension{Raw: []byte(raw)}}
+		}
+	}
+	prometheus := "spec.topology.parameters.monitoring.prometheus"
+	enablePodMonitor := "spec.components[engine].parameters.monitoring.enablePodMonitor"
+
+	tests := []struct {
+		name         string
+		mutate       []func(*corev1alpha1.Instance)
+		wantWarnings []string
+	}{
+		{
+			name:   "prometheus off, as the UI wrote it",
+			mutate: []func(*corev1alpha1.Instance){topology(`{"monitoring":{"prometheus":{"enabled":false}}}`)},
+		},
+		{
+			name: "prometheus on with labels",
+			mutate: []func(*corev1alpha1.Instance){
+				topology(`{"monitoring":{"prometheus":{"enabled":true,"podMonitorLabels":{"release":"kube-prometheus-stack"}}}}`),
+			},
+			wantWarnings: []string{prometheus},
+		},
+		{
+			name:         "CloudNativePG PodMonitor",
+			mutate:       []func(*corev1alpha1.Instance){engineParameters(`{"monitoring":{"enablePodMonitor":true}}`)},
+			wantWarnings: []string{enablePodMonitor},
+		},
+		{
+			name: "both, which earlier releases rejected",
+			mutate: []func(*corev1alpha1.Instance){
+				topology(`{"monitoring":{"prometheus":{"enabled":true}}}`),
+				engineParameters(`{"monitoring":{"enablePodMonitor":true}}`),
+			},
+			wantWarnings: []string{prometheus, enablePodMonitor},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			in := validationtest.Load(t, instanceFixture)
+			for _, mutate := range tt.mutate {
+				mutate(in)
+			}
+			got := v.Run(in, nil)
+			assert.Empty(t, got.Errors)
+
+			var warned []string
+			for _, w := range got.Warnings {
+				warned = append(warned, strings.SplitN(w, ":", 2)[0])
+			}
+			assert.Equal(t, tt.wantWarnings, warned, "warnings: %v", got.Warnings)
+		})
+	}
+}

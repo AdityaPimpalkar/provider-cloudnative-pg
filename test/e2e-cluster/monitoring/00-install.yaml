@@ -1,0 +1,21 @@
+# A minimal metrics class, under a test-local name: it stands in for a
+# monitoring extension such as monitoring-prometheus.
+apiVersion: monitoring.openeverest.io/v1alpha1
+kind: MonitoringClass
+metadata:
+  name: cnpg-metrics-e2e
+spec:
+  controllerName: test.openeverest.io/provider-cloudnative-pg-e2e
+  extensionManaged:
+    requires:
+      metrics: true
+  authModes:
+    - name: Anonymous
+---
+apiVersion: monitoring.openeverest.io/v1alpha1
+kind: MonitoringDestination
+metadata:
+  name: metrics-e2e
+spec:
+  classRef:
+    name: cnpg-metrics-e2e
