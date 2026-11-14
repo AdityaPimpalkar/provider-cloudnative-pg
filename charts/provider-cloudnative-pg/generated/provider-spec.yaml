@@ -1421,6 +1421,22 @@ spec:
                 label: pgAudit
               path: spec.components.engine.parameters.extensions.pgaudit.enabled
               uiType: toggle
+            pgcron:
+              fieldParams:
+                defaultValue: false
+                helperText: Job scheduler (cron.schedule). Jobs run in the application database on the primary and resume after a failover. PostgreSQL 18 only; can only be enabled at creation and cannot be disabled.
+                label: pg_cron
+                modes:
+                  edit:
+                    disabled: true
+                  restore:
+                    disabled: true
+              path: spec.components.engine.parameters.extensions.pgcron.enabled
+              uiType: toggle
+              validation:
+                celExpressions:
+                  - celExpr: '!(has(spec.components.engine.parameters.extensions.pgcron.enabled) && spec.components.engine.parameters.extensions.pgcron.enabled) || (spec.version >= "18." && spec.version < "19.")'
+                    message: pg_cron requires PostgreSQL 18. Select a 18.x database version to enable it.
             pgivm:
               fieldParams:
                 defaultValue: false
@@ -1437,6 +1453,25 @@ spec:
                 celExpressions:
                   - celExpr: '!(has(spec.components.engine.parameters.extensions.pgivm.enabled) && spec.components.engine.parameters.extensions.pgivm.enabled) || (spec.version >= "18." && spec.version < "19.")'
                     message: pg_ivm requires PostgreSQL 18. Select a 18.x database version to enable it.
+            pgrepack:
+              fieldParams:
+                defaultValue: false
+                helperText: 'Removes table and index bloat with minimal locking. Run the client in an instance pod: /extensions/pg-repack/bin/pg_repack. PostgreSQL 18 only; enabling it restarts the instances; cannot be disabled once enabled.'
+                label: pg_repack
+                modes:
+                  restore:
+                    disabled: true
+              path: spec.components.engine.parameters.extensions.pgrepack.enabled
+              uiType: toggle
+              validation:
+                celExpressions:
+                  - celExpr: '!(has(spec.components.engine.parameters.extensions.pgrepack.enabled) && spec.components.engine.parameters.extensions.pgrepack.enabled) || (spec.version >= "18." && spec.version < "19.")'
+                    message: pg_repack requires PostgreSQL 18. Select a 18.x database version to enable it.
+                modes:
+                  edit:
+                    celExpressions:
+                      - celExpr: '!(has(original.spec.components.engine.parameters.extensions.pgrepack.enabled) && original.spec.components.engine.parameters.extensions.pgrepack.enabled) || (has(spec.components.engine.parameters.extensions.pgrepack.enabled) && spec.components.engine.parameters.extensions.pgrepack.enabled)'
+                        message: pg_repack cannot be disabled once enabled
             pgrouting:
               fieldParams:
                 defaultValue: false
@@ -1549,6 +1584,8 @@ spec:
             - pgivm
             - wal2json
             - age
+            - pgcron
+            - pgrepack
           description: Optional PostgreSQL extensions to install and enable on this instance.
           label: Extensions
         monitoring:
