@@ -26,6 +26,21 @@ type CNPGCustomSpec struct {
 	// connections. Applied by CNPG with a configuration reload, no restart.
 	RequireTLS *bool `json:"requireTLS,omitempty"`
 
+	// PgHBA declares which clients may connect to which databases as which
+	// users: pg_hba.conf records, one per line, such as
+	//
+	//   hostssl orders orders_app 10.0.0.0/8 scram-sha-256
+	//   host    orders all        all        reject
+	//
+	// Blank lines and # comments are ignored. Records are checked in order,
+	// after the operator's own rules (replication, pooler, metrics) and before
+	// the default rule that lets every user in with a password, so end with a
+	// reject record to allow only what is listed. Records may be host, hostssl
+	// or hostnossl with the methods scram-sha-256, md5, cert, ldap, radius or
+	// reject; trust is not allowed. Cannot be combined with postgresql.pg_hba.
+	// Applied by CNPG with a configuration reload, no restart.
+	PgHBA string `json:"pgHBA,omitempty"`
+
 	// WALStorage provisions a separate WAL PVC per PostgreSQL instance using
 	// CNPG's native storage configuration. Once enabled it cannot be removed.
 	WALStorage *cnpgv1.StorageConfiguration `json:"walStorage,omitempty"`

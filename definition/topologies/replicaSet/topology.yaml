@@ -706,6 +706,22 @@ ui:
                 # Edit forms leave unset fields undefined, so the toggle would fall back to
                 # true and saving the section would turn TLS-only on. Unset means off.
                 defaultValue: false
+        pgHBA:
+          uiType: text
+          path: spec.components.engine.parameters.pgHBA
+          fieldParams:
+            label: "Client access rules (pg_hba)"
+            placeholder: |2
+              hostssl orders orders_app 10.0.0.0/8 scram-sha-256
+              host    orders all        all        reject
+            helperText: "Optional. One pg_hba.conf record per line, checked in order before the default rule that admits every user with a password; end with a reject record to allow only what is listed. Methods: scram-sha-256, md5, cert, ldap, radius, reject. Applied without a restart."
+            multiline: true
+            minRows: 3
+            maxRows: 10
+          validation:
+            regex:
+              pattern: '^([ \t]*(#.*)?|[ \t]*(host|hostssl|hostnossl)[ \t]+\S.*)(\r?\n([ \t]*(#.*)?|[ \t]*(host|hostssl|hostnossl)[ \t]+\S.*))*[ \t\r\n]*$'
+              message: 'Each line must be a host, hostssl or hostnossl record (or a # comment), e.g. hostssl orders orders_app 10.0.0.0/8 scram-sha-256'
         configuration:
           uiType: text
           path: spec.components.engine.parameters.postgresql.parameters
@@ -722,6 +738,7 @@ ui:
         - storageClass
         - priorityClassName
         - requireTLS
+        - pgHBA
         - configuration
   sectionsOrder:
     - databaseVersion
