@@ -1,0 +1,24 @@
+# A suspended instance: CloudNativePG hibernation stops PostgreSQL and
+# PgBouncer and keeps the volumes. Set suspended to false to resume it.
+# Suspending or resuming can't be combined with other spec changes. Created
+# suspended, the instance starts, initializes, then hibernates: CloudNativePG
+# hibernates only a healthy cluster.
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: my-instance
+spec:
+  providerRef:
+    name: provider-cloudnative-pg
+  version: "18.6"
+  suspend:
+    suspended: true
+  components:
+    engine:
+      type: postgresql
+      replicas: 2
+      resources:
+        requests: {cpu: "1", memory: 1Gi}
+        limits: {cpu: "1", memory: 1Gi}
+      storage:
+        size: 5Gi

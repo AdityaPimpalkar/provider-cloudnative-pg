@@ -192,6 +192,8 @@ func (p *Provider) Sync(c *controller.Context) error {
 		return err
 	}
 
+	applySuspend(c, pg)
+
 	if err := c.Apply(pg); err != nil {
 		return err
 	}
@@ -288,6 +290,10 @@ func (p *Provider) Status(c *controller.Context) (controller.Status, error) {
 	// PhaseReason. Other terminal phases are mapped the same way.
 	if status, failed := failedClusterStatus(pg); failed {
 		return status, nil
+	}
+
+	if c.Instance().SuspendRequested() {
+		return suspendStatus(c, pg)
 	}
 
 	readyCondition := meta.FindStatusCondition(pg.Status.Conditions, string(cnpgv1.ConditionClusterReady))

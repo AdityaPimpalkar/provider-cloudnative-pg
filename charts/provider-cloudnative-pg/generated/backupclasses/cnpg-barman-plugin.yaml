@@ -10,8 +10,15 @@ spec:
   executionMode: ProviderManaged
   parametersSchema:
     openAPIV3Schema:
+      description: |-
+        CnpgBarmanPluginBackupConfig is validated against Backup.spec.parameters and
+        per-schedule parameters. Maps to cnpgv1.BackupSpec fields for plugin backups.
       properties:
         target:
+          description: Target overrides the cluster default backup target for this run.
+          enum:
+            - primary
+            - prefer-standby
           type: string
       type: object
   providerManaged:
