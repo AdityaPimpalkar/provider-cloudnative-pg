@@ -1,0 +1,34 @@
+# CloudNativePG components are pinned twice: as Go modules (their API types, in
+# go.mod) and as bundled Helm subcharts (charts/provider-cloudnative-pg/Chart.yaml).
+# This covers both the cloudnative-pg operator and the plugin-barman-cloud plugin.
+# They are placed in one multi-ecosystem group so a new release arrives as a
+# single PR that bumps the Go module and the chart together.
+version: 2
+
+multi-ecosystem-groups:
+  cloudnative-pg:
+    schedule:
+      interval: "daily"
+    labels:
+      - "dependencies"
+
+updates:
+  - package-ecosystem: "gomod"
+    directory: "/"
+    allow:
+      - dependency-name: "github.com/cloudnative-pg/cloudnative-pg"
+      - dependency-name: "github.com/cloudnative-pg/plugin-barman-cloud"
+    patterns:
+      - "github.com/cloudnative-pg/cloudnative-pg"
+      - "github.com/cloudnative-pg/plugin-barman-cloud"
+    multi-ecosystem-group: "cloudnative-pg"
+
+  - package-ecosystem: "helm"
+    directory: "/charts/provider-cloudnative-pg"
+    allow:
+      - dependency-name: "cloudnative-pg"
+      - dependency-name: "plugin-barman-cloud"
+    patterns:
+      - "cloudnative-pg"
+      - "plugin-barman-cloud"
+    multi-ecosystem-group: "cloudnative-pg"
