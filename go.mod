@@ -8,7 +8,7 @@ require (
 	github.com/cloudnative-pg/cloudnative-pg v1.30.1
 	github.com/cloudnative-pg/machinery v0.6.0
 	github.com/cloudnative-pg/plugin-barman-cloud v0.15.0
-	github.com/openeverest/openeverest/v2 v2.0.0-dev.2.0.20261111070337-d9fd5be3ecf6
+	github.com/openeverest/openeverest/v2 v2.0.0-dev.2.0.20261113192743-c557348ce094
 	github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.94.0
 	github.com/stretchr/testify v1.12.1
 	k8s.io/api v0.37.1
@@ -103,7 +103,7 @@ require (
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/oasdiff/yaml v0.1.1 // indirect
 	github.com/oasdiff/yaml3 v0.0.14 // indirect
-	github.com/openeverest/provider-sdk v0.3.1-0.20261111070446-6efcd18bbf72 // indirect
+	github.com/openeverest/provider-sdk v0.3.1-0.20261113190910-e7ea8992140a // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/prometheus/client_golang v1.24.1 // indirect
 	github.com/prometheus/client_model v0.6.3 // indirect
