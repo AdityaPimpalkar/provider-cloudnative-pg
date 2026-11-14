@@ -177,6 +177,10 @@ test-integration-backup: ## Run backup integration tests (requires CNPG, the Bar
 test-integration-core-admission: ## Run the admission webhook integration test (scales the provider down; not concurrent).
 	. ./test/vars.sh && chainsaw test --config ./test/integration/.chainsaw.yaml ./test/integration/core/admission
 
+.PHONY: test-integration-presets
+test-integration-presets: ## Run the ClusterInstancePreset integration test (needs jq).
+	. ./test/vars.sh && chainsaw test --config ./test/integration/.chainsaw.yaml ./test/integration/presets
+
 .PHONY: test-integration-core-replicaset
 test-integration-core-replicaset: ## Run core replicaset integration tests (chainsaw).
 	. ./test/vars.sh && chainsaw test --config ./test/integration/.chainsaw.yaml ./test/integration/core/replicaset

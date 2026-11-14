@@ -1,0 +1,16 @@
+{{- range $preset := .Values.presets }}
+{{- if $preset.enabled }}
+---
+apiVersion: core.openeverest.io/v1alpha1
+kind: ClusterInstancePreset
+metadata:
+  name: {{ $.Values.provider.shortName }}-{{ $preset.name }}
+  labels:
+    {{- include "provider-cloudnative-pg.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: preset
+spec:
+  providerRef:
+    name: {{ $.Values.provider.name }}
+  {{- toYaml $preset.spec | nindent 2 }}
+{{- end }}
+{{- end }}

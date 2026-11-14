@@ -1,0 +1,66 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/kyverno/chainsaw/main/.schemas/json/test-chainsaw-v1alpha1.json
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: presets
+spec:
+  description: |
+    The chart installs a ClusterInstancePreset per topology. The preset is
+    admitted as an Instance spec as it is (server-side dry run, so the
+    provider's admission webhook checks it). Its 3 x 1 CPU / 4Gi nodes don't
+    fit a CI runner, so the Instance created from it is scaled down to one
+    small node; it keeps the preset's version and parameters and becomes Ready.
+  timeouts:
+    cleanup: 3m
+  catch:
+    - script:
+        content: kubectl get clusterinstancepresets -o yaml; kubectl -n "$NAMESPACE" get instance,cluster,pod -o yaml
+    - script:
+        content: kubectl logs -A -l app.kubernetes.io/name=provider-cloudnative-pg --tail=100
+  steps:
+    - name: presets-installed
+      try:
+        - assert:
+            file: 00-assert.yaml
+    - name: presets-admitted
+      try:
+        # chainsaw runs scripts with /bin/sh: POSIX sh only.
+        - script:
+            content: |
+              set -eu
+              for preset in postgresql-replicaset; do
+                kubectl get clusterinstancepreset "$preset" -o json \
+                  | jq --arg p "$preset" --arg ns "$NAMESPACE" '{
+                      apiVersion: "core.openeverest.io/v1alpha1",
+                      kind: "Instance",
+                      metadata: {name: ("itest-" + $p), namespace: $ns},
+                      spec: .spec
+                    }' \
+                  | kubectl apply --dry-run=server -f -
+              done
+    - name: create-from-preset
+      try:
+        - script:
+            content: |
+              set -eu
+              kubectl get clusterinstancepreset postgresql-replicaset -o json \
+                | jq --arg ns "$NAMESPACE" '{
+                    apiVersion: "core.openeverest.io/v1alpha1",
+                    kind: "Instance",
+                    metadata: {
+                      name: "itest-pg-preset",
+                      namespace: $ns,
+                      annotations: {"openeverest.io/cluster-instance-preset": "postgresql-replicaset"}
+                    },
+                    spec: (.spec
+                      | .components.engine.replicas = 1
+                      | .components.engine.resources = {
+                          requests: {cpu: "100m", memory: "256Mi"},
+                          limits: {cpu: "500m", memory: "512Mi"}
+                        }
+                      | .components.engine.storage.size = "1Gi")
+                  }' \
+                | kubectl apply -f -
+        - assert:
+            timeout: 6m
+            file: 10-assert.yaml
