@@ -138,6 +138,20 @@ type ExtensionToggle struct {
 
 type BootstrapConfiguration struct {
 	InitDB *cnpgv1.BootstrapInitDB `json:"initdb,omitempty"`
+	// VolumeSnapshot starts the instance from a VolumeSnapshot of another
+	// instance's data volume, in the same namespace, instead of an empty
+	// database. The snapshot must hold PGDATA and its WAL (no walStorage) and
+	// can be crash-consistent: PostgreSQL recovers it from its own pg_wal, as
+	// after a crash. On storage whose snapshots are copy-on-write clones, such
+	// as ZFS, the instance starts in seconds whatever the size. Only read at
+	// creation; initdb's database and owner name the existing application
+	// database and owner.
+	VolumeSnapshot *VolumeSnapshotSource `json:"volumeSnapshot,omitempty"`
+}
+
+// VolumeSnapshotSource names a VolumeSnapshot in the Instance's namespace.
+type VolumeSnapshotSource struct {
+	Name string `json:"name"`
 }
 
 // PgBouncerParameters is the proxy component's configuration.

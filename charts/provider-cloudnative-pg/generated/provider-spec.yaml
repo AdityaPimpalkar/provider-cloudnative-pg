@@ -556,6 +556,11 @@ spec:
                       format: int64
                       type: integer
                   type: object
+                volumeSnapshot:
+                  properties:
+                    name:
+                      type: string
+                  type: object
               type: object
             certificates:
               properties:

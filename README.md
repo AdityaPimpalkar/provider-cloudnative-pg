@@ -63,6 +63,7 @@ provider itself is covered under [Installation](#installation).
 | Version upgrades | ✅ | of the deployed PostgreSQL version — change `spec.version`; see [Versions](#versions) |
 | Custom configuration | ✅ | PostgreSQL GUCs via `spec.components.engine.parameters.postgresql` |
 | Bootstrap (`initdb`) | ✅ | database name, owner, and credentials secret |
+| Bootstrap from a VolumeSnapshot | ✅ | `bootstrap.volumeSnapshot.name`: start from a snapshot of another instance's volume; see [Start from a volume snapshot](#start-from-a-volume-snapshot) |
 | Managed roles | ✅ | CloudNativePG managed roles with readiness gating in `Status()` |
 | Synchronous replication | ✅ | `parameters.postgresql.synchronous`; see [Synchronous replication](#synchronous-replication) |
 | Logical replication slot failover | ✅ | `parameters.replicationSlots.highAvailability.synchronizeLogicalDecoding` (PostgreSQL 17+); see [Logical replication slot failover](#logical-replication-slot-failover) |
@@ -590,6 +591,7 @@ The technology-specific knobs worth knowing about:
 | Parameter | Applies to | Purpose |
 |---|---|---|
 | `bootstrap.initdb` | `engine` | Initial database name, owner, and optional credentials Secret |
+| `bootstrap.volumeSnapshot.name` | `engine` | Start from a VolumeSnapshot instead of an empty database; see [Start from a volume snapshot](#start-from-a-volume-snapshot) |
 | `postgresql` | `engine` | Full CloudNativePG `PostgresConfiguration` (GUCs, sync replicas, …) |
 | `extensions.*` | `engine` | First-class extensions; see [Extensions](#extensions). TimescaleDB (both editions) also defaults `timescaledb.telemetry_level=off` and `max_locks_per_transaction=128` unless set in `postgresql.parameters` |
 | `affinity` | `engine` | CloudNativePG `AffinityConfiguration`; rejected together with `schedulingPolicy` `affinity`, `nodeSelector` or `tolerations` |
@@ -601,6 +603,48 @@ The technology-specific knobs worth knowing about:
 | `replicationSlots` | `engine` | CloudNativePG `ReplicationSlotsConfiguration` (HA slots, user slot synchronization, logical slot failover); see [Logical replication slot failover](#logical-replication-slot-failover) |
 | `monitoring` | `engine` | CloudNativePG monitoring configuration (custom queries, metrics TLS, …) |
 | `monitoring.prometheus` | topology | Create a PodMonitor for the instance; see [Scrape metrics with Prometheus](#scrape-metrics-with-prometheus) |
+
+### Start from a volume snapshot
+
+`bootstrap.volumeSnapshot.name` starts a new instance from a VolumeSnapshot
+of another instance's data volume, in the same namespace, instead of an empty
+database. The provider renders CloudNativePG's
+`bootstrap.recovery.volumeSnapshots` with no WAL source: PostgreSQL recovers
+the snapshot from its own `pg_wal`, as after a crash, so a crash-consistent
+snapshot of a running instance is enough and no WAL archive is needed.
+`bootstrap.initdb`'s database and owner name the existing application
+database and owner, and the new instance gets its own credentials.
+
+```yaml
+spec:
+  components:
+    engine:
+      replicas: 1
+      storage:
+        size: 20Gi                  # the snapshot's size: some drivers can't resize clones
+        storageClass: openebs-zfspv
+      parameters:
+        bootstrap:
+          volumeSnapshot:
+            name: orders-snapshot-1   # annotated bootstrap-instance: <this instance>
+```
+
+- On storage whose snapshots are copy-on-write clones, such as OpenEBS ZFS
+  LocalPV, the instance starts in seconds whatever the size. Take a
+  `CHECKPOINT` right before the snapshot to keep recovery short.
+- The snapshot must be annotated
+  `provider-cloudnative-pg.openeverest.io/bootstrap-instance: <instance name>`.
+  Everest checks that a user may read an Instance's `spec.dataSource`, not
+  its engine parameters: the annotation, which Everest users can't set, is
+  what lets an Instance start from a snapshot. Until it's there, nothing is
+  created and the Instance is `Failed`; the provider retries, so it starts
+  once the snapshot is annotated.
+- The snapshot must hold PGDATA and WAL: it can't be combined with
+  `walStorage`, nor with `spec.dataSource`. It's only read at creation and
+  can't be changed afterwards.
+- Replicas of the new instance are made with `pg_basebackup`, a full copy.
+
+The Branching plugin uses it to make instance branches.
 
 ### Synchronous replication
 

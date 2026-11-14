@@ -196,3 +196,11 @@ rules:
   - get
   - list
   - watch
+- apiGroups:
+  - snapshot.storage.k8s.io
+  resources:
+  - volumesnapshots
+  verbs:
+  - get
+  - list
+  - watch

@@ -50,6 +50,7 @@ func (p *Provider) Validate(in controller.ValidationInput) controller.Validation
 	errs = append(errs, invalid(engineParams, cnpg.ValidateCustomSpec(&custom))...)
 	errs = append(errs, invalid(engineParams.Child("postgresql", "synchronous"), cnpg.ValidateSynchronous(engine, &custom))...)
 	errs = append(errs, invalid(engineParams.Child("replicationSlots"), cnpg.ValidateReplicationSlots(&custom, engine.Version, instance.Spec.Version))...)
+	errs = append(errs, invalid(engineParams.Child("bootstrap", "volumeSnapshot"), cnpg.ValidateVolumeSnapshotBootstrap(&custom, instance.Spec.DataSource != nil))...)
 	errs = append(errs, invalid(enginePath.Child("schedulingPolicy"), cnpg.ValidateScheduling(engine.SchedulingPolicy, &custom))...)
 	errs = append(errs, invalid(engineParams.Child("extensions"), cnpg.ValidateExtensions(&custom, engine.Version, instance.Spec.Version))...)
 	errs = append(errs, invalid(engineParams.Child("extensions", "pgStatStatements"), cnpg.ValidatePgStatStatements(&custom))...)
@@ -73,7 +74,8 @@ func (p *Provider) Validate(in controller.ValidationInput) controller.Validation
 // ValidateReferences checks the rules that read the cluster: the extension
 // images in the ClusterImageCatalog, and the live Cluster and Database for
 // writes admission didn't see, including a change of the HA replication slot
-// prefix CloudNativePG would refuse. At admission its errors are warnings; before
+// prefix CloudNativePG would refuse, and the bootstrap VolumeSnapshot: authorized
+// for this Instance, and unchanged once the Cluster exists. At admission its errors are warnings; before
 // Sync they block it.
 func (p *Provider) ValidateReferences(c *controller.Context) (field.ErrorList, error) {
 	engine := c.Instance().Spec.Components[common.ComponentEngine]
@@ -84,6 +86,7 @@ func (p *Provider) ValidateReferences(c *controller.Context) (field.ErrorList, e
 	}
 	extensionsPath := engineParams.Child("extensions")
 	slotPrefixPath := engineParams.Child("replicationSlots", "highAvailability", "slotPrefix")
+	volumeSnapshotPath := engineParams.Child("bootstrap", "volumeSnapshot")
 
 	var errs field.ErrorList
 	for _, check := range []struct {
@@ -97,6 +100,7 @@ func (p *Provider) ValidateReferences(c *controller.Context) (field.ErrorList, e
 		{extensionsPath, func() error { return cnpg.ValidateExtensionsNotDisabled(c, &custom) }},
 		{extensionsPath, func() error { return cnpg.ValidateExtensionsAtCreation(c, &custom) }},
 		{slotPrefixPath, func() error { return cnpg.ValidateReplicationSlotsChange(c, &custom) }},
+		{volumeSnapshotPath, func() error { return cnpg.ValidateVolumeSnapshot(c, &custom) }},
 	} {
 		err := check.run()
 		if err == nil {

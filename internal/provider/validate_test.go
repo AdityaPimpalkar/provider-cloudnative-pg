@@ -9,6 +9,8 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/runtime"
 
+	backupv1alpha1 "github.com/openeverest/openeverest/v2/api/backup/v1alpha1"
+	commonv1alpha1 "github.com/openeverest/openeverest/v2/api/common/v1alpha1"
 	corev1alpha1 "github.com/openeverest/openeverest/v2/api/core/v1alpha1"
 	"github.com/openeverest/openeverest/v2/provider-runtime/controller/validationtest"
 
@@ -81,6 +83,17 @@ func TestValidate(t *testing.T) {
 				engineParameters(`{"extensions":{"postgis":{"enabled":true}}}`)(in)
 			},
 			want: []string{"spec.components[engine].parameters.extensions"},
+		},
+		{
+			name: "bootstrap volumeSnapshot with a dataSource",
+			mutate: func(in *corev1alpha1.Instance) {
+				in.Spec.DataSource = &backupv1alpha1.DataSource{
+					Type:   backupv1alpha1.DataSourceTypeBackup,
+					Backup: &backupv1alpha1.DataSourceBackup{BackupRef: commonv1alpha1.ObjectRef{Name: "b"}},
+				}
+				engineParameters(`{"bootstrap":{"volumeSnapshot":{"name":"snap-1"}}}`)(in)
+			},
+			want: []string{"spec.components[engine].parameters.bootstrap.volumeSnapshot"},
 		},
 		{
 			name: "proxy with an unsupported pool mode",

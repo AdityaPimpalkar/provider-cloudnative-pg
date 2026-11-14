@@ -9,6 +9,7 @@ package provider
 // +kubebuilder:rbac:groups=core.openeverest.io,resources=instances/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=core.openeverest.io,resources=instances/finalizers,verbs=update
 // +kubebuilder:rbac:groups=core.openeverest.io,resources=providers,verbs=get;list;watch
+// +kubebuilder:rbac:groups=snapshot.storage.k8s.io,resources=volumesnapshots,verbs=get;list;watch
 // +kubebuilder:rbac:groups=coordination.k8s.io,resources=leases,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 // +kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=create;patch
