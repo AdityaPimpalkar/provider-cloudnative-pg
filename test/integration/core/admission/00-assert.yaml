@@ -1,0 +1,4 @@
+apiVersion: core.openeverest.io/v1alpha1
+kind: Provider
+metadata:
+  name: provider-cloudnative-pg

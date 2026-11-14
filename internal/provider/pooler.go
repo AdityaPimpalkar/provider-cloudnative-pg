@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strconv"
 
@@ -45,32 +46,32 @@ func poolerName(instance string) string {
 	return instance + poolerNameSuffix
 }
 
-func proxyParameters(c *controller.Context, proxy corev1alpha1.ComponentSpec) (components.PgBouncerParameters, error) {
+func proxyParameters(proxy corev1alpha1.ComponentSpec) (components.PgBouncerParameters, error) {
 	var params components.PgBouncerParameters
 	if proxy.Parameters == nil || len(proxy.Parameters.Raw) == 0 {
 		return params, nil
 	}
-	if err := c.DecodeComponentParameters(proxy, &params); err != nil {
+	if err := json.Unmarshal(proxy.Parameters.Raw, &params); err != nil {
 		return params, fmt.Errorf("failed to decode proxy parameters: %w", err)
 	}
 	return params, nil
 }
 
-func validateProxy(c *controller.Context) error {
-	proxy, ok := c.Instance().Spec.Components[common.ComponentProxy]
+func validateProxy(instance *corev1alpha1.Instance) error {
+	proxy, ok := instance.Spec.Components[common.ComponentProxy]
 	if !ok {
 		return nil
 	}
 	if proxy.Type != "" && proxy.Type != common.ComponentTypePgbouncer {
 		return fmt.Errorf("proxy type %q is not supported: use %q", proxy.Type, common.ComponentTypePgbouncer)
 	}
-	if errs := validation.IsDNS1035Label(poolerName(c.Name())); len(errs) > 0 {
-		return fmt.Errorf("proxy name %q is not a valid Service name: %s", poolerName(c.Name()), errs[0])
+	if errs := validation.IsDNS1035Label(poolerName(instance.Name)); len(errs) > 0 {
+		return fmt.Errorf("proxy name %q is not a valid Service name: %s", poolerName(instance.Name), errs[0])
 	}
 	if proxy.Replicas != nil && *proxy.Replicas < 1 {
 		return fmt.Errorf("proxy replicas must be at least 1")
 	}
-	params, err := proxyParameters(c, proxy)
+	params, err := proxyParameters(proxy)
 	if err != nil {
 		return err
 	}
@@ -99,7 +100,7 @@ func syncPooler(c *controller.Context, requireTLS bool) error {
 	if !ok {
 		return deletePooler(c)
 	}
-	params, err := proxyParameters(c, proxy)
+	params, err := proxyParameters(proxy)
 	if err != nil {
 		return err
 	}

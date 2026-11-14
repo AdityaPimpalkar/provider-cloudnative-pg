@@ -127,7 +127,7 @@ func TestValidateProxy(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := validateProxy(proxyContext(t, tt.proxy))
+			err := validateProxy(proxyContext(t, tt.proxy).Instance())
 			if tt.wantErr == "" {
 				if err != nil {
 					t.Fatal(err)
@@ -144,7 +144,7 @@ func TestValidateProxy(t *testing.T) {
 func TestValidateProxyRejectsANameTheServiceCannotUse(t *testing.T) {
 	c := proxyContext(t, corev1alpha1.ComponentSpec{})
 	c.Instance().Name = strings.Repeat("a", 60)
-	if err := validateProxy(c); err == nil {
+	if err := validateProxy(c.Instance()); err == nil {
 		t.Fatal("expected the pooler Service name to be rejected")
 	}
 }
@@ -360,7 +360,7 @@ func proxyContextWithClient(t *testing.T, proxy ...corev1alpha1.ComponentSpec) (
 
 func mustProxyParams(t *testing.T, c *controller.Context) components.PgBouncerParameters {
 	t.Helper()
-	params, err := proxyParameters(c, c.Instance().Spec.Components[common.ComponentProxy])
+	params, err := proxyParameters(c.Instance().Spec.Components[common.ComponentProxy])
 	if err != nil {
 		t.Fatal(err)
 	}
