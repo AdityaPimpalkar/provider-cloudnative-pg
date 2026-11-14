@@ -116,6 +116,19 @@ type ExtensionsSpec struct {
 	// EXTENSION age in the application database and grants its owner USAGE on
 	// ag_catalog. Can only be enabled at creation; cannot be turned off.
 	AGE *ExtensionToggle `json:"age,omitempty"`
+
+	// PgCron (image volume) preloads pg_cron, sets cron.database_name to the
+	// application database and cron.use_background_workers to on, runs CREATE
+	// EXTENSION pg_cron there and grants its owner USAGE on the cron schema, so
+	// the owner can schedule jobs. Jobs run on the primary only. Can only be
+	// enabled at creation; cannot be turned off.
+	PgCron *ExtensionToggle `json:"pgcron,omitempty"`
+
+	// PgRepack (image volume) runs CREATE EXTENSION pg_repack in the
+	// application database. The pg_repack client is in the instance pods at
+	// /extensions/pg-repack/bin/pg_repack and runs as the superuser. Cannot be
+	// turned off once enabled.
+	PgRepack *ExtensionToggle `json:"pgrepack,omitempty"`
 }
 
 // ExtensionToggle switches a first-class extension on.
