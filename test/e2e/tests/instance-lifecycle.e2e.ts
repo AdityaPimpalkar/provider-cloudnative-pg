@@ -10,12 +10,12 @@ const namespace = process.env.E2E_NAMESPACE ?? "e2e-ui";
 
 // Every value differs from the topology defaults (3 nodes, CPU 1, memory 4Gi,
 // disk 25Gi) and requests differ from limits, so each one shows that its field
-// was submitted. The fractional CPU request guards #99: it must reach the API as
-// a quantity string, which Kubernetes stores as 500m.
+// was submitted. The fractional CPU request guards #99: the quantity field must
+// write it as a quantity string ("0.5"), which Kubernetes stores as 500m.
 const resources: InstanceResources = {
   nodes: 1,
-  cpuRequest: "0.5",
-  cpuLimit: "2",
+  cpuRequest: 0.5,
+  cpuLimit: 2,
   memoryRequestGi: 1,
   memoryLimitGi: 2,
   diskGi: 1,
@@ -72,7 +72,7 @@ test("create a PostgreSQL instance through the UI, wait for Ready, delete it", a
     const cluster = (jsonPath: string) => kubectlJsonPath(namespace, `cluster/${name}`, jsonPath);
     expect(cluster("{.spec.instances}")).toBe(String(resources.nodes));
     expect(cluster("{.spec.resources.requests.cpu}")).toBe("500m");
-    expect(cluster("{.spec.resources.limits.cpu}")).toBe(resources.cpuLimit);
+    expect(cluster("{.spec.resources.limits.cpu}")).toBe(String(resources.cpuLimit));
     expect(cluster("{.spec.resources.requests.memory}")).toBe(`${resources.memoryRequestGi}Gi`);
     expect(cluster("{.spec.resources.limits.memory}")).toBe(`${resources.memoryLimitGi}Gi`);
     expect(cluster("{.spec.storage.size}")).toBe(`${resources.diskGi}Gi`);

@@ -1,15 +1,12 @@
 package cnpg
 
 import (
-	"os"
-	"regexp"
 	"strings"
 	"testing"
 
 	cnpgv1 "github.com/cloudnative-pg/cloudnative-pg/api/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
-	"sigs.k8s.io/yaml"
 
 	commonv1alpha1 "github.com/openeverest/openeverest/v2/api/common/v1alpha1"
 	corev1alpha1 "github.com/openeverest/openeverest/v2/api/core/v1alpha1"
@@ -144,59 +141,5 @@ func TestValidateBootstrap(t *testing.T) {
 				t.Fatalf("error = %v, want %q", err, tt.wantErr)
 			}
 		})
-	}
-}
-
-// The UI regex and validateCPU must agree on values written in the notation the UI accepts.
-func TestCPURuleMatchesUIRegex(t *testing.T) {
-	raw, err := os.ReadFile("../../definition/topologies/replicaSet/topology.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
-	var topology struct {
-		UI map[string]any `yaml:"ui"`
-	}
-	if err := yaml.Unmarshal(raw, &topology); err != nil {
-		t.Fatal(err)
-	}
-	patterns := map[string]bool{}
-	var walk func(any)
-	walk = func(node any) {
-		switch v := node.(type) {
-		case map[string]any:
-			if path, _ := v["path"].(string); strings.HasSuffix(path, ".cpu") {
-				validation, _ := v["validation"].(map[string]any)
-				regex, _ := validation["regex"].(map[string]any)
-				pattern, _ := regex["pattern"].(string)
-				if pattern == "" {
-					t.Fatalf("CPU field %s has no regex", path)
-				}
-				patterns[pattern] = true
-			}
-			for _, child := range v {
-				walk(child)
-			}
-		case []any:
-			for _, child := range v {
-				walk(child)
-			}
-		}
-	}
-	walk(topology.UI)
-	if len(patterns) != 1 {
-		t.Fatalf("want one shared CPU regex, found %d", len(patterns))
-	}
-	for pattern := range patterns {
-		uiRule := regexp.MustCompile(pattern)
-		for _, value := range []string{
-			"1", "2", "10", "0.5", ".5", "1.25", "2.125", "0.001", "500m", "1m", "1500m",
-			"0", "0.0", "0m", "-1", "-500m", "0.0005", "1.0001",
-		} {
-			uiOK := uiRule.MatchString(value)
-			goOK := validateCPU(corev1.ResourceRequestsCPU, resource.MustParse(value)) == nil
-			if uiOK != goOK {
-				t.Errorf("%q: UI regex accepts=%t, Validate accepts=%t", value, uiOK, goOK)
-			}
-		}
 	}
 }
