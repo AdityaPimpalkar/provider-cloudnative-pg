@@ -1,6 +1,7 @@
 name: E2E platform
 description: >-
-  Create a k3d cluster with the released OpenEverest core (version from go.mod),
+  Create a k3d cluster with OpenEverest core (`make install-openeverest`: core
+  main until the next core release, then the release matching go.mod),
   the CloudNativePG operator, the Barman Cloud Plugin, this provider built from
   the checked-out source, and its BackupClass.
 

@@ -781,8 +781,11 @@ code generation, and the backup/restore interfaces are documented once for all p
   resize request reaches the WAL PVC; the physical resize is checked only where the default
   StorageClass expands volumes (e.g. a CSI driver with a resizer).
 - **E2E cluster tests** — chainsaw suites under [test/e2e-cluster/](test/e2e-cluster/) that run
-  user journeys on the full platform: the released OpenEverest core (server, controller and CRDs,
-  at the version pinned in `go.mod`) installed by `make install-openeverest`, plus this provider.
+  user journeys on the full platform: OpenEverest core (server, controller and CRDs) installed by
+  `make install-openeverest`, plus this provider. Until the next core release that is core `main`:
+  the [openeverest/helm-charts](https://github.com/openeverest/helm-charts) chart at
+  `OPENEVEREST_CHARTS_REF`, the image core's CI publishes from `main`, and the CRDs of the core
+  pinned in `go.mod`; `OPENEVEREST_CHARTS_REF=` installs the release instead.
   `backup-restore` writes data, takes a Backup, restores it into a new Instance through
   `spec.dataSource`, and checks the data. `backup-deletion` checks that schedule retention reaches
   the Barman ObjectStore, that deleting a `Retain` Backup keeps its objects in the object store, and

@@ -53,6 +53,8 @@ All settings live in `dev/.env` (see `dev/.env.example`). Common options:
 |----------|---------|-------------|
 | `INSTALL_OPENEVEREST` | `true` | Install the released OpenEverest core. |
 | `OPENEVEREST_VERSION` | _(latest)_ | Pin a specific core chart version. |
+| `OPENEVEREST_CHART_DIR` | _(unset)_ | Install a local core chart (e.g. `bin/helm-charts/charts/everest`, relative to the repository root) instead of the released one. |
+| `OPENEVEREST_IMAGE` | _(unset)_ | Core image (`repository:tag`) to run instead of the chart's. |
 | `PROVIDER_NAMESPACE` | `default` | Namespace for the provider + DB operator. |
 | `ENABLE_BARMAN_PLUGIN` | `false` | Install cert-manager and the Barman Cloud Plugin in `cnpg-system`, plus a `BackupStorage` CR that uses MinIO from the OpenEverest dev environment. |
 | `BARMAN_PLUGIN_VERSION` | `v0.15.0` | Barman plugin release manifest. |
@@ -61,6 +63,27 @@ All settings live in `dev/.env` (see `dev/.env.example`). Common options:
 > publishes pre-release tags (e.g. `2.0.0-dev.1`). Helm's "latest" resolution
 > skips pre-releases, so you must set `OPENEVEREST_VERSION` explicitly until
 > v2.0.0 is generally available.
+
+## Developing against an unreleased core
+
+To test against core `main` without building it, install the core chart from
+an [openeverest/helm-charts](https://github.com/openeverest/helm-charts)
+checkout and run the image core's CI publishes from `main` (amd64 only). From
+the repository root:
+
+```bash
+git clone https://github.com/openeverest/helm-charts bin/helm-charts
+helm repo add percona https://percona.github.io/percona-helm-charts
+helm dependency build bin/helm-charts/charts/everest
+OPENEVEREST_CHART_DIR=bin/helm-charts/charts/everest \
+OPENEVEREST_IMAGE=ghcr.io/openeverest/openeverest-dev:0.0.0 \
+  tilt up -f dev/Tiltfile
+```
+
+`make install-openeverest`, which CI uses, does the same while
+`OPENEVEREST_CHARTS_REF` is set (`main` until the next core release), and then
+applies the CRDs of the core version pinned in `go.mod`. Run
+`make install-openeverest-crds` after Tilt for the same.
 
 ## Developing the core and the provider together
 

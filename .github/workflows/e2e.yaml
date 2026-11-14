@@ -1,5 +1,5 @@
-# E2E UI tests: Playwright drives the OpenEverest UI (released core, version
-# from go.mod) to create, check and delete a PostgreSQL instance served by this
+# E2E UI tests: Playwright drives the OpenEverest UI (core main until the next
+# core release, see OPENEVEREST_CHARTS_REF in the Makefile) to create, check and delete a PostgreSQL instance served by this
 # provider built from source, on a k3d cluster.
 #
 # Runs on manual dispatch, nightly on main, and on pull requests labelled
